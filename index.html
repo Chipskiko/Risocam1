@@ -17,16 +17,40 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 .header-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
 .header-actions{display:flex;align-items:center;gap:6px}
 .header-right{display:flex;align-items:center;gap:6px;margin-left:auto}
+/* FPS selector group next to CAM */
+.fps-group{display:inline-flex;align-items:center;gap:0;border:1px solid var(--border);border-radius:3px;overflow:hidden;margin-left:0}
+.fps-group .fps-btn{font-family:'Space Mono',monospace;font-size:9px;padding:4px 7px;border:none;border-right:1px solid var(--border);background:white;cursor:pointer;color:var(--text-muted);transition:all .12s;line-height:1.2}
+.fps-group .fps-btn:last-of-type{border-right:none}
+.fps-group .fps-btn.active{background:var(--text);color:white}
+.fps-group .fps-btn:hover:not(.active){background:#f0f0f0}
+.fps-group .fps-label{font-family:'Space Mono',monospace;font-size:7px;letter-spacing:1px;color:var(--text-muted);padding:0 5px 0 3px}
 .header-btn{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:5px 10px;border:1px solid var(--border);background:white;cursor:pointer;transition:all .2s;border-radius:3px;color:var(--text-muted)}
 .header-btn:hover{background:var(--text);color:var(--bg);border-color:var(--text)}
 .header-btn.primary{background:var(--text);color:white;border-color:var(--text)}
 .header-btn.primary:hover{background:#333}
 /* Layout: two-column wide, single-column narrow */
 .app-container{max-width:1200px;margin:0 auto;padding:20px;display:grid;grid-template-columns:1fr 340px;gap:20px;min-height:calc(100vh - 56px);align-items:start}
+@media(max-width:1000px){.app-container{grid-template-columns:1fr 280px;gap:14px;padding:14px}}
 @media(max-width:900px){.app-container{grid-template-columns:1fr;padding:12px;gap:12px}}
+@media(max-width:600px){.app-container{padding:8px;gap:8px}
+  .image-controls{flex-wrap:wrap}
+  .aspect-row{flex-wrap:wrap}
+  .controls-panel{gap:8px}
+  .profile-list{gap:4px}
+  .profile-pill{padding:4px 8px 4px 5px}
+  .profile-label{font-size:8px}
+  .profile-swatch{width:12px;height:12px}
+  header .header-inner{flex-wrap:wrap;gap:6px}
+  .header-btn{padding:5px 10px;font-size:9px}
+}
 .left-col{display:flex;flex-direction:column;gap:12px}
 .viewfinder-wrap{position:sticky;top:70px;z-index:10}
 @media(max-width:900px){.viewfinder-wrap{position:static}}
+@media(max-width:600px){
+  .image-controls{gap:4px;padding:5px 6px;flex-wrap:wrap}
+  .img-slider{min-width:80px}
+  .controls-sep{display:none}
+}
 .viewfinder-panel{position:relative;background:#1a1a1a;border-radius:4px;overflow:hidden;aspect-ratio:4/3;border:1px solid var(--border)}
 .viewfinder-panel canvas{width:100%;height:100%;display:block}
 .status-bar{position:absolute;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;pointer-events:none}
@@ -78,6 +102,16 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 .channel-list{padding:8px 10px;display:flex;flex-direction:column;gap:6px}
 .ch-slot{position:relative}
 .ch-row{display:flex;align-items:center;gap:5px}
+/* Drag handle for layer reorder */
+.ch-drag{cursor:grab;color:var(--text-muted);font-size:11px;user-select:none;padding:2px 1px 2px 0;line-height:1;letter-spacing:-1px;opacity:.45;transition:opacity .15s;touch-action:none}
+.ch-drag:hover{opacity:.8}
+.ch-slot{transition:transform .15s ease,opacity .15s}
+.ch-slot.dragging{opacity:.4;pointer-events:none}
+.ch-slot.drag-over-above{border-top:2px solid var(--accent) !important}
+.ch-slot.drag-over-below{border-bottom:2px solid var(--accent) !important}
+/* Mono consolidated row */
+.ch-mono-row{display:flex;align-items:center;gap:6px;padding:2px 0}
+.ch-mono-label{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--text-muted);flex-shrink:0}
 .ch-badge{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;color:white;flex-shrink:0}
 .ch-badge-c{background:#00bcd4}.ch-badge-m{background:#e91e63}.ch-badge-y{background:#fdd835;color:#333}.ch-badge-k{background:#333}
 .ch-color-btn{width:26px;height:26px;border-radius:6px;border:1.5px solid var(--border);cursor:pointer;flex-shrink:0;transition:all .12s}
@@ -137,51 +171,69 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 .aspect-btn{font-family:'Space Mono',monospace;font-size:9px;padding:3px 8px;border:1px solid var(--border);background:white;cursor:pointer;border-radius:3px;color:var(--text-muted);transition:all .12s}
 .aspect-btn.active{background:var(--text);color:white;border-color:var(--text)}
 .aspect-btn:hover{border-color:var(--text)}
-/* ═══════ PHONE UI (class-based toggle) ═══════ */
+/* ═══════ PHONE UI ═══════ */
 .phone-ui{display:none}
-body.phone-mode .phone-ui{display:flex;flex-direction:column;height:100vh;height:100dvh;background:#111;color:white;overflow:hidden;position:fixed;inset:0;z-index:200}
+body.phone-mode .phone-ui{display:flex;flex-direction:column;height:100vh;height:100dvh;background:#000;color:white;overflow:hidden;position:fixed;inset:0;z-index:200}
 body.phone-mode{overflow:hidden;position:fixed;width:100%}
 body.phone-mode header,body.phone-mode .app-container{display:none!important}
-/* Top bar */
-.ph-top{display:flex;align-items:center;padding:8px 12px;gap:8px;background:#111;z-index:10;flex-shrink:0}
-.ph-mode-toggle{display:flex;background:#333;border-radius:14px;overflow:hidden;flex-shrink:0}
-.ph-mode-btn{font-family:'Space Mono',monospace;font-size:10px;padding:6px 12px;border:none;background:none;color:#888;cursor:pointer;transition:all .15s}
-.ph-mode-btn.active{background:white;color:#111;border-radius:14px}
-.ph-mode-btn.active.rec{background:var(--accent);color:white}
+/* Top bar — floating over viewfinder */
+.ph-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;padding:8px 12px;gap:8px;z-index:10;background:linear-gradient(180deg,rgba(0,0,0,.55) 0%,transparent 100%)}
 .ph-top-btns{display:flex;gap:6px;margin-left:auto}
-.ph-icon-btn{width:32px;height:32px;border-radius:50%;background:#333;border:none;color:white;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
-.ph-icon-btn:active{background:#555}
+.ph-icon-btn{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.15);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:none;color:white;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.ph-icon-btn:active{background:rgba(255,255,255,.3)}
 .ph-icon-btn.active{background:white;color:#111}
-/* Viewfinder (fills remaining space) */
-.ph-viewfinder{flex:1;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;min-height:0}
-.ph-viewfinder canvas{max-width:100%;max-height:100%;display:block;margin:auto;object-fit:contain}
-.ph-viewfinder video{display:none}
-.ph-vf-info{position:absolute;bottom:8px;left:12px;font-family:'Space Mono',monospace;font-size:9px;color:rgba(255,255,255,.35);letter-spacing:1px}
-.ph-rec-badge{position:absolute;top:12px;right:12px;font-family:'Space Mono',monospace;font-size:11px;color:var(--accent);letter-spacing:1px;display:none}
+.ph-icon-btn svg{width:18px;height:18px}
+/* Rec badge */
+.ph-rec-badge{position:absolute;top:52px;right:12px;font-family:'Space Mono',monospace;font-size:11px;color:var(--accent);letter-spacing:1px;display:none;z-index:11}
 .ph-rec-badge.show{display:block}
-/* Bottom bar */
-.ph-bottom{display:flex;flex-direction:column;align-items:center;padding:12px 0 20px;gap:14px;background:#111;flex-shrink:0}
-/* Aspect ratio strip */
-.ph-aspect-row{display:flex;gap:6px}
-.ph-aspect-btn{font-family:'Space Mono',monospace;font-size:9px;padding:4px 10px;border:1px solid #444;background:none;color:#888;border-radius:12px;cursor:pointer;transition:all .12s}
-.ph-aspect-btn.active{background:white;color:#111;border-color:white}
-/* Quick access circles */
-.ph-circles{display:flex;gap:16px;align-items:center}
-.ph-circle{width:40px;height:40px;border-radius:50%;background:#2a2a2a;border:1.5px solid #444;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .12s;position:relative}
-.ph-circle:active{background:#444}
-.ph-circle.open{background:white;border-color:white}
-.ph-circle.open .ph-circle-icon{color:#111}
-.ph-circle-icon{font-family:'Space Mono',monospace;font-size:12px;font-weight:700;color:white}
-.ph-circle-label{position:absolute;top:-16px;font-family:'Space Mono',monospace;font-size:7px;color:#666;letter-spacing:.5px;white-space:nowrap}
+/* Viewfinder — fills all space, canvas covers it */
+.ph-viewfinder{flex:1;position:relative;overflow:hidden;min-height:0;background:#000}
+.ph-viewfinder canvas{width:100%;height:100%;display:block}
+.ph-viewfinder video{display:none}
+/* Crop guide overlay — shows save area when aspect is set */
+.ph-crop-guide{position:absolute;inset:0;pointer-events:none;z-index:5;display:none}
+.ph-crop-guide.visible{display:block}
+.ph-crop-guide-inner{position:absolute;border:1.5px solid rgba(255,255,255,.5);border-radius:2px;box-shadow:0 0 0 9999px rgba(0,0,0,.25)}
+/* Desktop crop guide */
+.crop-guide{position:absolute;inset:0;pointer-events:none;z-index:5;display:none}
+.crop-guide.visible{display:block}
+.crop-guide-inner{position:absolute;border:1.5px solid rgba(255,255,255,.55);border-radius:2px;box-shadow:0 0 0 9999px rgba(0,0,0,.3)}
+/* Bottom controls — compact native camera style */
+.ph-controls{display:flex;flex-direction:column;align-items:center;gap:10px;padding:10px 16px calc(env(safe-area-inset-bottom,8px) + 10px);background:linear-gradient(0deg,rgba(0,0,0,.7) 0%,rgba(0,0,0,.4) 70%,transparent 100%);position:absolute;bottom:0;left:0;right:0;z-index:10}
+/* Tool strip — small cycling buttons */
+.ph-tools{display:flex;gap:8px;align-items:center;justify-content:center;width:100%}
+.ph-tool-btn{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.5px;padding:5px 12px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);backdrop-filter:blur(4px);color:rgba(255,255,255,.85);border-radius:16px;cursor:pointer;transition:all .12s;white-space:nowrap;display:flex;align-items:center;gap:4px}
+.ph-tool-btn:active{background:rgba(255,255,255,.25)}
+.ph-tool-btn.highlight{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.5);color:white}
+/* PHOTO/VIDEO mode toggle */
+.ph-mode-row{display:flex;gap:4px;background:rgba(255,255,255,.08);border-radius:14px;padding:2px;flex-shrink:0}
+.ph-mode-btn{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.5px;padding:4px 12px;border:none;background:none;color:rgba(255,255,255,.5);cursor:pointer;border-radius:12px;transition:all .15s}
+.ph-mode-btn.active{background:white;color:#111}
+.ph-mode-btn.active.rec{background:var(--accent);color:white}
+/* Main action row */
+.ph-actions{display:flex;gap:16px;align-items:center;justify-content:center;width:100%}
+.ph-action-circle{width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.25);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .12s;position:relative;flex-shrink:0}
+.ph-action-circle:active{background:rgba(255,255,255,.25)}
+.ph-action-circle.open{background:white;border-color:white}
+.ph-action-circle.open .ph-action-icon{color:#111}
+.ph-action-icon{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:white;line-height:1}
+.ph-action-label{position:absolute;top:-14px;font-family:'Space Mono',monospace;font-size:7px;color:rgba(255,255,255,.4);letter-spacing:.5px;white-space:nowrap}
 /* Shutter */
-.ph-shutter{width:68px;height:68px;border-radius:50%;border:3px solid white;background:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;margin:0 20px}
-.ph-shutter-inner{width:54px;height:54px;border-radius:50%;background:white;transition:all .2s}
-.ph-shutter:active .ph-shutter-inner{transform:scale(0.9)}
-/* Video record state */
+.ph-shutter{width:66px;height:66px;border-radius:50%;border:3px solid white;background:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;flex-shrink:0}
+.ph-shutter-inner{width:52px;height:52px;border-radius:50%;background:white;transition:all .2s}
+.ph-shutter:active .ph-shutter-inner{transform:scale(0.88)}
 .ph-shutter.recording{border-color:var(--accent)}
-.ph-shutter.recording .ph-shutter-inner{width:28px;height:28px;border-radius:6px;background:var(--accent)}
-/* Overlay panels */
-.ph-overlay{position:fixed;left:0;right:0;bottom:0;background:#1e1e1e;border-radius:16px 16px 0 0;z-index:300;transform:translateY(100%);transition:transform .3s cubic-bezier(.16,1,.3,1);max-height:70vh;overflow-y:auto;padding:0 0 24px}
+.ph-shutter.recording .ph-shutter-inner{width:26px;height:26px;border-radius:6px;background:var(--accent)}
+/* BCS slider overlay */
+.ph-bcs-strip{display:none;width:100%;padding:0 8px}
+.ph-bcs-strip.visible{display:flex;flex-direction:column;gap:6px}
+.ph-bcs-row{display:flex;align-items:center;gap:6px}
+.ph-bcs-label{font-family:'Space Mono',monospace;font-size:9px;color:rgba(255,255,255,.6);width:14px;text-align:center;flex-shrink:0}
+.ph-bcs-slider{flex:1;-webkit-appearance:none;height:3px;background:rgba(255,255,255,.2);border-radius:2px;outline:none}
+.ph-bcs-slider::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:white;cursor:pointer;border:none;box-shadow:0 1px 6px rgba(0,0,0,.4)}
+.ph-bcs-val{font-family:'Space Mono',monospace;font-size:9px;color:rgba(255,255,255,.5);width:18px;text-align:right;flex-shrink:0}
+/* Overlay panels (bottom sheets) */
+.ph-overlay{position:fixed;left:0;right:0;bottom:0;background:#1a1a1a;border-radius:16px 16px 0 0;z-index:300;transform:translateY(100%);transition:transform .3s cubic-bezier(.16,1,.3,1);max-height:70vh;overflow-y:auto;padding:0 0 calc(env(safe-area-inset-bottom,8px) + 16px)}
 .ph-overlay.open{transform:translateY(0)}
 .ph-overlay-handle{width:36px;height:4px;background:#555;border-radius:2px;margin:10px auto 6px}
 .ph-overlay-head{display:flex;align-items:center;padding:8px 16px 12px;font-family:'Space Mono',monospace;font-size:12px;letter-spacing:1px;color:white}
@@ -195,37 +247,48 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
 .ph-overlay .ch-dropdown-item.selected{background:rgba(91,143,212,.2)}
 .ph-overlay .ch-dropdown-name{color:#ddd}
 .ph-overlay .ch-dropdown-sep{background:#444}
+.ph-overlay .ch-drag{color:#888}
+.ph-overlay .ch-mono-label{color:#999}
+.ph-overlay .ch-slot.drag-over-above{border-top-color:#5b8fd4 !important}
+.ph-overlay .ch-slot.drag-over-below{border-bottom-color:#5b8fd4 !important}
 .ph-overlay .ch-dens{background:linear-gradient(90deg,#33333315,#888)!important}
 .ph-overlay .ch-dens::-webkit-slider-thumb{background:#ddd;border-color:#666}
 .ph-overlay .ch-angle-btn{background:#333;color:#888;border-color:#555}
 .ph-overlay .ch-angle-btn.active{background:white;color:#111;border-color:white}
 .ph-overlay .section-header{color:#aaa;border-color:#333}
 .ph-overlay .paper-dot{border-color:#555}
-.ph-overlay .paper-dot.active{border-color:white;box-shadow:0 0 0 1px #1e1e1e,0 0 0 3px white}
-/* Profile pills dark */
+.ph-overlay .paper-dot.active{border-color:white;box-shadow:0 0 0 1px #1a1a1a,0 0 0 3px white}
 .ph-overlay .profile-pill{background:#2a2a2a;border-color:#444}
 .ph-overlay .profile-pill:hover{border-color:#888}
 .ph-overlay .profile-pill.active{background:white;border-color:white}
 .ph-overlay .profile-pill.active .profile-label{color:#111}
 .ph-overlay .profile-label{color:#aaa}
-/* Settings sliders dark */
 .ph-overlay .settings-body{padding:10px 14px}
 .ph-overlay .slider-row .slider-label{color:#aaa}
 .ph-overlay .slider-row .slider-value{color:#888}
 .ph-overlay .slider-row input[type="range"]{background:#444}
 .ph-overlay .slider-row input[type="range"]::-webkit-slider-thumb{background:#ddd;border-color:#666}
-.ph-overlay .slider-row{border-bottom-color:#333}
 .ph-overlay .mode-btn{background:#333;color:#aaa;border-color:#555}
 .ph-overlay .mode-btn.active{background:white;color:#111;border-color:white}
 .ph-overlay .scale-btn{background:#333;color:#aaa;border-color:#555}
 .ph-overlay .scale-btn.active{background:white;color:#111;border-color:white}
-.ph-overlay .img-slider .img-label{color:#aaa}
-.ph-overlay .img-slider .img-val{color:#888}
-.ph-overlay .img-slider input[type="range"]{background:#444}
-.ph-overlay .img-slider input[type="range"]::-webkit-slider-thumb{background:#ddd;border-color:#666}
 /* Backdrop when overlay open */
 .ph-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:250;display:none}
 .ph-backdrop.show{display:block}
+/* ═══════ LANDSCAPE ═══════ */
+@media(orientation:landscape){
+  body.phone-mode .phone-ui{flex-direction:row}
+  .ph-top{top:0;left:0;right:auto;bottom:0;width:auto;flex-direction:column;padding:8px;background:linear-gradient(90deg,rgba(0,0,0,.55) 0%,transparent 100%)}
+  .ph-top-btns{margin-left:0;margin-top:auto;flex-direction:column}
+  .ph-controls{bottom:0;left:auto;right:0;top:0;width:auto;flex-direction:column;padding:10px calc(env(safe-area-inset-right,8px) + 10px) 10px 10px;background:linear-gradient(270deg,rgba(0,0,0,.7) 0%,rgba(0,0,0,.4) 70%,transparent 100%)}
+  .ph-tools{flex-direction:column;width:auto}
+  .ph-actions{flex-direction:column;width:auto}
+  .ph-bcs-strip{flex-direction:column;width:auto;padding:4px 0}
+  .ph-bcs-strip.visible{display:flex}
+  .ph-bcs-row{flex-direction:column;gap:4px;align-items:center}
+  .ph-bcs-slider{width:3px;height:60px;writing-mode:vertical-lr;direction:rtl;-webkit-appearance:slider-vertical}
+  .ph-action-label{top:auto;left:-24px;writing-mode:vertical-rl}
+}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(100px);font-family:'Space Mono',monospace;font-size:11px;letter-spacing:1px;padding:10px 20px;background:var(--text);color:white;border-radius:4px;z-index:1000;transition:transform .3s cubic-bezier(.16,1,.3,1);box-shadow:0 8px 24px rgba(0,0,0,.2)}
 .toast.show{transform:translateX(-50%) translateY(0)}
 </style>
@@ -247,6 +310,12 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
     <button class="header-btn" onclick="togglePhoneMode()">📱</button>
     <button class="header-btn" onclick="pickFile()">UPLOAD</button>
     <button class="header-btn" id="camBtn" onclick="toggleCam()">CAMERA</button>
+    <div class="fps-group" id="fpsGroup">
+      <button class="fps-btn active" data-fps="8" onclick="setRisoFps(8)">8</button>
+      <button class="fps-btn" data-fps="12" onclick="setRisoFps(12)">12</button>
+      <button class="fps-btn" data-fps="24" onclick="setRisoFps(24)">24</button>
+      <span class="fps-label">FPS</span>
+    </div>
   </div>
   </div>
 </header>
@@ -257,6 +326,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
     <canvas id="gl"></canvas>
     <video id="vid" autoplay playsinline muted style="display:none"></video>
     <div class="vf-overlay"><div class="vc tl"></div><div class="vc tr"></div><div class="vc bl"></div><div class="vc br"></div></div>
+    <div class="crop-guide" id="deskCropGuide"><div class="crop-guide-inner" id="deskCropInner"></div></div>
     <div class="status-bar"><span class="status-badge" id="statusBadge">● READY</span><span class="status-badge" id="resBadge">--</span></div>
     <div class="capture-info" id="captureInfo">RISO/CAM — GPU</div>
     <div class="fps-counter" id="fps">--</div>
@@ -267,9 +337,8 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
     <div class="img-slider"><span class="img-label">S</span><input type="range" id="imgSat" min="-30" max="30" value="0" step="2"><span class="img-val" id="imgSatVal">0</span></div>
     <div class="controls-sep"></div>
     <div class="aspect-row">
-      <button class="aspect-btn active" data-ar="free" onclick="setAspect(null)">Free</button>
+      <button class="aspect-btn active" data-ar="4:3" onclick="setAspect([4,3])">4:3</button>
       <button class="aspect-btn" data-ar="1:1" onclick="setAspect([1,1])">1:1</button>
-      <button class="aspect-btn" data-ar="4:3" onclick="setAspect([4,3])">4:3</button>
       <button class="aspect-btn" data-ar="5:4" onclick="setAspect([5,4])">5:4</button>
       <button class="aspect-btn" data-ar="16:9" onclick="setAspect([16,9])">16:9</button>
     </div>
@@ -319,52 +388,60 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
 
 <!-- ═══════ PHONE UI ═══════ -->
 <div class="phone-ui" id="phoneUI">
-  <!-- Top bar -->
+  <!-- Viewfinder — full bleed, canvas fills this -->
+  <div class="ph-viewfinder" id="phViewfinder">
+    <!-- canvas gets moved here in phone mode -->
+    <span class="ph-rec-badge" id="phRecBadge">● REC 00:00</span>
+    <div class="ph-crop-guide" id="phCropGuide"><div class="ph-crop-guide-inner" id="phCropInner"></div></div>
+  </div>
+  <!-- Top bar — floats over viewfinder -->
   <div class="ph-top">
-    <div class="ph-mode-toggle">
+    <div class="ph-mode-row">
       <button class="ph-mode-btn active" id="phPhotoBtn" onclick="setPhoneMode('photo')">PHOTO</button>
       <button class="ph-mode-btn" id="phVideoBtn" onclick="setPhoneMode('video')">VIDEO</button>
     </div>
     <div class="ph-top-btns">
-      <button class="ph-icon-btn" onclick="phFlipCam()" title="Flip camera">⟲</button>
-      <button class="ph-icon-btn" onclick="pickFile()" title="Upload image">⎙</button>
-      <button class="ph-icon-btn" onclick="togglePhoneMode()" title="Exit phone mode">✕</button>
+      <button class="ph-icon-btn" onclick="phFlipCam()" title="Flip">⟲</button>
+      <button class="ph-icon-btn" onclick="pickFile()" title="Upload">⎙</button>
+      <button class="ph-icon-btn" onclick="togglePhoneMode()" title="Exit">✕</button>
     </div>
   </div>
-  <!-- Viewfinder -->
-  <div class="ph-viewfinder" id="phViewfinder">
-    <!-- canvas gets moved here in phone mode -->
-    <span class="ph-vf-info" id="phInfo">RISO/CAM</span>
-    <span class="ph-rec-badge" id="phRecBadge">● REC 00:00</span>
-  </div>
-  <!-- Bottom bar -->
-  <div class="ph-bottom">
-    <div class="ph-aspect-row" id="phAspectRow">
-      <button class="ph-aspect-btn active" data-ar="free" onclick="setAspect(null)">FREE</button>
-      <button class="ph-aspect-btn" data-ar="1:1" onclick="setAspect([1,1])">1:1</button>
-      <button class="ph-aspect-btn" data-ar="4:3" onclick="setAspect([4,3])">4:3</button>
-      <button class="ph-aspect-btn" data-ar="5:4" onclick="setAspect([5,4])">5:4</button>
-      <button class="ph-aspect-btn" data-ar="16:9" onclick="setAspect([16,9])">16:9</button>
+  <!-- Bottom controls — float over viewfinder -->
+  <div class="ph-controls">
+    <!-- BCS sliders (hidden by default) -->
+    <div class="ph-bcs-strip" id="phBcsStrip">
+      <div class="ph-bcs-row"><span class="ph-bcs-label">B</span><input type="range" class="ph-bcs-slider" id="phBcs0" min="-30" max="30" value="0" step="2"><span class="ph-bcs-val" id="phBcs0Val">0</span></div>
+      <div class="ph-bcs-row"><span class="ph-bcs-label">C</span><input type="range" class="ph-bcs-slider" id="phBcs1" min="-30" max="30" value="0" step="2"><span class="ph-bcs-val" id="phBcs1Val">0</span></div>
+      <div class="ph-bcs-row"><span class="ph-bcs-label">S</span><input type="range" class="ph-bcs-slider" id="phBcs2" min="-30" max="30" value="0" step="2"><span class="ph-bcs-val" id="phBcs2Val">0</span></div>
     </div>
-    <div class="ph-circles">
-      <div class="ph-circle" onclick="phToggleOverlay('settings')">
-        <span class="ph-circle-label">SETTINGS</span>
-        <span class="ph-circle-icon">S</span>
+    <!-- Tool strip -->
+    <div class="ph-tools">
+      <button class="ph-tool-btn" id="phModeBtn" onclick="phCycleMode()">GRAIN</button>
+      <button class="ph-tool-btn" id="phAspectBtn" onclick="phCycleAspect()">4:3</button>
+      <button class="ph-tool-btn" id="phResBtn" onclick="phCycleRes()">1×</button>
+      <button class="ph-tool-btn" id="phFpsBtn" onclick="phCycleFps()">8FPS</button>
+      <button class="ph-tool-btn" id="phBcsBtn" onclick="phToggleBcs()">☀</button>
+    </div>
+    <!-- Main action row -->
+    <div class="ph-actions">
+      <div class="ph-action-circle" onclick="phToggleOverlay('channels')">
+        <span class="ph-action-label">INK</span>
+        <span class="ph-action-icon" id="phChPreview">C</span>
       </div>
-      <div class="ph-circle" onclick="phToggleOverlay('channels')">
-        <span class="ph-circle-label">CHANNELS</span>
-        <span class="ph-circle-icon">C</span>
+      <div class="ph-action-circle" onclick="phToggleOverlay('profiles')">
+        <span class="ph-action-label">PROF</span>
+        <span class="ph-action-icon">P</span>
       </div>
       <button class="ph-shutter" id="phShutter" onclick="phShutter()">
         <div class="ph-shutter-inner"></div>
       </button>
-      <div class="ph-circle" onclick="phToggleOverlay('resolution')">
-        <span class="ph-circle-label">RES</span>
-        <span class="ph-circle-icon" id="phResLabel">1×</span>
+      <div class="ph-action-circle" onclick="phToggleOverlay('paper')">
+        <span class="ph-action-label">PAPER</span>
+        <span class="ph-action-icon">◉</span>
       </div>
-      <div class="ph-circle" onclick="phToggleOverlay('profiles')">
-        <span class="ph-circle-label">PROFILES</span>
-        <span class="ph-circle-icon">P</span>
+      <div class="ph-action-circle" onclick="phToggleOverlay('settings')">
+        <span class="ph-action-label">FX</span>
+        <span class="ph-action-icon">⚙</span>
       </div>
     </div>
   </div>
@@ -384,10 +461,10 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
   <div class="ph-overlay-head">CHANNELS <button class="ph-overlay-close" onclick="phCloseOverlay()">✕</button></div>
   <div id="phChannelsBody"></div>
 </div>
-<div class="ph-overlay" id="phOvResolution">
+<div class="ph-overlay" id="phOvPaper">
   <div class="ph-overlay-handle"></div>
-  <div class="ph-overlay-head">RESOLUTION <button class="ph-overlay-close" onclick="phCloseOverlay()">✕</button></div>
-  <div id="phResBody"></div>
+  <div class="ph-overlay-head">PAPER <button class="ph-overlay-close" onclick="phCloseOverlay()">✕</button></div>
+  <div id="phPaperBody"></div>
 </div>
 <div class="ph-overlay" id="phOvProfiles">
   <div class="ph-overlay-handle"></div>
@@ -410,7 +487,11 @@ void main(){
 
 <!-- ====== FRAGMENT SHADER — Full RISO pipeline (quality enhanced) ====== -->
 <script id="fs" type="x-shader/x-fragment">
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
 precision mediump float;
+#endif
 varying vec2 v_uv;
 
 uniform sampler2D u_src;
@@ -501,12 +582,27 @@ float getChannel(vec4 cmyk, int ch, int totalLayers){
     float base = ch==0?cmyk.x:(ch==1?cmyk.y:cmyk.z);
     return base + cmyk.w*0.55;
   }
-  // 4 layers: raw CMYK with gentle total ink limit (~200%)
-  // Exponential blend (ink^coverage) handles darkness naturally
+  // 4 layers: raw CMYK with ink strength balancing
+  // Real RISO inks deposit unevenly: yellow prints strong, cyan weak
   float raw = ch==0?cmyk.x:(ch==1?cmyk.y:(ch==2?cmyk.z:cmyk.w));
+
+  // Per-ink strength compensation (CMYK mode only)
+  // C boosted (weak ink), Y reduced (dominant ink), K slightly boosted
+  float balance = ch==0 ? 1.10 : (ch==1 ? 1.0 : (ch==2 ? 0.88 : 1.05));
+  raw *= balance;
+
+  // Neutral cyan boost: in near-gray areas, add small C to prevent yellow bias
+  // Neutrality measured by how similar C, M, Y channels are
+  if(ch == 0){
+    float neutral = 1.0 - abs(cmyk.x - cmyk.y) - abs(cmyk.y - cmyk.z);
+    neutral = clamp(neutral, 0.0, 1.0);
+    raw += neutral * cmyk.w * 0.04;
+  }
+
+  // Gentle total ink limit (~200%)
   float total = cmyk.x + cmyk.y + cmyk.z + cmyk.w;
   if(total > 2.0) raw *= 2.0 / total;
-  return raw;
+  return clamp(raw, 0.0, 1.0);
 }
 
 // ─── Tone curve — gentle S-curve for contrast ───
@@ -526,7 +622,9 @@ float dotGain(float v, float g){
 // ─── Grain touch dithering ───
 // u_static controls grain animation: smooth drift, not discrete jumps
 float grainDither(float val, vec2 pix, float scale, float layerOff){
-  vec2 nuv = pix / (256.0 * scale);
+  vec2 fiberScale = vec2(1.0, 1.25);
+  vec2 fiberDrift = vec2(0.0, sin(pix.x * 0.003) * 2.0);
+  vec2 nuv = ((pix + fiberDrift) * fiberScale) / (256.0 * scale);
   float bn = texture2D(u_noise, fract(nuv + layerOff)).r;
   // Slow continuous time drift — always same gentle speed
   // Static slider controls how much the time offset affects the threshold
@@ -536,10 +634,23 @@ float grainDither(float val, vec2 pix, float scale, float layerOff){
   // Blend between frozen and drifting based on slider
   float blend = u_static * 0.05; // 0 = frozen, 1 = full drift at slider=20
   float h = mix(staticHash, timeHash, blend);
-  float thr = fract(bn * 0.35 + h * 0.65);
+
+  // ─── Dark tone realism ───
+  // 1. Clamp max coverage: real ink never achieves perfect solid fill
+  float coverage = min(val, 0.96);
+  // 2. Micro-variation in darks: ink pooling / absorption unevenness
+  float darkMask = smoothstep(0.75, 1.0, val);
+  coverage += (bn - 0.5) * 0.04 * darkMask;
+  // 3. Stochastic pinholes: tiny paper spots where ink didn't fill
+  float holeRnd = hash2(pix * 7.3 + layerOff * 31.0);
+  float hole = step(0.995, holeRnd);
+  coverage -= hole * 0.08 * darkMask;
+  coverage = clamp(coverage, 0.0, 1.0);
+
+  float thr = fract(bn * 0.75 + h * 0.25);
   // Wider transition for smoother tonal gradients (reduces banding)
   float edge = 0.06;
-  return smoothstep(thr - edge, thr + edge, val);
+  return smoothstep(thr - edge, thr + edge, coverage);
 }
 
 // ─── [IMPROVED] Halftone screen — rough dot edges like real print ───
@@ -548,10 +659,12 @@ float screenDither(float val, vec2 pix, float cellPx, float angle){
   vec2 rp = vec2(pix.x*c - pix.y*s, pix.x*s + pix.y*c);
   vec2 cellPos = mod(rp, cellPx) / cellPx;
   vec2 centered = cellPos - 0.5;
+  // Drum pressure deformation: dots stretch slightly in transport (y) direction
+  centered.x *= 1.12;
   float dist = length(centered) * 1.414;
   // Rough edge — hash adds tiny irregularities to dot boundary
   vec2 cellID = floor(rp / cellPx);
-  float roughness = (hash(cellID * 7.3) - 0.5) * 0.06;
+  float roughness = (hash(cellID * 7.3) - 0.5) * 0.10;
   // Angular wobble — dots aren't perfect circles
   float ang = atan(centered.y, centered.x);
   float wobble = hash(cellID * 13.1 + floor(ang * 2.0)) * 0.03;
@@ -567,33 +680,59 @@ float processLayer(vec4 cmyk, vec2 pix, int idx, int ch, float angle, float nois
   float ink = getChannel(cmyk, ch, u_layers);
   ink *= dens * 0.01;
 
+  // Temporal ink density flicker: drum ink flow fluctuates per frame
+  float densFlicker = 1.0 + sin(u_time * 0.01 + float(idx) * 1.3) * 0.035;
+  ink *= densFlicker;
+
   // 1. Ink absorption modulation: paper fibers trap ink unevenly
   ink *= pf;
 
   // Tone curve
   ink = toneCurve(ink);
 
-  // 2. Dot gain modulated by paper roughness
-  // Rougher regions (pf>1) spread more, smoother (pf<1) less
-  float gainMod = u_dotGain * (1.0 + (pf - 1.0) * 3.0); // gain_strength ~0.3
+  // 2. Dot gain modulated by paper roughness + layer-dependent absorption
+  // Later layers print on already-inked paper — absorb differently
+  float inkAbsorb = mix(0.9, 1.2, float(idx) / 3.0);
+  float gainMod = u_dotGain * inkAbsorb * (1.0 + (pf - 1.0) * 3.0);
   ink = dotGain(ink, gainMod);
 
   // Print pressure variation (roller)
   float pressX = sin(pix.x * 0.003 + float(idx) * 2.1) * 0.015;
   float pressY = sin(pix.y * 0.005 + float(idx) * 1.7) * 0.01;
-  ink *= 1.0 + pressX + pressY;
+  // Drum phase bands: slow-moving density variation from drum rotation
+  float drumBand = sin(pix.y * 0.004 + u_time * 0.015) * 0.018;
+  ink *= 1.0 + pressX + pressY + drumBand;
+
+  // Ink starvation: drum momentarily deposits less ink in dense areas
+  float starvation = smoothstep(0.6, 1.0, ink) * sin(pix.y * 0.01) * 0.03;
+  ink -= starvation;
 
   // Ink noise (subtle density variation only — no dropouts)
   ink += (noise1 - 0.5) * u_inkNoise * 0.006;
   ink = clamp(ink, 0.0, 1.0);
 
+  // Ink absorption softening: ink sits on surface before absorbing
+  ink = mix(ink, sqrt(ink), 0.08);
+
   // 3. Paper field perturbs dither threshold: irregular dot edges along fibers
   ink += (pf - 1.0) * 0.15;
   ink = clamp(ink, 0.0, 1.0);
 
+  // Stencil perforation irregularity: microscopic dropout in dense areas
+  // Real masters have tiny imperfections where thermal head didn't fully perforate
+  float stencilMask = smoothstep(0.7, 1.0, ink);
+  float micro = hash(pix * 0.5 + float(idx) * 17.0);
+  float perfHole = step(0.992, micro);
+  ink -= perfHole * 0.12 * stencilMask;
+  ink = clamp(ink, 0.0, 1.0);
+
+  // Drum transport jitter: slight horizontal slip from rotating drum
+  float slip = sin(pix.y * 0.015 + float(idx) * 2.7) * 0.4;
+  vec2 jitPix = vec2(pix.x + slip, pix.y);
+
   // Binary stochastic halftone
-  if(u_mode == 0) return grainDither(ink, pix, u_grainSize, float(idx)*0.3137);
-  return screenDither(ink, pix, u_screenCell, angle);
+  if(u_mode == 0) return grainDither(ink, jitPix, u_grainSize, float(idx)*0.3137);
+  return screenDither(ink, jitPix, u_screenCell, angle);
 }
 
 // ─── Beer-Lambert ink blend with Yule-Nielsen correction (n=2) ───
@@ -621,6 +760,11 @@ vec3 yuBlend(vec3 paper, vec3 ink, float d){
   // Crossover at ~60% coverage mimics real soy ink behavior
   float opacity = smoothstep(0.3, 0.85, d);
   vec3 normalResult = mix(transparent, opaque, opacity * 0.6);
+
+  // Ink contamination: multi-pass re-wetting causes subtle cross-ink mixing
+  // Later ink layers slightly dissolve previous, preventing perfectly clean overlaps
+  vec3 contam = normalResult * 0.02 * d;
+  normalResult += contam * (ink - normalResult);
 
   return mix(normalResult, whiteResult, isWhite);
 }
@@ -659,7 +803,10 @@ float paperField(vec2 pix){
 // Paper field with intensity slider: mix(1.0, P, intensity)
 float paperEffect(vec2 pix){
   float intensity = u_paperTex * 0.04; // slider 0-25 → 0-1
-  return mix(1.0, paperField(pix), intensity);
+  float base = mix(1.0, paperField(pix), intensity);
+  // Temporal paper variation: each "print" has slightly different fiber response
+  float paperVar = sin(u_time * 0.004) * 0.025;
+  return base * (1.0 + paperVar);
 }
 
 void main(){
@@ -741,6 +888,20 @@ void main(){
   float reflectMod = 1.0 + (pf - 1.0) * reflectStr;
   result *= reflectMod;
 
+  // 4. Dark-ink paper-fiber reflectance: even saturated ink reveals paper texture
+  // Compute how much ink is on this pixel (darker result = more ink)
+  float paperLum = dot(paper, vec3(0.299, 0.587, 0.114));
+  float resultLum = dot(result, vec3(0.299, 0.587, 0.114));
+  float inkCoverage = clamp(1.0 - resultLum / (paperLum + 0.001), 0.0, 1.0);
+  float darkInkMask = smoothstep(0.6, 0.95, inkCoverage);
+  float darkReflect = 1.0 + (pf - 1.0) * 0.05 * darkInkMask;
+  result *= darkReflect;
+
+  // Micro scanner noise: breaks last traces of digital perfection
+  // Simulates sensor grain in scanned prints (0.4% amplitude)
+  float scanNoise = hash(pix * 1.37 + 99.0);
+  result *= 1.0 + (scanNoise - 0.5) * 0.004;
+
   gl_FragColor = vec4(result, 1.0);
 }
 </script>
@@ -764,7 +925,7 @@ const PROFILES=[
   {name:"Ocean",colors:["Teal","Cornflower"]},{name:"Berry",colors:["Purple","Cranberry"]},
   {name:"Earthy",colors:["Brown","Flat Gold","Hunter Green"]},{name:"Night",colors:["Midnight","Violet","Fl. Green"]},
   {name:"CMYK",colors:["Blue","Bright Red","Yellow","Black"],dens:[80,75,85,35]},{name:"Tropical",colors:["Fl. Orange","Turquoise","Yellow"]},
-  {name:"Mono",colors:["Black"]},{name:"White",colors:["White"]},{name:"Vintage",colors:["Brick","Flat Gold","Federal Blue"]},
+  {name:"Mono",colors:["Black"]},{name:"Vintage",colors:["Brick","Flat Gold","Federal Blue"]},
 ];
 
 
@@ -783,6 +944,7 @@ const PAPER_COLORS=[
 // ======================== STATE ========================
 // 4 fixed CMYK channel slots — each holds a color name or null
 let channels=[null,null,null,null]; // [C slot, M slot, Y slot, K slot]
+let layerOrder=[0,1,2,3]; // Print/render order (first = printed first = bottom)
 let activeProf=null, mode='grain';
 let srcImg=null, camStream=null, camOn=false, hasSrc=false;
 let misreg=[[0,0],[0,0],[0,0],[0,0]], gl, prog, locs={}, frame=0;
@@ -790,7 +952,7 @@ let fpsFrames=0, fpsLast=performance.now();
 let layerAngles=[15,75,0,45];
 let resScale=1;
 let curPaper=0, curPaperColor=0;
-let cropAspect=null; // null=free, or [w,h] ratio
+let cropAspect=[4,3]; // default 4:3
 let cropRect=[0,0,1,1]; // UV crop: x,y,w,h
 
 const cached={
@@ -801,6 +963,7 @@ const cached={
 };
 let needsAspectUpdate=true;
 let videoFrameReady=false;
+let needsRedraw=true; // dirty flag — skip GPU work when nothing changed
 
 const inkLocs=new Array(4), offLocs=new Array(4), angLocs=new Array(4), chanLocs=new Array(4), densLocs=new Array(4);
 let $gl,$vf,$vid,$fps,$res,$status;
@@ -833,11 +996,12 @@ function computeCrop(){
 }
 
 function setAspect(ratio){
-  cropAspect=ratio;
+  cropAspect=ratio||[4,3];
   computeCrop();
   needsAspectUpdate=true;
+  const ar=cropAspect.join(':');
   document.querySelectorAll('.aspect-btn').forEach(b=>{
-    b.classList.toggle('active',b.dataset.ar===(ratio?ratio.join(':'):'free'));
+    b.classList.toggle('active',b.dataset.ar===ar);
   });
 }
 
@@ -854,10 +1018,10 @@ function togglePhoneMode(){
 // Derive active layer count from channels
 function activeCount(){return channels.filter(c=>c!==null).length;}
 
-// Get ordered active layers for shader (index = shader layer, ch = CMYK channel)
+// Get ordered active layers for shader (follows layerOrder for print sequence)
 function activeLayers(){
   const out=[];
-  for(let i=0;i<4;i++) if(channels[i]!==null) out.push({ch:i, color:channels[i]});
+  for(const i of layerOrder) if(channels[i]!==null) out.push({ch:i, color:channels[i]});
   return out;
 }
 
@@ -872,11 +1036,18 @@ function cacheInkColors(){
     }
   }
 }
-function cacheSlider(id,val){cached[id]=parseFloat(val);}
+function cacheSlider(id,val){cached[id]=parseFloat(val);needsRedraw=true;}
 
 function newMisreg(){
+  // Mono: single drum pass = no misregistration
+  if(isMono()){
+    for(let i=0;i<4;i++) misreg[i]=[0,0];
+    needsRedraw=true;
+    return;
+  }
   const m=parseFloat(el('misreg').value)/500;
   for(let i=0;i<4;i++) misreg[i]=[(Math.random()-.5)*m*2,(Math.random()-.5)*m*2];
+  needsRedraw=true;
 }
 
 // ======================== WEBGL INIT ========================
@@ -967,49 +1138,69 @@ function genBlueNoise(sz){
 function render(){
   requestAnimationFrame(render);
 
-  // Aspect ratio — use crop aspect if set, otherwise source aspect
+  // Aspect ratio — canvas always fills its container (cover mode)
   if(needsAspectUpdate){
-    let ar=null;
-    if(cropAspect){
-      ar=cropAspect[0]+'/'+cropAspect[1];
-    } else if(srcImg&&!camOn){
-      ar=srcImg.width+'/'+srcImg.height;
-    }else if(camOn&&$vid.videoWidth&&$vid.videoHeight){
-      ar=$vid.videoWidth+'/'+$vid.videoHeight;
-    }else{
-      ar='4/3';
-    }
-    if(isPhone()){
-      // Phone: set aspect on canvas, container fills flex space
-      $gl.style.aspectRatio=ar;
-      $vf.style.aspectRatio='';
-    }else{
-      // Desktop: set aspect on viewfinder panel, canvas fills it
-      $gl.style.aspectRatio='';
-      $vf.style.aspectRatio=ar;
-    }
+    $gl.style.aspectRatio='';
     needsAspectUpdate=false;
+    needsRedraw=true;
   }
 
-  // In phone mode, canvas has its own aspect ratio; use its CSS dimensions
-  const sizeEl=isPhone()?$gl:$vf;
-  const cssW=sizeEl.clientWidth, cssH=sizeEl.clientHeight;
-  const dw=Math.round(cssW*resScale), dh=Math.round(cssH*resScale);
-  if($gl.width!==dw||$gl.height!==dh){$gl.width=dw;$gl.height=dh;}
-  gl.viewport(0,0,dw,dh);
-
   // Upload video frame only when new frame available
+  let newCamFrame=false;
   if(camOn&&$vid.readyState>=2){
     if(videoFrameReady||!$vid.requestVideoFrameCallback){
       gl.activeTexture(gl.TEXTURE0);
       gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,$vid);
       hasSrc=true;
       videoFrameReady=false;
+      newCamFrame=true;
     }
   }
 
+  // ─── Riso-FPS throttle: choppy print-animation feel ───
+  // When camera is live, only draw at risoFps intervals
+  // Canvas holds previous frame between draws = natural stop-motion choppiness
+  const now=performance.now();
+  if(camOn && risoFps > 0){
+    const interval=1000/risoFps;
+    if(now - lastRisoFrame < interval && !needsRedraw){
+      // Between riso frames: skip drawing, just update FPS counter
+      fpsFrames++;
+      if(now-fpsLast>=1000){$fps.textContent=risoFps+'fps';fpsFrames=0;fpsLast=now;}
+      return;
+    }
+    lastRisoFrame=now;
+    // Grain boil: large frame jump so each riso-frame has distinct grain pattern
+    frame += Math.floor(Math.random()*40)+15;
+    // Per-frame fresh misregistration: each "print" lands slightly differently
+    // Scaled by the misreg slider so user controls the magnitude
+    if(!isMono()){
+      const m=parseFloat(el('misreg').value)/500;
+      for(let i=0;i<4;i++){
+        misreg[i]=[(Math.random()-.5)*m*2,(Math.random()-.5)*m*2];
+      }
+    }
+  } else {
+    // Static image / no camera: normal dirty-flag rendering
+    const animating = cached.grainStatic > 0;
+    if(!needsRedraw && !newCamFrame && !isRecording && !animating) {
+      fpsFrames++;
+      if(now-fpsLast>=1000){$fps.textContent='idle';fpsFrames=0;fpsLast=now;}
+      return;
+    }
+    frame++;
+  }
+  needsRedraw=false;
+
+  // Canvas sizing — fills container, DPR-aware
+  const cssW=$vf.clientWidth, cssH=$vf.clientHeight;
+  const dpr=Math.min(window.devicePixelRatio||1, 2); // cap at 2x for perf
+  const baseScale=Math.max(resScale, dpr);
+  const dw=Math.round(cssW*baseScale), dh=Math.round(cssH*baseScale);
+  if($gl.width!==dw||$gl.height!==dh){$gl.width=dw;$gl.height=dh;}
+  gl.viewport(0,0,dw,dh);
+
   // Uniforms — all from cached values, zero DOM access
-  frame++;
   const layers=activeLayers();
   const nLayers=layers.length;
   gl.uniform2f(locs.u_res,dw,dh);
@@ -1027,7 +1218,32 @@ function render(){
   gl.uniform1f(locs.u_sat,cached.imgSat);
   gl.uniform1f(locs.u_screenCell,cached.screenCell);
   gl.uniform3fv(locs.u_paperColor,cached.paperColor);
-  gl.uniform4f(locs.u_crop,cropRect[0],cropRect[1],cropRect[2],cropRect[3]);
+
+  // Cover crop: fill viewport completely, no black bars
+  // ALWAYS use canvas native aspect for viewport — never stretch
+  let renderCrop=[0,0,1,1];
+  if(hasSrc){
+    const srcW=camOn?($vid.videoWidth||1):(srcImg?srcImg.width:1);
+    const srcH=camOn?($vid.videoHeight||1):(srcImg?srcImg.height:1);
+    // Viewport always fills at its own aspect ratio
+    const targetAR=dw/dh;
+    const srcAR=srcW/srcH;
+    // Cover: fill target from source (crop excess)
+    if(targetAR>srcAR){
+      const h=srcAR/targetAR;
+      renderCrop=[0,(1-h)/2,1,h];
+    } else {
+      const w=targetAR/srcAR;
+      renderCrop=[(1-w)/2,0,w,1];
+    }
+    // Update crop guide on phone
+    if(isPhone()&&cropAspect) updateCropGuide(dw,dh,srcW,srcH);
+    else if(isPhone()){const g=el('phCropGuide');if(g)g.classList.remove('visible');}
+    // Update crop guide on desktop
+    if(!isPhone()&&cropAspect) updateDeskCropGuide();
+    else if(!isPhone()){const g=el('deskCropGuide');if(g)g.classList.remove('visible');}
+  }
+  gl.uniform4f(locs.u_crop,renderCrop[0],renderCrop[1],renderCrop[2],renderCrop[3]);
 
   // Send active layers to shader slots 0-3
   for(let i=0;i<4;i++){
@@ -1052,11 +1268,11 @@ function render(){
 
   // FPS — update DOM only once per second
   fpsFrames++;
-  const now=performance.now();
-  if(now-fpsLast>=1000){
-    $fps.textContent=fpsFrames+' fps';
+  const fpsNow=performance.now();
+  if(fpsNow-fpsLast>=1000){
+    $fps.textContent=(camOn?risoFps+'fps':fpsFrames+' fps');
     $res.textContent=dw+'×'+dh+(resScale>1?' ('+resScale+'×)':'');
-    fpsFrames=0;fpsLast=now;
+    fpsFrames=0;fpsLast=fpsNow;
   }
 }
 
@@ -1101,7 +1317,7 @@ async function toggleCam(){
     return;
   }
   try{
-    camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:1280}}});
+    camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:isPhone()?640:1280}}});
     $vid.srcObject=camStream;
     // Wait for video to actually start playing
     await $vid.play();
@@ -1120,15 +1336,75 @@ async function toggleCam(){
 }
 
 // ======================== SAVE ========================
-function saveHiRes(){
+async function saveHiRes(){
   const unique=[...new Set(channels.filter(c=>c))];
   const names=unique.join('-').replace(/[\s.]/g,'');
-  const dw=$gl.width, dh=$gl.height;
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  const scale=Math.max(resScale,dpr);
+
+  if(cropAspect){
+    // Save at the crop aspect ratio
+    const cropAR=cropAspect[0]/cropAspect[1];
+    const baseW=$vf.clientWidth;
+    const saveW=Math.round(baseW*scale);
+    const saveH=Math.round(saveW/cropAR);
+    $gl.width=saveW;$gl.height=saveH;
+    gl.viewport(0,0,saveW,saveH);
+    // Use cropRect (letterbox/pillarbox of source to fit target aspect)
+    gl.uniform4f(locs.u_crop,cropRect[0],cropRect[1],cropRect[2],cropRect[3]);
+    gl.uniform2f(locs.u_res,saveW,saveH);
+    gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+    const filename='risocam_'+(names||'empty')+'_'+saveW+'x'+saveH+'_'+Date.now()+'.png';
+    const blob=await new Promise(r=>$gl.toBlob(b=>r(b),'image/png'));
+    needsRedraw=true;
+    await doSaveBlob(blob,filename,saveW,saveH);
+  } else if(hasSrc){
+    // No crop aspect: save at source native aspect
+    const srcW=camOn?($vid.videoWidth||1):(srcImg?srcImg.width:1);
+    const srcH=camOn?($vid.videoHeight||1):(srcImg?srcImg.height:1);
+    const srcAR=srcW/srcH;
+    const baseW=$vf.clientWidth;
+    const saveW=Math.round(baseW*scale);
+    const saveH=Math.round(saveW/srcAR);
+    $gl.width=saveW;$gl.height=saveH;
+    gl.viewport(0,0,saveW,saveH);
+    gl.uniform4f(locs.u_crop,0,0,1,1);
+    gl.uniform2f(locs.u_res,saveW,saveH);
+    gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+    const filename='risocam_'+(names||'empty')+'_'+saveW+'x'+saveH+'_'+Date.now()+'.png';
+    const blob=await new Promise(r=>$gl.toBlob(b=>r(b),'image/png'));
+    needsRedraw=true;
+    await doSaveBlob(blob,filename,saveW,saveH);
+  } else {
+    // No source, just save what's on screen
+    const dw=$gl.width, dh=$gl.height;
+    const filename='risocam_'+(names||'empty')+'_'+dw+'x'+dh+'_'+Date.now()+'.png';
+    const blob=await new Promise(r=>$gl.toBlob(b=>r(b),'image/png'));
+    await doSaveBlob(blob,filename,dw,dh);
+  }
+}
+
+async function doSaveBlob(blob,filename,w,h){
+  // On mobile: use share sheet → "Save Image" goes straight to Photos
+  if(navigator.share && navigator.canShare && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)){
+    const file=new File([blob],filename,{type:'image/png'});
+    if(navigator.canShare({files:[file]})){
+      try{
+        await navigator.share({files:[file],title:'RISO/CAM'});
+        toast('Shared!');
+        return;
+      }catch(e){
+        if(e.name==='AbortError') return;
+      }
+    }
+  }
+  // Desktop fallback: normal download
   const link=document.createElement('a');
-  link.download='risocam_'+(names||'empty')+'_'+dw+'x'+dh+'_'+Date.now()+'.png';
-  link.href=$gl.toDataURL('image/png');
+  link.download=filename;
+  link.href=URL.createObjectURL(blob);
   link.click();
-  toast('Saved '+dw+'×'+dh+'!');
+  URL.revokeObjectURL(link.href);
+  toast('Saved '+w+'×'+h+'!');
 }
 
 async function exportSeparations(){
@@ -1193,13 +1469,29 @@ async function exportSeparations(){
   const zip=new JSZip();
   files.forEach(f=>zip.file(f.name,f.blob));
   const zipBlob=await zip.generateAsync({type:'blob'});
-  const link=document.createElement('a');
   const names=layers.map(L=>L.color.replace(/[\s.]/g,'')).join('+');
-  link.download='riso_seps_'+names+'_'+dw+'x'+dh+'_'+ts+'.zip';
+  const zipName='riso_seps_'+names+'_'+dw+'x'+dh+'_'+ts+'.zip';
+
+  // On mobile: share individual images (more useful than a zip for Photos)
+  if(navigator.share && navigator.canShare && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)){
+    const shareFiles=files.map(f=>new File([f.blob],f.name,{type:'image/png'}));
+    if(navigator.canShare({files:shareFiles})){
+      try{
+        await navigator.share({files:shareFiles,title:'RISO Separations'});
+        toast(files.length+' seps shared!');
+        needsRedraw=true;
+        return;
+      }catch(e){if(e.name==='AbortError'){needsRedraw=true;return;}}
+    }
+  }
+  // Desktop fallback: zip download
+  const link=document.createElement('a');
+  link.download=zipName;
   link.href=URL.createObjectURL(zipBlob);
   link.click();
   URL.revokeObjectURL(link.href);
   toast(files.length+' separation'+(files.length>1?'s':'')+' saved!');
+  needsRedraw=true;
 }
 
 // ======================== UI ========================
@@ -1213,10 +1505,34 @@ function togglePicker(ch){
   if(el('phChannelList')&&el('phChannelList').children.length) buildChannelUI('phChannelList');
 }
 
+// Mono detection: all channels set to the same ink
+function isMono(){
+  const active=channels.filter(c=>c!==null);
+  return active.length===4 && new Set(active).size===1;
+}
+
 function pickColor(ch, name){
-  channels[ch]=name;
+  if(isMono()||ch==='mono'){
+    // In mono: change all 4 channels at once
+    for(let i=0;i<4;i++) channels[i]=name;
+  } else {
+    channels[ch]=name;
+  }
   openPicker=-1;
   onChannelsChanged();
+}
+
+function setMonoDens(val){
+  const v=parseFloat(val);
+  for(let i=0;i<4;i++) cached.layerDens[i]=v;
+  needsRedraw=true;
+}
+
+function setMonoAngle(deg){
+  for(let i=0;i<4;i++) layerAngles[i]=deg;
+  buildChannelUI();
+  if(el('phChannelList')&&el('phChannelList').children.length) buildChannelUI('phChannelList');
+  needsRedraw=true;
 }
 
 // Map profile colors to 4 CMYK slots (always fill all 4)
@@ -1248,7 +1564,57 @@ function buildChannelUI(targetId){
   list.innerHTML='';
   const angles=[0,15,30,45,60,75,90];
   const isScreen=mode==='screen';
-  for(let i=0;i<4;i++){
+
+  // ─── Mono mode: single consolidated row ───
+  if(isMono()){
+    const name=channels[0];
+    const rc=name?RISO_COLORS.find(r=>r.name===name):null;
+    const hex=rc?rc.hex:'#ccc';
+    const isOpen=openPicker===0;
+    const isWhite=name==='White';
+    const dens=Math.round(cached.layerDens[0]);
+    const trackBg=rc?`linear-gradient(90deg,${hex}15,${hex})`:`linear-gradient(90deg,#eee,#aaa)`;
+    const curAngle=layerAngles[0]||0;
+
+    let html=`<div class="ch-slot">`;
+    html+=`<div class="ch-mono-row">
+      <span class="ch-mono-label">MONO</span>
+      <div class="ch-color-btn${isWhite?' white-border':''}${isOpen?' open':''}" style="background:${hex}" onclick="togglePicker(0)"></div>
+      <input type="range" class="ch-dens" min="0" max="100" value="${dens}" step="2"
+        oninput="setMonoDens(this.value)"
+        style="background:${trackBg}">`;
+    if(isScreen){
+      html+=`<div class="ch-angles">`;
+      angles.forEach(a=>{
+        html+=`<button class="ch-angle-btn${curAngle===a?' active':''}" onclick="event.stopPropagation();setMonoAngle(${a})">${a}°</button>`;
+      });
+      html+=`</div>`;
+    }
+    html+=`</div>`;
+    // Color picker dropdown
+    html+=`<div class="ch-dropdown${isOpen?' open':''}">`;
+    INK_LIST.forEach((g,gi)=>{
+      if(gi>0) html+=`<div class="ch-dropdown-sep"></div>`;
+      g.inks.forEach(n=>{
+        const irc=RISO_COLORS.find(r=>r.name===n);
+        if(!irc) return;
+        const esc=n.replace(/'/g,"\\'");
+        const sel=name===n?' selected':'';
+        const wc=n==='White'?' white-dot':'';
+        html+=`<div class="ch-dropdown-item${sel}" onclick="event.stopPropagation();pickColor('mono','${esc}')">
+          <span class="ch-dropdown-dot${wc}" style="background:${irc.hex}"></span>
+          <span class="ch-dropdown-name">${n}</span>
+        </div>`;
+      });
+    });
+    html+=`</div></div>`;
+    list.insertAdjacentHTML('beforeend',html);
+    return; // No drag, no multi-row
+  }
+
+  // ─── Multi-layer mode: individual rows with drag handles ───
+  for(let pos=0;pos<4;pos++){
+    const i=layerOrder[pos]; // actual CMYK channel index
     const name=channels[i];
     const rc=name?RISO_COLORS.find(r=>r.name===name):null;
     const hex=rc?rc.hex:'#ccc';
@@ -1259,15 +1625,15 @@ function buildChannelUI(targetId){
     const trackBg=rc?`linear-gradient(90deg,${hex}15,${hex})`:`linear-gradient(90deg,#eee,#aaa)`;
     const curAngle=layerAngles[i]||0;
 
-    let html=`<div class="ch-slot">`;
-    // Compact row: [badge] [color-btn] [density slider] [angle buttons]
+    let html=`<div class="ch-slot" data-ch="${i}" data-pos="${pos}">`;
+    // Compact row: [drag] [badge] [color-btn] [density slider] [angle buttons]
     html+=`<div class="ch-row">
+      <span class="ch-drag" data-drag="${pos}">⡇</span>
       <span class="ch-badge ${m.cls}">${m.badge}</span>
       <div class="ch-color-btn${isWhite?' white-border':''}${isOpen?' open':''}" style="background:${hex}" onclick="togglePicker(${i})"></div>
       <input type="range" class="ch-dens" min="0" max="100" value="${dens}" step="2"
         oninput="setChannelDens(${i},this.value)"
         style="background:${trackBg}">`;
-    // Angle buttons in screen mode
     if(isScreen){
       html+=`<div class="ch-angles">`;
       angles.forEach(a=>{
@@ -1276,7 +1642,6 @@ function buildChannelUI(targetId){
       html+=`</div>`;
     }
     html+=`</div>`;
-    // Dropdown list (opens below)
     html+=`<div class="ch-dropdown${isOpen?' open':''}">`;
     INK_LIST.forEach((g,gi)=>{
       if(gi>0) html+=`<div class="ch-dropdown-sep"></div>`;
@@ -1295,6 +1660,61 @@ function buildChannelUI(targetId){
     html+=`</div></div>`;
     list.insertAdjacentHTML('beforeend',html);
   }
+  initLayerDrag(list);
+}
+
+
+// ─── Layer drag-to-reorder ───
+function initLayerDrag(container){
+  const slots=container.querySelectorAll('.ch-slot');
+  const handles=container.querySelectorAll('.ch-drag');
+  let dragPos=-1, overPos=-1;
+
+  handles.forEach(h=>{
+    h.addEventListener('pointerdown',e=>{
+      e.preventDefault();
+      dragPos=parseInt(h.dataset.drag);
+      h.setPointerCapture(e.pointerId);
+      slots[dragPos].classList.add('dragging');
+    });
+    h.addEventListener('pointermove',e=>{
+      if(dragPos<0)return;
+      // Find which slot we're over based on Y position
+      const newOver=findSlotAt(slots,e.clientY);
+      if(newOver!==overPos){
+        slots.forEach(s=>{s.classList.remove('drag-over-above','drag-over-below');});
+        if(newOver>=0&&newOver!==dragPos){
+          slots[newOver].classList.add(newOver<dragPos?'drag-over-above':'drag-over-below');
+        }
+        overPos=newOver;
+      }
+    });
+    h.addEventListener('pointerup',e=>{
+      if(dragPos<0)return;
+      slots.forEach(s=>{s.classList.remove('dragging','drag-over-above','drag-over-below');});
+      if(overPos>=0&&overPos!==dragPos){
+        // Reorder: move dragPos to overPos
+        const item=layerOrder.splice(dragPos,1)[0];
+        layerOrder.splice(overPos,0,item);
+        cacheInkColors();
+        needsRedraw=true;
+        buildChannelUI();
+      }
+      dragPos=-1;overPos=-1;
+    });
+    h.addEventListener('pointercancel',()=>{
+      slots.forEach(s=>{s.classList.remove('dragging','drag-over-above','drag-over-below');});
+      dragPos=-1;overPos=-1;
+    });
+  });
+}
+
+function findSlotAt(slots,clientY){
+  for(let i=0;i<slots.length;i++){
+    const r=slots[i].getBoundingClientRect();
+    if(clientY>=r.top&&clientY<r.bottom) return i;
+  }
+  return -1;
 }
 
 function renderColors(){}
@@ -1313,17 +1733,28 @@ function applyProf(p){
   channels=mapProfileToSlots(p.colors);
   // Apply density presets if profile has them
   if(p.dens){
-    for(let i=0;i<4;i++){
-      cached.layerDens[i]=p.dens[i]||88;
-    }
+    for(let i=0;i<4;i++) cached.layerDens[i]=p.dens[i]||88;
   } else {
     for(let i=0;i<4;i++) cached.layerDens[i]=88;
+  }
+  // Mono: sync all angles to same value (prevents overlapping halftone grids)
+  if(p.colors.length===1){
+    const a=layerAngles[0]||15;
+    for(let i=0;i<4;i++) layerAngles[i]=a;
+  } else {
+    // Multi-color: reset to default spread
+    layerAngles=[15,75,0,45];
   }
   onChannelsChanged();
 }
 
 function onChannelsChanged(){
-  newMisreg();cacheInkColors();updateUI();
+  // Auto-sync angles when all channels match (mono state)
+  if(isMono()){
+    const a=layerAngles[0];
+    for(let i=1;i<4;i++) layerAngles[i]=a;
+  }
+  newMisreg();cacheInkColors();updateUI();needsRedraw=true;
 }
 
 function updateUI(){
@@ -1350,7 +1781,7 @@ function updateUI(){
 }
 
 function setChannelDens(ch,val){
-  cached.layerDens[ch]=parseFloat(val);
+  cached.layerDens[ch]=parseFloat(val);needsRedraw=true;
 }
 
 function bindChannelDensSliders(){
@@ -1373,17 +1804,31 @@ function setMode(m){
   // Rebuild channels to show/hide angle buttons
   buildChannelUI();
   if(el('phChannelList')&&el('phChannelList').children.length) buildChannelUI('phChannelList');
+  needsRedraw=true;
 }
 function setScale(s){
   resScale=s;
   document.querySelectorAll('.scale-btn').forEach((b,i)=>{
     b.classList.toggle('active',[1,2,4,5][i]===s);
   });
+  needsRedraw=true;
+}
+
+function setRisoFps(fps){
+  risoFps=fps;
+  document.querySelectorAll('.fps-group .fps-btn').forEach(b=>{
+    b.classList.toggle('active',parseInt(b.dataset.fps)===fps);
+  });
+  // Update phone button text
+  const phBtn=el('phFpsBtn');
+  if(phBtn) phBtn.textContent=fps+'FPS';
+  needsRedraw=true;
 }
 function setAngle(ch,deg){
   layerAngles[ch]=deg;
   buildChannelUI();
   if(el('phChannelList')&&el('phChannelList').children.length) buildChannelUI('phChannelList');
+  needsRedraw=true;
 }
 function bindSliders(){
   ['grainSize','dotGain','misreg','inkNoise','paperTex','screenCell','grainStatic','imgBright','imgContrast','imgSat'].forEach(id=>{
@@ -1411,6 +1856,7 @@ function setPaperColor(idx){
   const hex=PAPER_COLORS[idx].hex;
   cached.paperColor=hexRGB(hex);
   document.querySelectorAll('#paperColorGrid .paper-dot').forEach((d,i)=>d.classList.toggle('active',i===idx));
+  needsRedraw=true;
 }
 function renderPaperUI(){
   const colorGrid=el('paperColorGrid');
@@ -1426,9 +1872,65 @@ function renderPaperUI(){
 // ======================== PHONE UI ========================
 let phoneMode='photo'; // 'photo' or 'video'
 let isRecording=false, recStart=0, recTimer=null;
+let risoFps=8; // 8, 12, or 24 — controls choppy print-animation feel
+let lastRisoFrame=0; // timestamp of last riso-frame draw
 let currentOverlay=null;
 let lastLayoutPhone=null; // track layout switches
 let facingMode='environment';
+let phBcsOpen=false;
+
+const ASPECT_CYCLE=[[4,3],[1,1],[5,4],[16,9]];
+const ASPECT_LABELS=['4:3','1:1','5:4','16:9'];
+let aspectIdx=0;
+
+const RES_CYCLE=[1,2,4];
+let resIdx=0;
+
+// Crop guide: shows what area will be saved when aspect is set
+function updateCropGuide(canvasW,canvasH,srcW,srcH){
+  const guide=el('phCropGuide');
+  const inner=el('phCropInner');
+  if(!guide||!inner)return;
+  if(!cropAspect){guide.classList.remove('visible');return;}
+
+  // Canvas shows "cover" of source. What sub-rect of the canvas matches the save crop?
+  const vpAR=canvasW/canvasH;
+  const cropAR=cropAspect[0]/cropAspect[1];
+
+  let gW,gH;
+  if(cropAR>vpAR){
+    // Crop is wider than viewport: full width, reduced height
+    gW=1;gH=vpAR/cropAR;
+  } else {
+    // Crop is taller: full height, reduced width
+    gH=1;gW=cropAR/vpAR;
+  }
+  const vfEl=el('phViewfinder');
+  const vfW=vfEl.clientWidth, vfH=vfEl.clientHeight;
+  const px=(1-gW)/2*vfW, py=(1-gH)/2*vfH;
+  inner.style.left=px+'px';inner.style.top=py+'px';
+  inner.style.width=(gW*vfW)+'px';inner.style.height=(gH*vfH)+'px';
+  guide.classList.add('visible');
+}
+
+// Desktop crop guide
+function updateDeskCropGuide(){
+  const guide=el('deskCropGuide');
+  const inner=el('deskCropInner');
+  if(!guide||!inner)return;
+  if(!cropAspect){guide.classList.remove('visible');return;}
+  const vf=el('viewfinder');
+  const vpW=vf.clientWidth, vpH=vf.clientHeight;
+  const vpAR=vpW/vpH;
+  const cropAR=cropAspect[0]/cropAspect[1];
+  let gW,gH;
+  if(cropAR>vpAR){ gW=1;gH=vpAR/cropAR; }
+  else { gH=1;gW=cropAR/vpAR; }
+  const px=(1-gW)/2*vpW, py=(1-gH)/2*vpH;
+  inner.style.left=px+'px';inner.style.top=py+'px';
+  inner.style.width=(gW*vpW)+'px';inner.style.height=(gH*vpH)+'px';
+  guide.classList.add('visible');
+}
 
 function setPhoneMode(m){
   phoneMode=m;
@@ -1436,13 +1938,72 @@ function setPhoneMode(m){
   pb.classList.toggle('active',m==='photo');
   vb.classList.toggle('active',m==='video');
   vb.classList.toggle('rec',m==='video');
-  // Reset recording state
   if(isRecording) phStopRec();
   if(m==='video'){
     sh.classList.remove('recording');
-    // Auto-start camera for video mode
     if(!camOn) toggleCam();
   }
+}
+
+function phCycleMode(){
+  mode=mode==='grain'?'screen':'grain';
+  setMode(mode);
+  const btn=el('phModeBtn');
+  if(btn) btn.textContent=mode==='grain'?'GRAIN':'SCREEN';
+}
+
+function phCycleAspect(){
+  aspectIdx=(aspectIdx+1)%ASPECT_CYCLE.length;
+  setAspect(ASPECT_CYCLE[aspectIdx]);
+  const btn=el('phAspectBtn');
+  if(btn) btn.textContent=ASPECT_LABELS[aspectIdx];
+}
+
+function phCycleRes(){
+  resIdx=(resIdx+1)%RES_CYCLE.length;
+  setScale(RES_CYCLE[resIdx]);
+  const btn=el('phResBtn');
+  if(btn) btn.textContent=RES_CYCLE[resIdx]+'×';
+}
+
+const FPS_CYCLE=[8,12,24];
+let fpsIdx=0; // default 8fps
+function phCycleFps(){
+  fpsIdx=(fpsIdx+1)%FPS_CYCLE.length;
+  setRisoFps(FPS_CYCLE[fpsIdx]);
+}
+
+function phToggleBcs(){
+  phBcsOpen=!phBcsOpen;
+  const strip=el('phBcsStrip');
+  const btn=el('phBcsBtn');
+  if(strip) strip.classList.toggle('visible',phBcsOpen);
+  if(btn) btn.classList.toggle('highlight',phBcsOpen);
+  // Sync values
+  if(phBcsOpen){
+    el('phBcs0').value=cached.imgBright;el('phBcs0Val').textContent=cached.imgBright;
+    el('phBcs1').value=cached.imgContrast;el('phBcs1Val').textContent=cached.imgContrast;
+    el('phBcs2').value=cached.imgSat;el('phBcs2Val').textContent=cached.imgSat;
+  }
+}
+
+function phBindBcs(){
+  [['phBcs0','imgBright'],['phBcs1','imgContrast'],['phBcs2','imgSat']].forEach(([phId,key])=>{
+    const s=el(phId);
+    if(!s)return;
+    s.addEventListener('input',()=>{
+      const v=parseFloat(s.value);
+      cached[key]=v;
+      const valEl=el(phId+'Val');
+      if(valEl)valEl.textContent=v;
+      // Sync desktop sliders
+      const desk=el(key);
+      if(desk)desk.value=v;
+      const deskVal=el(key+'Val');
+      if(deskVal)deskVal.textContent=v;
+      needsRedraw=true;
+    });
+  });
 }
 
 function phFlipCam(){
@@ -1450,8 +2011,7 @@ function phFlipCam(){
   if(camOn){
     if(camStream)camStream.getTracks().forEach(t=>t.stop());
     camOn=false;
-    // Restart with new facing mode
-    navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:1280}}}).then(s=>{
+    navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:isPhone()?640:1280}}}).then(s=>{
       camStream=s;
       $vid.srcObject=s;
       $vid.play();
@@ -1472,37 +2032,43 @@ function phShutter(){
 }
 
 function phStartRec(){
-  // Video recording: capture canvas stream
-  const stream=$gl.captureStream(30);
+  const stream=$gl.captureStream(risoFps);
   if(typeof MediaRecorder==='undefined'){toast('Recording not supported');return;}
-  const opts={mimeType:'video/webm;codecs=vp9'};
-  if(!MediaRecorder.isTypeSupported(opts.mimeType)){
-    opts.mimeType='video/webm';
-    if(!MediaRecorder.isTypeSupported(opts.mimeType)){toast('No recording codec');return;}
+  let mimeType='video/mp4';
+  let ext='mp4';
+  if(!MediaRecorder.isTypeSupported(mimeType)){
+    mimeType='video/webm;codecs=vp9';ext='webm';
+    if(!MediaRecorder.isTypeSupported(mimeType)){
+      mimeType='video/webm';
+      if(!MediaRecorder.isTypeSupported(mimeType)){toast('No recording codec');return;}
+    }
   }
+  window._recMime=mimeType;window._recExt=ext;
   window._recChunks=[];
-  window._recorder=new MediaRecorder(stream,opts);
+  window._recorder=new MediaRecorder(stream,{mimeType});
   window._recorder.ondataavailable=e=>{if(e.data.size>0)window._recChunks.push(e.data);};
-  window._recorder.onstop=()=>{
-    const blob=new Blob(window._recChunks,{type:opts.mimeType});
+  window._recorder.onstop=async()=>{
+    const blob=new Blob(window._recChunks,{type:window._recMime});
+    const filename='riso_'+Date.now()+'.'+window._recExt;
+    if(navigator.share&&navigator.canShare&&/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)){
+      const file=new File([blob],filename,{type:window._recMime});
+      if(navigator.canShare({files:[file]})){
+        try{await navigator.share({files:[file],title:'RISO/CAM Video'});toast('Shared!');return;}
+        catch(e){if(e.name==='AbortError')return;}
+      }
+    }
     const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url;a.download='riso_'+Date.now()+'.webm';
+    const a=document.createElement('a');a.href=url;a.download=filename;
     document.body.appendChild(a);a.click();document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast('VIDEO SAVED');
+    URL.revokeObjectURL(url);toast('VIDEO SAVED');
   };
   window._recorder.start(100);
-  isRecording=true;
-  recStart=Date.now();
+  isRecording=true;recStart=Date.now();
   el('phShutter').classList.add('recording');
-  const badge=el('phRecBadge');
-  badge.classList.add('show');
+  const badge=el('phRecBadge');badge.classList.add('show');
   recTimer=setInterval(()=>{
     const s=Math.floor((Date.now()-recStart)/1000);
-    const mm=String(Math.floor(s/60)).padStart(2,'0');
-    const ss=String(s%60).padStart(2,'0');
-    badge.textContent='● REC '+mm+':'+ss;
+    badge.textContent='● REC '+String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
   },500);
 }
 
@@ -1522,12 +2088,12 @@ function phToggleOverlay(name){
   if(ov){
     ov.classList.add('open');
     el('phBackdrop').classList.add('show');
-    // Highlight circle
-    document.querySelectorAll('.ph-circle').forEach(c=>{
-      const n=c.querySelector('.ph-circle-label');
-      if(n&&n.textContent.toLowerCase()===name.toLowerCase()) c.classList.add('open');
+    // Highlight action circle
+    document.querySelectorAll('.ph-action-circle').forEach(c=>{
+      const n=c.querySelector('.ph-action-label');
+      if(n&&n.textContent.toLowerCase()===({channels:'ink',profiles:'prof',paper:'paper',settings:'fx'}[name]||''))
+        c.classList.add('open');
     });
-    // Populate overlay content
     phPopulateOverlay(name);
   }
 }
@@ -1535,7 +2101,7 @@ function phToggleOverlay(name){
 function phCloseOverlay(){
   document.querySelectorAll('.ph-overlay').forEach(o=>o.classList.remove('open'));
   el('phBackdrop').classList.remove('show');
-  document.querySelectorAll('.ph-circle').forEach(c=>c.classList.remove('open'));
+  document.querySelectorAll('.ph-action-circle').forEach(c=>c.classList.remove('open'));
   currentOverlay=null;
 }
 
@@ -1546,7 +2112,6 @@ function phPopulateOverlay(name){
       body.innerHTML='<div class="channel-list" id="phChannelList"></div>';
       body.dataset.built='1';
     }
-    // Re-render channel UI into phone container
     buildChannelUI('phChannelList');
   } else if(name==='profiles'){
     const body=el('phProfilesBody');
@@ -1555,13 +2120,21 @@ function phPopulateOverlay(name){
       body.dataset.built='1';
     }
     renderProfiles('phProfileGrid');
+  } else if(name==='paper'){
+    const body=el('phPaperBody');
+    body.innerHTML='<div style="display:flex;gap:6px;flex-wrap:wrap;padding:8px 16px">';
+    PAPER_COLORS.forEach((c,i)=>{
+      const border=c.hex==='#2a2a28'?'border-color:#888;':'';
+      body.innerHTML+=`<div class="paper-dot${i===curPaperColor?' active':''}" onclick="setPaperColor(${i})" style="background:${c.hex};${border};width:28px;height:28px" title="${c.name}"></div>`;
+    });
+    body.innerHTML+='</div>';
   } else if(name==='settings'){
     const body=el('phSettingsBody');
     body.innerHTML=`
       <div class="settings-body" style="padding:10px 14px">
         <div style="display:flex;gap:6px;margin-bottom:12px">
-          <button class="mode-btn ${mode==='grain'?'active':''}" onclick="setMode('grain')">GRAIN</button>
-          <button class="mode-btn ${mode==='screen'?'active':''}" onclick="setMode('screen')">SCREEN</button>
+          <button class="mode-btn ${mode==='grain'?'active':''}" onclick="setMode('grain');el('phModeBtn').textContent='GRAIN'">GRAIN</button>
+          <button class="mode-btn ${mode==='screen'?'active':''}" onclick="setMode('screen');el('phModeBtn').textContent='SCREEN'">SCREEN</button>
         </div>
         <div class="slider-row"><span class="slider-label">Grain Size</span><input type="range" id="phGrainSize" min="0.5" max="3" value="${cached.grainSize}" step="0.1"><span class="slider-value" id="phGrainSizeVal">${cached.grainSize}</span></div>
         <div class="slider-row"><span class="slider-label">Screen Cell</span><input type="range" id="phScreenCell" min="3" max="20" value="${cached.screenCell}" step="1"><span class="slider-value" id="phScreenCellVal">${cached.screenCell}</span></div>
@@ -1570,27 +2143,12 @@ function phPopulateOverlay(name){
         <div class="slider-row"><span class="slider-label">Ink Noise</span><input type="range" id="phInkNoise" min="0" max="30" value="${cached.inkNoise}" step="2"><span class="slider-value" id="phInkNoiseVal">${cached.inkNoise}</span></div>
         <div class="slider-row"><span class="slider-label">Paper Tex</span><input type="range" id="phPaperTex" min="0" max="25" value="${el('paperTex').value}" step="1"><span class="slider-value" id="phPaperTexVal">${el('paperTex').value}</span></div>
         <div class="slider-row"><span class="slider-label">Static</span><input type="range" id="phGrainStatic" min="0" max="20" value="${cached.grainStatic}" step="1"><span class="slider-value" id="phGrainStaticVal">${cached.grainStatic}</span></div>
-        <hr style="border:none;border-top:1px solid #333;margin:12px 0">
-        <div style="font-family:'Space Mono',monospace;font-size:9px;color:#666;letter-spacing:1px;margin-bottom:8px">IMAGE ADJUST</div>
-        <div class="image-controls" style="background:none;border:none;padding:0;flex-direction:column;gap:6px">
-          <div class="img-slider"><span class="img-label">Bright</span><input type="range" id="phImgBright" min="-30" max="30" value="${cached.imgBright}" step="2"><span class="img-val" id="phImgBrightVal">${cached.imgBright}</span></div>
-          <div class="img-slider"><span class="img-label">Contrast</span><input type="range" id="phImgContrast" min="-30" max="30" value="${cached.imgContrast}" step="2"><span class="img-val" id="phImgContrastVal">${cached.imgContrast}</span></div>
-          <div class="img-slider"><span class="img-label">Sat</span><input type="range" id="phImgSat" min="-30" max="30" value="${cached.imgSat}" step="2"><span class="img-val" id="phImgSatVal">${cached.imgSat}</span></div>
-        </div>
       </div>`;
     phBindSliders();
-  } else if(name==='resolution'){
-    const body=el('phResBody');
-    body.innerHTML=`
-      <div style="display:flex;gap:8px;padding:12px 16px;flex-wrap:wrap">
-        ${[1,2,4,5].map(s=>`<button class="scale-btn${resScale===s?' active':''}" style="flex:1;min-width:60px;padding:14px;font-size:14px" onclick="setScale(${s});el('phResLabel').textContent='${s}×'">${s}×</button>`).join('')}
-      </div>
-      <div style="padding:0 16px 8px;font-family:'Space Mono',monospace;font-size:8px;color:#555">Higher = finer halftone detail, slower render</div>`;
   }
 }
 
 function phBindSliders(){
-  // Map phone slider IDs to desktop slider IDs and cached keys
   const map=[
     ['phGrainSize','grainSize','grainSize'],
     ['phScreenCell','screenCell','screenCell'],
@@ -1599,27 +2157,21 @@ function phBindSliders(){
     ['phInkNoise','inkNoise','inkNoise'],
     ['phPaperTex','paperTex',null],
     ['phGrainStatic','grainStatic','grainStatic'],
-    ['phImgBright','imgBright','imgBright'],
-    ['phImgContrast','imgContrast','imgContrast'],
-    ['phImgSat','imgSat','imgSat'],
   ];
   map.forEach(([phId,deskId,cacheKey])=>{
     const phEl=el(phId);
     if(!phEl)return;
     phEl.addEventListener('input',()=>{
       const v=parseFloat(phEl.value);
-      // Sync to desktop slider
       const desk=el(deskId);
       if(desk)desk.value=v;
-      // Update val display
       const phVal=el(phId+'Val');
       if(phVal)phVal.textContent=v;
       const deskVal=el(deskId+'Val');
       if(deskVal)deskVal.textContent=v;
-      // Update cached state - trigger same logic as desktop
       if(deskId==='misreg'){newMisreg();return;}
-      if(deskId==='paperTex'){cached.paperTex=v;return;}
-      if(cacheKey)cached[cacheKey]=v;
+      if(deskId==='paperTex'){cached.paperTex=v;needsRedraw=true;return;}
+      if(cacheKey){cached[cacheKey]=v;needsRedraw=true;}
     });
   });
 }
@@ -1630,11 +2182,15 @@ function layoutSwitch(){
   if(phone===lastLayoutPhone)return;
   lastLayoutPhone=phone;
   if(phone){
-    el('phViewfinder').insertBefore($gl,el('phInfo'));
-    el('phViewfinder').insertBefore($vid,el('phInfo'));
-    $vf=el('phViewfinder');
+    const phVf=el('phViewfinder');
+    const recBadge=el('phRecBadge');
+    phVf.insertBefore($gl,recBadge);
+    phVf.insertBefore($vid,recBadge);
+    $vf=phVf;
     // Auto-start camera on phone if no source
     if(!hasSrc&&!camOn) toggleCam();
+    // Bind BCS sliders
+    phBindBcs();
   } else {
     const vf=el('viewfinder');
     const sb=vf.querySelector('.status-bar');
@@ -1649,13 +2205,19 @@ function layoutSwitch(){
 // Update aspect buttons across both UIs
 const origSetAspect=setAspect;
 setAspect=function(ratio){
-  cropAspect=ratio;
+  cropAspect=ratio||[4,3];
   computeCrop();
   needsAspectUpdate=true;
-  const key=ratio?ratio.join(':'):'free';
-  document.querySelectorAll('.aspect-btn,.ph-aspect-btn').forEach(b=>{
+  const key=cropAspect.join(':');
+  document.querySelectorAll('.aspect-btn').forEach(b=>{
     b.classList.toggle('active',b.dataset.ar===key);
   });
+  // Sync phone aspect button text
+  const phBtn=el('phAspectBtn');
+  if(phBtn){
+    const idx=ASPECT_CYCLE.findIndex(a=>a&&cropAspect&&a[0]===cropAspect[0]&&a[1]===cropAspect[1]);
+    if(idx>=0){aspectIdx=idx;phBtn.textContent=ASPECT_LABELS[idx];}
+  }
 };
 
 document.addEventListener('DOMContentLoaded',()=>{
@@ -1676,6 +2238,9 @@ document.addEventListener('DOMContentLoaded',()=>{
 
   // Initial layout
   layoutSwitch();
+
+  // Redraw on resize/orientation change
+  window.addEventListener('resize',()=>{needsRedraw=true;needsAspectUpdate=true;});
 
   render();
 });
