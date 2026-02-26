@@ -236,12 +236,13 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
 .ph-icon-btn{height:34px;padding:0 12px;border-radius:17px;background:#333;border:none;color:white;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;-webkit-tap-highlight-color:transparent}
 .ph-icon-btn:active{background:#555}
 .ph-icon-btn.active{background:white;color:#111}
+.ph-mode-pill{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.5px;font-weight:700}
 .ph-icon-btn svg{width:20px;height:20px}
 /* Rec badge */
 .ph-rec-badge{position:absolute;top:60px;right:12px;font-family:'Space Mono',monospace;font-size:11px;color:var(--accent);letter-spacing:1px;display:none;z-index:11}
 .ph-rec-badge.show{display:block}
 /* Viewfinder — centers the canvas box on black */
-.ph-viewfinder{flex:1;position:relative;overflow:hidden;min-height:0;background:var(--ph-paper-bg,#111);display:flex;align-items:center;justify-content:center}
+.ph-viewfinder{flex:1;position:relative;overflow:hidden;min-height:0;background:var(--ph-paper-bg,#111);display:flex;align-items:center;justify-content:center;padding:calc(env(safe-area-inset-top,8px) + 48px) 8px 8px}
 .ph-viewfinder canvas{max-width:100%;max-height:100%;display:block;object-fit:contain}
 .ph-viewfinder video{display:none}
 /* Crop guide overlay — shows save area when aspect is set */
@@ -450,8 +451,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
   <!-- Top bar — floats over viewfinder -->
   <div class="ph-top">
     <div class="ph-top-left">
-      <button class="ph-icon-btn" id="phModeToggle" onclick="phTogglePhotoVideo()" title="Photo/Video">📷</button>
-      <button class="ph-icon-btn" id="phFlipAspect" onclick="phFlipAspectOrientation()" title="Flip orientation">↻</button>
+      <button class="ph-icon-btn ph-mode-pill" id="phModeToggle" onclick="phTogglePhotoVideo()" title="Photo/Video">PHOTO</button>
     </div>
     <div class="ph-top-center">
       <button class="ph-icon-btn ph-zoom-btn" id="phResBtn" onclick="phCycleRes()">2×</button>
@@ -3029,7 +3029,7 @@ function updateDeskCropGuide(){
 function setPhoneMode(m){
   phoneMode=m;
   const toggle=el('phModeToggle');
-  if(toggle) toggle.textContent=m==='photo'?'📷':'🎥';
+  if(toggle) toggle.textContent=m==='photo'?'PHOTO':'VIDEO';
   if(isRecording) phStopRec();
   if(m==='video'){
     const sh=el('phShutter');if(sh)sh.classList.remove('recording');
@@ -3134,13 +3134,14 @@ function phBindBcs(){
 }
 
 async function phFlipCam(){
-  facingMode=facingMode==='environment'?'user':'environment';
+  const newFacing=facingMode==='environment'?'user':'environment';
   if(!camOn)return;
   try{
     if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}
     $vid.srcObject=null;
     camOn=false;
-    const s=await navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:isPhone()?640:1280}}});
+    const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:{exact:newFacing},width:{ideal:isPhone()?640:1280}}});
+    facingMode=newFacing;
     camStream=s;
     $vid.srcObject=s;
     await $vid.play();
@@ -3149,8 +3150,6 @@ async function phFlipCam(){
     else{const fb=()=>{if(camOn&&$vid.readyState>=2)videoFrameReady=true;requestAnimationFrame(fb);};fb();}
   }catch(e){
     toast('Camera error: '+e.message);
-    // Try to recover by toggling cam back on with previous facing mode
-    facingMode=facingMode==='environment'?'user':'environment';
   }
 }
 
