@@ -312,7 +312,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
 <header>
   <div class="header-inner">
   <div class="header-row">
-    <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text-muted);opacity:0.6">v1.2</span>
+    <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text-muted);opacity:0.6;cursor:pointer" onclick="toggleDebug()" title="Debug menu">v1.3</span>
     <div class="header-mode">
       <button class="header-mode-btn active" id="modeGrain" onclick="setMode('grain')">GRAIN</button>
       <button class="header-mode-btn" id="modeScreen" onclick="setMode('screen')">SCREEN</button>
@@ -400,7 +400,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
           <div class="slider-row"><span class="slider-label">Grain Size</span><input type="range" id="grainSize" min="0.5" max="4" value="1.5" step="0.25"><span class="slider-value" id="grainSizeVal">1.5</span></div>
         </div>
         <div id="screenSettings" style="display:none">
-          <div class="slider-row"><span class="slider-label">Dot Size</span><input type="range" id="screenCell" min="3" max="24" value="8" step="1"><span class="slider-value" id="screenCellVal">8</span></div>
+          <div class="slider-row"><span class="slider-label">LPI</span><input type="range" id="lpi" min="10" max="60" value="35" step="5"><span class="slider-value" id="lpiVal">35</span></div>
         </div>
         <div class="slider-row"><span class="slider-label">Dot Gain</span><input type="range" id="dotGain" min="0" max="40" value="12" step="2"><span class="slider-value" id="dotGainVal">12</span></div>
         <div class="slider-row"><span class="slider-label">Misregister</span><input type="range" id="misreg" min="0" max="10" value="2" step="1"><span class="slider-value" id="misregVal">2</span></div>
@@ -412,6 +412,22 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
         <div class="slider-row"><span class="slider-label">Margin</span><input type="range" id="margin" min="0" max="12" value="4" step="1"><span class="slider-value" id="marginVal">4</span></div>
         <div class="slider-row"><span class="slider-label">Bleed</span><input type="range" id="bleed" min="0" max="10" value="0" step="1"><span class="slider-value" id="bleedVal">0</span></div>
         <div class="slider-row" style="margin-top:4px"><span class="slider-label">Crop Marks</span><label class="toggle-switch"><input type="checkbox" id="cropMarksToggle" checked onchange="cached.showCropMarks=this.checked;markDirty()"><span class="toggle-slider"></span></label></div>
+        <div id="debugPanel" style="display:none;margin-top:8px;border-top:1px solid #ccc;padding-top:8px">
+          <div style="font-size:9px;letter-spacing:2px;opacity:0.4;margin-bottom:6px">DEBUG</div>
+          <div id="cmykTuning" style="display:none">
+            <div style="font-size:8px;letter-spacing:1px;opacity:0.5;margin-bottom:2px">CMYK SEPARATION</div>
+            <div class="slider-row"><span class="slider-label">UCR</span><input type="range" id="ucrStr" min="0" max="80" value="15" step="5"><span class="slider-value" id="ucrStrVal">15</span></div>
+            <div class="slider-row"><span class="slider-label">Bal C</span><input type="range" id="balC" min="20" max="200" value="150" step="5"><span class="slider-value" id="balCVal">150</span></div>
+            <div class="slider-row"><span class="slider-label">Bal M</span><input type="range" id="balM" min="20" max="200" value="155" step="5"><span class="slider-value" id="balMVal">155</span></div>
+            <div class="slider-row"><span class="slider-label">Bal Y</span><input type="range" id="balY" min="20" max="200" value="105" step="5"><span class="slider-value" id="balYVal">105</span></div>
+            <div class="slider-row"><span class="slider-label">Bal K</span><input type="range" id="balK" min="20" max="200" value="165" step="5"><span class="slider-value" id="balKVal">165</span></div>
+            <div class="slider-row"><span class="slider-label">TAC</span><input type="range" id="tac" min="150" max="400" value="280" step="10"><span class="slider-value" id="tacVal">280</span></div>
+          </div>
+          <div style="margin-top:6px;font-size:8px;letter-spacing:1px;opacity:0.5;margin-bottom:2px">INFO</div>
+          <div id="debugInfo" style="font-size:9px;font-family:monospace;opacity:0.6;line-height:1.5"></div>
+          <button id="copyDebugBtn" style="margin-top:6px;font-size:9px;padding:3px 10px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px;letter-spacing:0.5px" onclick="copyDebugValues()">COPY VALUES</button>
+          <button style="margin-top:4px;margin-left:4px;font-size:9px;padding:3px 10px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px;letter-spacing:0.5px" onclick="resetCmykDefaults()">RESET CMYK</button>
+        </div>
       </div>
     </div>
   </div>
@@ -535,6 +551,11 @@ uniform vec2 u_off0, u_off1, u_off2, u_off3;
 uniform float u_angle0, u_angle1, u_angle2, u_angle3;
 uniform float u_screenCell;
 
+// CMYK separation tuning
+uniform float u_ucrStr;   // UCR strength (0-1)
+uniform vec4 u_cmykBal;   // channel balance: C, M, Y, K
+uniform float u_tac;      // total area coverage limit
+
 // 5-point color LUT per layer (scanned swatch data)
 uniform vec3 u_lutA0, u_lutA1, u_lutA2, u_lutA3; // 10% coverage
 uniform vec3 u_lutB0, u_lutB1, u_lutB2, u_lutB3; // 30% coverage
@@ -644,8 +665,7 @@ vec4 toCMYK(vec3 rgb){
   float m = (1.0-rgb.g-k)*ik;
   float y = (1.0-rgb.b-k)*ik;
   // UCR: when K is high, reduce CMY to avoid oversaturation and ink mud
-  // Gentler than before — keeps more CMY color in shadows for richness
-  float ucr = smoothstep(0.25, 0.85, k) * 0.35;
+  float ucr = smoothstep(0.25, 0.85, k) * u_ucrStr;
   c *= 1.0 - ucr;
   m *= 1.0 - ucr;
   y *= 1.0 - ucr;
@@ -674,13 +694,12 @@ float getChannelInner(vec4 cmyk, int ch, int totalLayers){
     return base + cmyk.w*0.55;
   }
   float raw = ch==0?cmyk.x:(ch==1?cmyk.y:(ch==2?cmyk.z:cmyk.w));
-  // Balance: Yellow ink is very transparent so needs less coverage,
-  // Black carries shadows and needs more presence
-  float balance = ch==0 ? 1.05 : (ch==1 ? 1.0 : (ch==2 ? 0.70 : 1.15));
+  // Balance per channel from tuning sliders
+  float balance = ch==0 ? u_cmykBal.x : (ch==1 ? u_cmykBal.y : (ch==2 ? u_cmykBal.z : u_cmykBal.w));
   raw *= balance;
-  // Gentle total ink limit — prevent oversaturation at >260% TAC
+  // Total ink limit from tuning slider
   float total = cmyk.x + cmyk.y + cmyk.z + cmyk.w;
-  if(total > 2.6) raw *= 2.6 / total;
+  if(total > u_tac) raw *= u_tac / total;
   return clamp(raw, 0.0, 1.0);
 }
 
@@ -1477,7 +1496,8 @@ let cropAspect=[4,3]; // default 4:3
 let cropRect=[0,0,1,1]; // UV crop: x,y,w,h
 
 const cached={
-  grainSize:1.5, dotGain:12, inkNoise:8, paperTex:10, screenCell:8, grainStatic:0, imgBright:0, imgContrast:0, imgSat:0,
+  grainSize:1.5, dotGain:12, inkNoise:8, paperTex:10, lpi:35, grainStatic:0, imgBright:0, imgContrast:0, imgSat:0,
+  ucrStr:15, balC:150, balM:155, balY:105, balK:165, tac:280,
   inkRGB:[[0,0,0],[0,0,0],[0,0,0],[0,0,0]],
   paperColor:[0.96,0.94,0.91],
   layerDens:[88,88,88,88],
@@ -1614,7 +1634,7 @@ function getState(){
     prof:activeProf?activeProf.name:null,
     mode,
     grainSize:cached.grainSize, dotGain:cached.dotGain, inkNoise:cached.inkNoise,
-    paperTex:cached.paperTex, screenCell:cached.screenCell, grainStatic:cached.grainStatic, ghosting:cached.ghosting,
+    paperTex:cached.paperTex, lpi:cached.lpi, grainStatic:cached.grainStatic, ghosting:cached.ghosting,
     imgBright:cached.imgBright, imgContrast:cached.imgContrast, imgSat:cached.imgSat,
     paper:curPaper, paperColor:curPaperColor
   });
@@ -1636,7 +1656,7 @@ function restoreState(json){
     cached.layerDens=s.dens;
     mode=s.mode;
     cached.grainSize=s.grainSize; cached.dotGain=s.dotGain; cached.inkNoise=s.inkNoise;
-    cached.paperTex=s.paperTex; cached.screenCell=s.screenCell; cached.grainStatic=s.grainStatic; if(s.ghosting!==undefined)cached.ghosting=s.ghosting;
+    cached.paperTex=s.paperTex; cached.lpi=s.lpi||65; cached.grainStatic=s.grainStatic; if(s.ghosting!==undefined)cached.ghosting=s.ghosting;
     cached.imgBright=s.imgBright; cached.imgContrast=s.imgContrast; cached.imgSat=s.imgSat;
     // Restore profile ref
     activeProf=s.prof?allProfiles().find(p=>p.name===s.prof)||null:null;
@@ -1848,7 +1868,8 @@ function initGL(){
    'u_opaque0','u_opaque1','u_opaque2','u_opaque3',
    'u_prevSrc',
    'u_showCropMarks','u_printArea','u_ghosting','u_bleed',
-   'u_skew0','u_skew1','u_skew2','u_skew3'
+   'u_skew0','u_skew1','u_skew2','u_skew3',
+   'u_ucrStr','u_cmykBal','u_tac'
   ].forEach(n=>{locs[n]=gl.getUniformLocation(prog,n);});
 
   // Blue noise texture (tex unit 1)
@@ -2048,13 +2069,16 @@ function render(){
   gl.uniform1f(locs.u_bright,cached.imgBright);
   gl.uniform1f(locs.u_contrast,cached.imgContrast);
   gl.uniform1f(locs.u_sat,cached.imgSat);
-  gl.uniform1f(locs.u_screenCell,cached.screenCell);
+  gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(dw,dh)/(8.267*cached.lpi)));
   gl.uniform3fv(locs.u_paperColor,cached.paperColor);
   gl.uniform3f(locs.u_paper, 0.910, 0.912, 0.908);
   gl.uniform1f(locs.u_showCropMarks, cached.showCropMarks ? 1.0 : 0.0);
   const effectiveGhosting = cached.grainStatic > 0 ? Math.max(cached.ghosting, cached.grainStatic * 1.0) : cached.ghosting;
   gl.uniform1f(locs.u_ghosting, effectiveGhosting * 0.01);
   gl.uniform1f(locs.u_bleed, cached.bleed * 0.01);
+  gl.uniform1f(locs.u_ucrStr, cached.ucrStr * 0.01);
+  gl.uniform4f(locs.u_cmykBal, cached.balC*0.01, cached.balM*0.01, cached.balY*0.01, cached.balK*0.01);
+  gl.uniform1f(locs.u_tac, cached.tac * 0.01);
 
   // Per-layer ink data + misreg/skew
   for(let i=0;i<4;i++){
@@ -2613,7 +2637,10 @@ async function exportSeparations(){
   gl.uniform1f(locs.u_bright,cached.imgBright);
   gl.uniform1f(locs.u_contrast,cached.imgContrast);
   gl.uniform1f(locs.u_sat,cached.imgSat);
-  gl.uniform1f(locs.u_screenCell,cached.screenCell);
+  gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(dw,dh)/(8.267*cached.lpi)));
+  gl.uniform1f(locs.u_ucrStr, cached.ucrStr * 0.01);
+  gl.uniform4f(locs.u_cmykBal, cached.balC*0.01, cached.balM*0.01, cached.balY*0.01, cached.balK*0.01);
+  gl.uniform1f(locs.u_tac, cached.tac * 0.01);
   gl.uniform3fv(locs.u_paperColor,cached.paperColor);
   gl.uniform4f(locs.u_crop,cropRect[0],cropRect[1],cropRect[2],cropRect[3]);
   gl.uniform1i(locs.u_mode,mode==='grain'?0:1);
@@ -3044,6 +3071,11 @@ function updateUI(){
   el('captureInfo').textContent=caption;
   const phInfo=el('phInfo');
   if(phInfo) phInfo.textContent=caption;
+
+  // Show CMYK tuning only in 4-layer mode
+  const cmykDiv=el('cmykTuning');
+  if(cmykDiv) cmykDiv.style.display=unique.size===4?'':'none';
+  updateDebugInfo();
 }
 
 function setChannelDens(ch,val){
@@ -3102,7 +3134,7 @@ function setAngle(ch,deg){
   markDirty();
 }
 function bindSliders(){
-  ['grainSize','dotGain','misreg','inkNoise','paperTex','screenCell','grainStatic','ghosting','margin','bleed','skew','imgBright','imgContrast','imgSat'].forEach(id=>{
+  ['grainSize','dotGain','misreg','inkNoise','paperTex','lpi','grainStatic','ghosting','margin','bleed','skew','imgBright','imgContrast','imgSat','ucrStr','balC','balM','balY','balK','tac'].forEach(id=>{
     const s=el(id),v=el(id+'Val');
     if(!s||!v)return;
     s.oninput=()=>{
@@ -3114,6 +3146,52 @@ function bindSliders(){
   });
 }
 function toast(msg){const t=el('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);}
+
+// ─── Debug Menu ───
+let debugOpen=false;
+function toggleDebug(){
+  debugOpen=!debugOpen;
+  const p=el('debugPanel');
+  if(p) p.style.display=debugOpen?'':'none';
+}
+function copyDebugValues(){
+  const layers=activeLayers();
+  const vals={
+    mode, resScale, lpi:cached.lpi,
+    profile:activeProf?activeProf.name:'custom',
+    channels:channels.filter(c=>c),
+    dens:cached.layerDens.slice(0,layers.length),
+    grainSize:cached.grainSize, dotGain:cached.dotGain,
+    inkNoise:cached.inkNoise, paperTex:cached.paperTex,
+    ghosting:cached.ghosting, bleed:cached.bleed,
+    margin:cached.margin, bcs:[cached.imgBright,cached.imgContrast,cached.imgSat],
+    cmyk:{ucr:cached.ucrStr, balC:cached.balC, balM:cached.balM, balY:cached.balY, balK:cached.balK, tac:cached.tac}
+  };
+  const txt=JSON.stringify(vals,null,2);
+  navigator.clipboard.writeText(txt).then(()=>toast('Copied!')).catch(()=>{
+    // Fallback
+    const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);toast('Copied!');
+  });
+}
+function resetCmykDefaults(){
+  const defs={ucrStr:15,balC:150,balM:155,balY:105,balK:165,tac:280};
+  Object.entries(defs).forEach(([k,v])=>{
+    cached[k]=v;
+    const s=el(k),sv=el(k+'Val');
+    if(s){s.value=v;} if(sv){sv.textContent=v;}
+  });
+  markDirty();toast('CMYK reset');
+}
+function updateDebugInfo(){
+  const d=el('debugInfo');if(!d||!debugOpen)return;
+  const layers=activeLayers();
+  const $gl=el('gl');
+  d.innerHTML=
+    `canvas: ${$gl.width}×${$gl.height} (${resScale}×)<br>`+
+    `layers: ${layers.length} | mode: ${mode}<br>`+
+    `profile: ${activeProf?activeProf.name:'custom'}<br>`+
+    `crop: ${Array.isArray(cropAspect)?cropAspect.join(':'):cropAspect}`;
+}
 function toggleSection(gridId,hdr){
   const grid=el(gridId);
   grid.classList.toggle('collapsed');
@@ -3543,7 +3621,7 @@ function phPopulateOverlay(name){
     body.innerHTML=`
       <div class="settings-body" style="padding:10px 14px">
         <div class="slider-row"><span class="slider-label">Grain Size</span><input type="range" id="phGrainSize" min="0.5" max="3" value="${cached.grainSize}" step="0.1"><span class="slider-value" id="phGrainSizeVal">${cached.grainSize}</span></div>
-        <div class="slider-row"><span class="slider-label">Screen Cell</span><input type="range" id="phScreenCell" min="3" max="20" value="${cached.screenCell}" step="1"><span class="slider-value" id="phScreenCellVal">${cached.screenCell}</span></div>
+        <div class="slider-row"><span class="slider-label">LPI</span><input type="range" id="phLpi" min="10" max="60" value="${cached.lpi}" step="5"><span class="slider-value" id="phLpiVal">${cached.lpi}</span></div>
         <div class="slider-row"><span class="slider-label">Dot Gain</span><input type="range" id="phDotGain" min="0" max="25" value="${cached.dotGain}" step="1"><span class="slider-value" id="phDotGainVal">${cached.dotGain}</span></div>
         <div class="slider-row"><span class="slider-label">Misregister</span><input type="range" id="phMisreg" min="0" max="10" value="${el('misreg').value}" step="1"><span class="slider-value" id="phMisregVal">${el('misreg').value}</span></div>
         <div class="slider-row" style="padding-left:12px"><span class="slider-label" style="opacity:0.7;font-size:9px">Skew</span><input type="range" id="phSkew" min="-1" max="1" value="${el('skew').value}" step="0.1"><span class="slider-value" id="phSkewVal">${el('skew').value}°</span></div>
@@ -3561,7 +3639,7 @@ function phPopulateOverlay(name){
 function phBindSliders(){
   const map=[
     ['phGrainSize','grainSize','grainSize'],
-    ['phScreenCell','screenCell','screenCell'],
+    ['phLpi','lpi','lpi'],
     ['phDotGain','dotGain','dotGain'],
     ['phMisreg','misreg',null],
     ['phSkew','skew',null],
