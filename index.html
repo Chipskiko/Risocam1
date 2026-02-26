@@ -65,12 +65,27 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
   .img-slider{min-width:80px}
   .controls-sep{display:none}
 }
-.viewfinder-panel{position:relative;background:#1a1a1a;border-radius:4px;overflow:hidden;aspect-ratio:4/3;border:1px solid var(--border)}
-.viewfinder-panel canvas{width:100%;height:100%;display:block}
+.viewfinder-panel{position:relative;background:#2a2a28;border-radius:4px;overflow:hidden;aspect-ratio:4/3;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;padding:16px}
+.viewfinder-panel canvas{width:calc(100% - 8px);height:calc(100% - 8px);display:block;border-radius:1px;box-shadow:0 2px 12px rgba(0,0,0,.45),0 0 1px rgba(0,0,0,.3)}
 .status-bar{position:absolute;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;pointer-events:none}
 .status-badge{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:4px 8px;background:rgba(0,0,0,.6);color:rgba(255,255,255,.8);border-radius:2px;backdrop-filter:blur(4px)}
 .capture-info{position:absolute;bottom:12px;left:12px;font-family:'Space Mono',monospace;font-size:10px;color:rgba(255,255,255,.4);letter-spacing:1px}
 .fps-counter{position:absolute;bottom:12px;right:12px;font-family:'Space Mono',monospace;font-size:9px;color:rgba(255,255,255,.3)}
+.compare-overlay{position:absolute;inset:0;display:none;z-index:4;pointer-events:none;overflow:hidden}
+.compare-overlay.active{display:block;pointer-events:auto}
+.compare-overlay img{width:100%;height:100%;object-fit:contain;clip-path:inset(0 50% 0 0)}
+.compare-handle{position:absolute;top:0;bottom:0;left:50%;width:3px;background:rgba(255,255,255,.8);cursor:ew-resize;transform:translateX(-50%);box-shadow:0 0 6px rgba(0,0,0,.5)}
+.compare-handle::after{content:'⟷';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.7);color:#fff;font-size:11px;padding:4px 6px;border-radius:10px;white-space:nowrap}
+.compare-label{position:absolute;top:8px;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;color:rgba(255,255,255,.7);background:rgba(0,0,0,.5);padding:3px 8px;border-radius:3px;pointer-events:none}
+.compare-label-l{left:8px}.compare-label-r{right:8px}
+.onboard-hint{position:absolute;inset:0;z-index:8;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.35);backdrop-filter:blur(2px)}
+.onboard-inner{text-align:center;color:rgba(255,255,255,.9)}
+.onboard-icon{font-size:32px;margin-bottom:8px;opacity:.7}
+.onboard-title{font-family:'Space Mono',monospace;font-size:16px;font-weight:700;letter-spacing:3px;margin-bottom:6px}
+.onboard-text{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.5px;opacity:.7;line-height:1.6;margin-bottom:14px}
+.onboard-actions{display:flex;gap:8px;justify-content:center}
+.onboard-btn{padding:7px 18px;border:1px solid rgba(255,255,255,.4);border-radius:4px;background:rgba(255,255,255,.1);color:#fff;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1px;cursor:pointer;transition:all .15s}
+.onboard-btn:hover{background:rgba(255,255,255,.25);border-color:rgba(255,255,255,.7)}
 .vf-overlay{position:absolute;inset:0;pointer-events:none}
 .vc{position:absolute;width:20px;height:20px;border-color:rgba(255,255,255,.4);border-style:solid;border-width:0}
 .vc.tl{top:12px;left:12px;border-top-width:1px;border-left-width:1px}.vc.tr{top:12px;right:12px;border-top-width:1px;border-right-width:1px}
@@ -105,6 +120,21 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 .profile-pill:hover{border-color:var(--text)}.profile-pill.active{border-color:var(--text);background:var(--text)}
 .profile-pill.active .profile-label{color:white}
 .profile-swatches{display:flex;gap:2px}.profile-swatch{width:14px;height:14px;border-radius:50%;border:1px solid rgba(0,0,0,.06)}
+.profile-add{border-style:dashed;opacity:.6}.profile-add:hover{opacity:1}.profile-add .profile-label{font-size:14px;font-weight:bold;line-height:1}
+.profile-del{margin-left:2px;font-size:12px;opacity:.4;cursor:pointer;line-height:1}.profile-del:hover{opacity:1;color:#e44}
+.prof-creator-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.prof-creator-modal{background:#fff;border-radius:12px;padding:20px 24px;width:min(420px,90vw);max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.3)}
+.prof-creator-title{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;letter-spacing:1px;margin-bottom:12px}
+.prof-name-input{width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-family:'Space Mono',monospace;font-size:12px;margin-bottom:12px;outline:none;transition:border-color .15s}
+.prof-name-input:focus{border-color:#333}
+.prof-creator-subtitle{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.5px;color:#888;margin-bottom:8px}
+.prof-ink-grid{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:16px}
+.prof-ink-chip{position:relative;padding:4px 10px;border-radius:14px;font-family:'Space Mono',monospace;font-size:9px;cursor:pointer;border:2px solid transparent;transition:all .12s;user-select:none}
+.prof-ink-chip:hover{transform:scale(1.05)}.prof-ink-chip.selected{border-color:#333;box-shadow:0 0 0 1px #333}
+.prof-ink-num{position:absolute;top:-6px;right:-4px;background:#333;color:#fff;font-size:8px;width:14px;height:14px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.prof-creator-actions{display:flex;gap:8px;justify-content:flex-end}
+.prof-btn{padding:7px 16px;border:1px solid #ddd;border-radius:6px;background:#fff;font-family:'Space Mono',monospace;font-size:11px;cursor:pointer}
+.prof-btn:hover{border-color:#333}.prof-btn-primary{background:#333;color:#fff;border-color:#333}.prof-btn-primary:hover{background:#555}
 .profile-label{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.5px;color:var(--text-muted)}
 /* Paper */
 .paper-section{padding:8px 12px;display:flex;flex-direction:column;gap:8px}
@@ -207,8 +237,8 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
 .ph-rec-badge{position:absolute;top:60px;right:12px;font-family:'Space Mono',monospace;font-size:11px;color:var(--accent);letter-spacing:1px;display:none;z-index:11}
 .ph-rec-badge.show{display:block}
 /* Viewfinder — centers the canvas box on black */
-.ph-viewfinder{flex:1;position:relative;overflow:hidden;min-height:0;background:#000;display:flex;align-items:center;justify-content:center}
-.ph-viewfinder canvas{max-width:100%;max-height:100%;display:block;border-radius:12px;object-fit:contain}
+.ph-viewfinder{flex:1;position:relative;overflow:hidden;min-height:0;background:#1a1a18;display:flex;align-items:center;justify-content:center;padding:12px}
+.ph-viewfinder canvas{max-width:calc(100% - 12px);max-height:calc(100% - 12px);display:block;border-radius:2px;object-fit:contain;box-shadow:0 2px 16px rgba(0,0,0,.5),0 0 1px rgba(0,0,0,.3)}
 .ph-viewfinder video{display:none}
 /* Crop guide overlay — shows save area when aspect is set */
 .ph-crop-guide{position:absolute;inset:0;pointer-events:none;z-index:5;display:none}
@@ -301,7 +331,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
 <header>
   <div class="header-inner">
   <div class="header-row">
-    <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text-muted);opacity:0.6">v10</span>
+    <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text-muted);opacity:0.6">v11</span>
     <div class="header-mode">
       <button class="header-mode-btn active" id="modeGrain" onclick="setMode('grain')">GRAIN</button>
       <button class="header-mode-btn" id="modeScreen" onclick="setMode('screen')">SCREEN</button>
@@ -311,6 +341,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
       <button class="header-btn primary" onclick="saveHiRes()">↓ SAVE</button>
       <button class="header-btn" onclick="exportSeparations()">SEPS</button>
       <button class="header-btn" onclick="newMisreg()">RE-REG</button>
+      <button class="header-btn" id="compareBtn" onclick="toggleCompare()">COMPARE</button>
     </div>
   </div>
   <div class="header-row header-row-right">
@@ -333,6 +364,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
   <div class="viewfinder-panel" id="viewfinder">
     <canvas id="gl"></canvas>
     <video id="vid" autoplay playsinline muted style="display:none"></video>
+    <div class="compare-overlay" id="compareOverlay"><img id="compareImg" /><div class="compare-handle" id="compareHandle"></div><div class="compare-label compare-label-l">ORIGINAL</div><div class="compare-label compare-label-r">RISO</div></div>
     <div class="vf-overlay"><div class="vc tl"></div><div class="vc tr"></div><div class="vc bl"></div><div class="vc br"></div></div>
     <div class="crop-guide" id="deskCropGuide"><div class="crop-guide-inner" id="deskCropInner"></div></div>
     <div class="status-bar"><span class="status-badge" id="statusBadge">● READY</span><span class="status-badge" id="resBadge">--</span></div>
@@ -580,12 +612,22 @@ vec3 adjustRGB(vec3 rgb, vec2 pix){
   return clamp(rgb, 0.0, 1.0);
 }
 
-// ─── RGB to CMYK ───
+// ─── RGB to CMYK with UCR (Under Color Removal) ───
+// Reduces CMY in shadows where K carries the density, preventing 4-ink mud
 vec4 toCMYK(vec3 rgb){
   float k = 1.0 - max(rgb.r, max(rgb.g, rgb.b));
   if(k >= 0.999) return vec4(0.0, 0.0, 0.0, 1.0);
   float ik = 1.0 / (1.0 - k);
-  return vec4((1.0-rgb.r-k)*ik, (1.0-rgb.g-k)*ik, (1.0-rgb.b-k)*ik, k);
+  float c = (1.0-rgb.r-k)*ik;
+  float m = (1.0-rgb.g-k)*ik;
+  float y = (1.0-rgb.b-k)*ik;
+  // UCR: when K is high, reduce CMY proportionally to avoid oversaturation
+  // Ramps from 0% reduction at K=0.2 to 45% reduction at K=1.0
+  float ucr = smoothstep(0.2, 0.8, k) * 0.45;
+  c *= 1.0 - ucr;
+  m *= 1.0 - ucr;
+  y *= 1.0 - ucr;
+  return vec4(c, m, y, k);
 }
 
 // ─── Grayscale detection: true when R≈G≈B (duotone source) ───
@@ -766,8 +808,12 @@ float getCoverage(vec4 cmyk, vec2 rpx, int idx, int ch, float noise1, float dens
   // ink-on-paper appearance (including real physical dot gain and tonal response).
   // Only a subtle dot gain effect remains for the user slider.
   ink = clamp(ink, 0.0, 1.0);
-  float dgSpread = u_dotGain * 0.002;
+  float dgSpread = u_dotGain * 0.008;
   ink = clamp(ink + dgSpread * ink * (1.0 - ink) * 4.0, 0.0, 1.0);
+
+  // Cross-layer depletion: later layers print on already-wet paper
+  // Each subsequent layer gets ~3% less ink transfer
+  ink *= 1.0 - 0.03 * float(idx);
 
   // Temporal ink density flicker: each frame is a separate drum pass
   float densFlicker = 1.0 + (hash(vec2(u_frameSeed * 7.3, float(idx) * 1.3)) - 0.5) * 0.07;
@@ -840,15 +886,13 @@ vec3 lutBlend(float d, vec3 paper, vec3 p10, vec3 p30, vec3 p50, vec3 p70, vec3 
 // ─── Apply calibrated ink to accumulated result via ratio transfer ───
 // coverage: continuous ink amount (0-1) from getCoverage()
 // grain: grain/halftone texture (0-1) from getGrainTexture() — adds visual texture
-vec3 calBlend(vec3 result, vec3 paper, float coverage, float grain, vec3 p10, vec3 p30, vec3 p50, vec3 p70, vec3 p100) {
+vec3 calBlend(vec3 result, vec3 paper, float coverage, float grain, vec3 p10, vec3 p30, vec3 p50, vec3 p70, vec3 p100, float layerIdx) {
   if (coverage < 0.001) return result;
 
   // LUT lookup with continuous coverage — gets the calibrated ink-on-paper color
   vec3 singleInk = lutBlend(coverage, paper, p10, p30, p50, p70, p100);
-  vec3 ratio = singleInk / max(paper, vec3(0.001));
-
-  // Apply the LUT ratio as the base — this gives accurate tonal reproduction
-  vec3 baseResult = result * ratio;
+  vec3 safePaper = max(paper, vec3(0.05)); // prevent extreme ratios on dark paper
+  vec3 ratio = singleInk / safePaper;
 
   // Grain texture adds visual risograph character on top of the accurate color.
   // Grain modulates between "slightly more ink" and "slightly more paper" around
@@ -862,9 +906,20 @@ vec3 calBlend(vec3 result, vec3 paper, float coverage, float grain, vec3 p10, ve
   // Modulate: shift coverage up or down per pixel
   float modCov = clamp(coverage + grainOffset, 0.0, 1.0);
   vec3 modInk = lutBlend(modCov, paper, p10, p30, p50, p70, p100);
-  vec3 modRatio = modInk / max(paper, vec3(0.001));
+  vec3 modRatio = modInk / safePaper;
 
-  return result * modRatio;
+  // On dark paper (paper lum < 0.15), blend toward opacity model to prevent blowout
+  float paperLum = dot(paper, vec3(0.299, 0.587, 0.114));
+  float darkPaperMix = smoothstep(0.15, 0.05, paperLum);
+
+  // Ink order dependence: later layers sit on top — shift toward opacity model
+  // Layer 0: pure ratio-transfer. Layer 3: +12% toward opacity (fresher, wetter ink)
+  float orderBias = layerIdx * 0.04;
+
+  vec3 ratioResult = result * modRatio;
+  vec3 opaqueResult = mix(result, modInk, modCov);
+  float totalOpacity = clamp(darkPaperMix + orderBias, 0.0, 1.0);
+  return mix(ratioResult, opaqueResult, totalOpacity);
 }
 
 // ─── Opaque ink blend (metallic inks that sit ON the surface) ───
@@ -884,9 +939,10 @@ vec3 calBlendOpaque(vec3 result, vec3 paper, float coverage, float grain, vec3 p
   vec3 modInk = lutBlend(modCov, paper, p10, p30, p50, p70, p100);
 
   // Opacity blend: ink sits on top, replacing rather than filtering
-  // At full coverage, surface = ink color. At zero, surface = unchanged.
-  // The modulated ink color IS the final appearance (not a ratio).
-  return mix(result, modInk, modCov);
+  // Metallic inks are ~80% opaque — some underlying surface shows through
+  // even at full coverage, matching real metallic screen print behaviour.
+  float opacity = modCov * 0.80;
+  return mix(result, modInk, opacity);
 }
 
 // ─── Beer-Lambert ink blend with Yule-Nielsen correction (n=2) ───
@@ -913,7 +969,7 @@ vec3 yuBlend(vec3 paper, vec3 ink, float d){
   // Blend: low coverage → transparent (dots), high coverage → opaque (solid)
   // Crossover at ~60% coverage mimics real soy ink behavior
   float opacity = smoothstep(0.3, 0.85, d);
-  vec3 normalResult = mix(transparent, opaque, opacity * 0.6);
+  vec3 normalResult = mix(transparent, opaque, opacity * 0.88);
 
   // Ink contamination: multi-pass re-wetting causes subtle cross-ink mixing
   // Later ink layers slightly dissolve previous, preventing perfectly clean overlaps
@@ -1039,7 +1095,7 @@ void main(){
       if (u_opaque0 > 0.5) {
         result = calBlendOpaque(result, u_paper, cov, grain * mask, u_lutA0, u_lutB0, u_lutC0, u_lutD0, u_ink0);
       } else {
-        result = calBlend(result, u_paper, cov, grain * mask, u_lutA0, u_lutB0, u_lutC0, u_lutD0, u_ink0);
+        result = calBlend(result, u_paper, cov, grain * mask, u_lutA0, u_lutB0, u_lutC0, u_lutD0, u_ink0, 0.0);
       }
     } else {
       result = yuBlend(result, u_ink0, grain * mask);
@@ -1064,7 +1120,7 @@ void main(){
       if (u_opaque1 > 0.5) {
         result = calBlendOpaque(result, u_paper, cov, grain * mask, u_lutA1, u_lutB1, u_lutC1, u_lutD1, u_ink1);
       } else {
-        result = calBlend(result, u_paper, cov, grain * mask, u_lutA1, u_lutB1, u_lutC1, u_lutD1, u_ink1);
+        result = calBlend(result, u_paper, cov, grain * mask, u_lutA1, u_lutB1, u_lutC1, u_lutD1, u_ink1, 1.0);
       }
     } else {
       result = yuBlend(result, u_ink1, grain * mask);
@@ -1089,7 +1145,7 @@ void main(){
       if (u_opaque2 > 0.5) {
         result = calBlendOpaque(result, u_paper, cov, grain * mask, u_lutA2, u_lutB2, u_lutC2, u_lutD2, u_ink2);
       } else {
-        result = calBlend(result, u_paper, cov, grain * mask, u_lutA2, u_lutB2, u_lutC2, u_lutD2, u_ink2);
+        result = calBlend(result, u_paper, cov, grain * mask, u_lutA2, u_lutB2, u_lutC2, u_lutD2, u_ink2, 2.0);
       }
     } else {
       result = yuBlend(result, u_ink2, grain * mask);
@@ -1111,7 +1167,7 @@ void main(){
       if (u_opaque3 > 0.5) {
         result = calBlendOpaque(result, u_paper, cov, grain * mask, u_lutA3, u_lutB3, u_lutC3, u_lutD3, u_ink3);
       } else {
-        result = calBlend(result, u_paper, cov, grain * mask, u_lutA3, u_lutB3, u_lutC3, u_lutD3, u_ink3);
+        result = calBlend(result, u_paper, cov, grain * mask, u_lutA3, u_lutB3, u_lutC3, u_lutD3, u_ink3, 3.0);
       }
     } else {
       result = yuBlend(result, u_ink3, grain * mask);
@@ -1138,11 +1194,17 @@ void main(){
   float scanNoise = hash(rpx * 1.37 + 99.0);
   result *= 1.0 + (scanNoise - 0.5) * 0.004;
 
+  // Edge vignette: subtle ink squeeze/roller fade at print edges
+  vec2 edgeDist = v_uv * (1.0 - v_uv); // 0 at edges, 0.25 at center
+  float vignette = edgeDist.x * edgeDist.y * 16.0; // 0→1
+  vignette = smoothstep(0.0, 0.06, vignette); // narrow dark zone at edges
+  result *= 0.97 + 0.03 * vignette; // max 3% darkening at very edge
+
   // ─── Crop marks: L-shaped, one per layer in its ink color ───
   // Each mark shifts with its layer's offset — shows misregistration
-  float armLen = 0.015;
-  float thick = 0.001;
-  vec2 inset = vec2(0.012, 0.012);
+  float armLen = 0.035;
+  float thick = 0.0018;
+  vec2 inset = vec2(0.025, 0.025);
   if(u_layers >= 1){
     vec2 off0 = u_off0 + vec2(hash(vec2(u_frameSeed*5.1, 0.1))-0.5, hash(vec2(u_frameSeed*5.7, 0.2))-0.5)*0.0014;
     float cm = cropMark(v_uv + off0, inset, 0, armLen, thick);
@@ -1385,7 +1447,63 @@ function cacheInkColors(){
     }
   }
 }
-function cacheSlider(id,val){cached[id]=parseFloat(val);needsRedraw=true;}
+function cacheSlider(id,val){cached[id]=parseFloat(val);needsRedraw=true;pushUndo();}
+
+// ======================== UNDO / REDO ========================
+const undoStack=[], redoStack=[];
+const MAX_UNDO=40;
+let undoLock=false; // prevent recursive snapshots during restore
+function getState(){
+  return JSON.stringify({
+    channels:[...channels],
+    angles:[...layerAngles],
+    dens:[...cached.layerDens],
+    prof:activeProf?activeProf.name:null,
+    mode,
+    grainSize:cached.grainSize, dotGain:cached.dotGain, inkNoise:cached.inkNoise,
+    paperTex:cached.paperTex, screenCell:cached.screenCell, grainStatic:cached.grainStatic,
+    imgBright:cached.imgBright, imgContrast:cached.imgContrast, imgSat:cached.imgSat,
+    paper:curPaper, paperColor:curPaperColor
+  });
+}
+function pushUndo(){
+  if(undoLock) return;
+  const s=getState();
+  if(undoStack.length && undoStack[undoStack.length-1]===s) return; // no change
+  undoStack.push(s);
+  if(undoStack.length>MAX_UNDO) undoStack.shift();
+  redoStack.length=0; // clear redo on new action
+}
+function restoreState(json){
+  undoLock=true;
+  try{
+    const s=JSON.parse(json);
+    channels=s.channels;
+    layerAngles=s.angles;
+    cached.layerDens=s.dens;
+    mode=s.mode;
+    cached.grainSize=s.grainSize; cached.dotGain=s.dotGain; cached.inkNoise=s.inkNoise;
+    cached.paperTex=s.paperTex; cached.screenCell=s.screenCell; cached.grainStatic=s.grainStatic;
+    cached.imgBright=s.imgBright; cached.imgContrast=s.imgContrast; cached.imgSat=s.imgSat;
+    // Restore profile ref
+    activeProf=s.prof?allProfiles().find(p=>p.name===s.prof)||null:null;
+    // Sync UI sliders
+    const sliders={imgBright:s.imgBright,imgContrast:s.imgContrast,imgSat:s.imgSat};
+    for(const[id,v] of Object.entries(sliders)){const e=document.getElementById(id);if(e)e.value=v;const ve=document.getElementById(id+'Val');if(ve)ve.textContent=v;}
+    cacheInkColors();updateUI();needsRedraw=true;
+  }finally{ undoLock=false; }
+}
+function undo(){
+  if(undoStack.length<2) return; // need at least 2: current + previous
+  redoStack.push(undoStack.pop()); // move current to redo
+  restoreState(undoStack[undoStack.length-1]);
+}
+function redo(){
+  if(!redoStack.length) return;
+  const s=redoStack.pop();
+  undoStack.push(s);
+  restoreState(s);
+}
 
 function newMisreg(){
   // Mono: single drum pass = no misregistration
@@ -1397,6 +1515,38 @@ function newMisreg(){
   const m=parseFloat(el('misreg').value)/500;
   for(let i=0;i<4;i++) misreg[i]=[(Math.random()-.5)*m*2,(Math.random()-.5)*m*2];
   needsRedraw=true;
+}
+
+// ======================== COMPARE MODE ========================
+let compareOn=false;
+function toggleCompare(){
+  compareOn=!compareOn;
+  const overlay=el('compareOverlay');
+  const btn=el('compareBtn');
+  if(compareOn && srcImg){
+    el('compareImg').src=srcImg.src;
+    overlay.classList.add('active');
+    btn.classList.add('active');
+    initCompareDrag();
+  } else {
+    compareOn=false;
+    overlay.classList.remove('active');
+    btn.classList.remove('active');
+  }
+}
+function setComparePos(x){
+  const overlay=el('compareOverlay');
+  const rect=overlay.getBoundingClientRect();
+  const pct=Math.max(0.05,Math.min(0.95,(x-rect.left)/rect.width));
+  el('compareImg').style.clipPath=`inset(0 ${(1-pct)*100}% 0 0)`;
+  el('compareHandle').style.left=pct*100+'%';
+}
+function initCompareDrag(){
+  const handle=el('compareHandle');
+  let dragging=false;
+  const onMove=e=>{if(!dragging)return; const x=e.touches?e.touches[0].clientX:e.clientX; setComparePos(x);};
+  const onUp=()=>{dragging=false;document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);document.removeEventListener('touchmove',onMove);document.removeEventListener('touchend',onUp);};
+  handle.onmousedown=handle.ontouchstart=e=>{e.preventDefault();dragging=true;document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);document.addEventListener('touchmove',onMove,{passive:false});document.addEventListener('touchend',onUp);};
 }
 
 // ======================== WEBGL INIT ========================
@@ -1737,7 +1887,65 @@ function handleFile(e){
     img.src=ev.target.result;
   };
   r.readAsDataURL(f);e.target.value='';
+  hideOnboarding();
 }
+
+function loadSampleImage(){
+  // Generate a colorful test image procedurally — hue sweep + color blocks + gradients
+  const w=640,h=480;
+  const c=document.createElement('canvas');c.width=w;c.height=h;
+  const ctx2=c.getContext('2d');
+  // Sky-to-ground gradient background
+  const bg=ctx2.createLinearGradient(0,0,0,h);
+  bg.addColorStop(0,'#4a90d9');bg.addColorStop(0.45,'#87ceeb');bg.addColorStop(0.55,'#8fbc8f');bg.addColorStop(1,'#3a5f3a');
+  ctx2.fillStyle=bg;ctx2.fillRect(0,0,w,h);
+  // Sun
+  const sun=ctx2.createRadialGradient(480,80,10,480,80,80);
+  sun.addColorStop(0,'#fff8dc');sun.addColorStop(0.4,'#ffe066');sun.addColorStop(1,'rgba(255,224,102,0)');
+  ctx2.fillStyle=sun;ctx2.fillRect(400,0,240,160);
+  // Color blocks — arranged like paint swatches
+  const colors=['#e63946','#f1a208','#f7e733','#2d6a4f','#457b9d','#1d3557','#6a4c93','#e76f51','#d4a373','#264653','#ef476f','#06d6a0'];
+  colors.forEach((col,i)=>{
+    const x=20+(i%6)*100, y=140+Math.floor(i/6)*80;
+    ctx2.fillStyle=col;ctx2.fillRect(x,y,85,65);
+    // Inner highlight
+    ctx2.fillStyle='rgba(255,255,255,0.2)';ctx2.fillRect(x+2,y+2,81,20);
+  });
+  // Grayscale strip
+  for(let i=0;i<10;i++){
+    const v=Math.round(i*28.3);
+    ctx2.fillStyle=`rgb(${v},${v},${v})`;
+    ctx2.fillRect(20+i*60,320,55,40);
+  }
+  // Skin tone strip
+  const skins=['#f5d0a9','#e8b88a','#c68c53','#8d5524','#3b1f0a','#f9c9a8','#dba270','#a0612e'];
+  skins.forEach((col,i)=>{ctx2.fillStyle=col;ctx2.fillRect(20+i*75,375,68,40);});
+  // Hue sweep bar at bottom
+  for(let x=0;x<w;x++){
+    ctx2.fillStyle=`hsl(${x/w*360},85%,50%)`;
+    ctx2.fillRect(x,430,1,35);
+  }
+  // Load into WebGL
+  const img=new Image();
+  img.onload=()=>{
+    srcImg=img;
+    gl.activeTexture(gl.TEXTURE0);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);
+    hasSrc=true;needsAspectUpdate=true;computeCrop();
+    $status.textContent='● SAMPLE';
+    $res.textContent=w+'×'+h;
+  };
+  img.src=c.toDataURL('image/jpeg',0.92);
+}
+
+function showOnboarding(){
+  const hint=document.createElement('div');
+  hint.id='onboardHint';
+  hint.className='onboard-hint';
+  hint.innerHTML='<div class="onboard-inner"><div class="onboard-icon">◉</div><div class="onboard-title">RISO/CAM</div><div class="onboard-text">Upload an image or use your camera<br>to simulate risograph printing</div><div class="onboard-actions"><button class="onboard-btn" onclick="pickFile();hideOnboarding()">UPLOAD</button><button class="onboard-btn" onclick="toggleCam();hideOnboarding()">CAMERA</button></div></div>';
+  el('viewfinder').appendChild(hint);
+}
+function hideOnboarding(){const h=document.getElementById('onboardHint');if(h)h.remove();}
 
 async function toggleCam(){
   if(camOn){
@@ -1759,6 +1967,7 @@ async function toggleCam(){
     camOn=true;needsAspectUpdate=true;computeCrop();
     el('camBtn').textContent='STOP CAM';
     $status.textContent='● LIVE';
+    hideOnboarding();
     // Use requestVideoFrameCallback if available (Chrome/Edge)
     if($vid.requestVideoFrameCallback){
       $vid.requestVideoFrameCallback(onVideoFrame);
@@ -2147,13 +2356,74 @@ function findSlotAt(slots,clientY){
 
 function renderColors(){}
 
+// Custom user profiles (saved to localStorage)
+let customProfiles=JSON.parse(localStorage.getItem('risocam_custom_profiles')||'[]');
+function allProfiles(){ return PROFILES.concat(customProfiles); }
+
 function renderProfiles(targetId){
   const target=el(targetId||'profileList');
   if(!target)return;
-  target.innerHTML=PROFILES.map((p,i)=>{
+  const all=allProfiles();
+  let html=all.map((p,i)=>{
     const sw=p.colors.map(n=>{const c=RISO_COLORS.find(r=>r.name===n);return`<div class="profile-swatch" style="background:${c?c.hex:'#ccc'}"></div>`;}).join('');
-    return`<div class="profile-pill" data-i="${i}" onclick="applyProf(PROFILES[${i}])"><div class="profile-swatches">${sw}</div><span class="profile-label">${p.name}</span></div>`;
+    const isCustom=i>=PROFILES.length;
+    const del=isCustom?`<span class="profile-del" onclick="event.stopPropagation();deleteCustomProfile(${i-PROFILES.length},'${targetId||'profileList'}')">&times;</span>`:'';
+    return`<div class="profile-pill${isCustom?' custom':''}" data-ai="${i}" onclick="applyProf(allProfiles()[${i}])"><div class="profile-swatches">${sw}</div><span class="profile-label">${p.name}</span>${del}</div>`;
   }).join('');
+  html+=`<div class="profile-pill profile-add" onclick="openProfileCreator()"><span class="profile-label">+</span></div>`;
+  target.innerHTML=html;
+}
+
+function deleteCustomProfile(idx,targetId){
+  customProfiles.splice(idx,1);
+  localStorage.setItem('risocam_custom_profiles',JSON.stringify(customProfiles));
+  renderProfiles(targetId);
+  if(el('phProfileGrid')) renderProfiles('phProfileGrid');
+}
+
+function openProfileCreator(){
+  // Build modal
+  let overlay=document.getElementById('profCreatorOverlay');
+  if(overlay) overlay.remove();
+  overlay=document.createElement('div');
+  overlay.id='profCreatorOverlay';
+  overlay.className='prof-creator-overlay';
+  const inkOpts=RISO_COLORS.map(c=>`<div class="prof-ink-chip" data-name="${c.name}" onclick="toggleProfInk(this)" style="background:${c.hex};color:${luminance(c.hex)>0.4?'#000':'#fff'}">${c.name}</div>`).join('');
+  overlay.innerHTML=`<div class="prof-creator-modal">
+    <div class="prof-creator-title">Create Profile</div>
+    <input id="profNameInput" class="prof-name-input" placeholder="Profile name" maxlength="20" />
+    <div class="prof-creator-subtitle">Select 1–4 inks (in print order)</div>
+    <div class="prof-ink-grid">${inkOpts}</div>
+    <div class="prof-creator-actions">
+      <button class="prof-btn" onclick="closeProfCreator()">Cancel</button>
+      <button class="prof-btn prof-btn-primary" onclick="saveProfCreator()">Create</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click',e=>{if(e.target===overlay) closeProfCreator();});
+}
+function closeProfCreator(){ const o=document.getElementById('profCreatorOverlay'); if(o) o.remove(); }
+function luminance(hex){ const r=parseInt(hex.slice(1,3),16)/255,g=parseInt(hex.slice(3,5),16)/255,b=parseInt(hex.slice(5,7),16)/255; return 0.299*r+0.587*g+0.114*b; }
+let profSelectedInks=[];
+function toggleProfInk(chip){
+  const name=chip.dataset.name;
+  const idx=profSelectedInks.indexOf(name);
+  if(idx>=0){ profSelectedInks.splice(idx,1); chip.classList.remove('selected'); chip.querySelector('.prof-ink-num')?.remove(); }
+  else if(profSelectedInks.length<4){ profSelectedInks.push(name); chip.classList.add('selected'); const num=document.createElement('span'); num.className='prof-ink-num'; num.textContent=profSelectedInks.length; chip.appendChild(num); }
+  // Re-number all
+  document.querySelectorAll('.prof-ink-chip.selected').forEach(c=>{ const n=profSelectedInks.indexOf(c.dataset.name); const numEl=c.querySelector('.prof-ink-num'); if(numEl) numEl.textContent=n+1; });
+}
+function saveProfCreator(){
+  const name=(document.getElementById('profNameInput')?.value||'').trim();
+  if(!name){ document.getElementById('profNameInput').style.borderColor='#f55'; return; }
+  if(profSelectedInks.length<1) return;
+  customProfiles.push({name,colors:[...profSelectedInks]});
+  localStorage.setItem('risocam_custom_profiles',JSON.stringify(customProfiles));
+  profSelectedInks=[];
+  closeProfCreator();
+  renderProfiles();
+  if(el('phProfileGrid')) renderProfiles('phProfileGrid');
+  applyProf(customProfiles[customProfiles.length-1]);
 }
 
 function applyProf(p){
@@ -2165,22 +2435,39 @@ function applyProf(p){
   } else {
     for(let i=0;i<4;i++) cached.layerDens[i]=88;
   }
-  // Mono: sync all angles to same value (prevents overlapping halftone grids)
+  // Screen linking: channels sharing the same physical ink share the same angle
   if(p.colors.length===1){
+    // Mono: all layers share one screen
     const a=layerAngles[0]||15;
     for(let i=0;i<4;i++) layerAngles[i]=a;
+  } else if(p.colors.length===2){
+    // Duotone: slots [0,3] = ink A, slots [1,2] = ink B — link their screens
+    layerAngles=[15,75,75,15];
+  } else if(p.colors.length===3){
+    // Tritone: slots [0,3] = ink A, slot 1 = ink B, slot 2 = ink C
+    layerAngles=[15,75,45,15];
   } else {
-    // Multi-color: reset to default spread
+    // 4-color (CMYK): each slot = independent ink, classic halftone angles
     layerAngles=[15,75,0,45];
   }
   onChannelsChanged();
+  pushUndo();
 }
 
 function onChannelsChanged(){
-  // Auto-sync angles when all channels match (mono state)
-  if(isMono()){
+  // Screen linking: sync angles for channels sharing the same physical ink
+  const unique=new Set(channels.filter(c=>c));
+  if(unique.size===1){
+    // Mono: all share one screen
     const a=layerAngles[0];
     for(let i=1;i<4;i++) layerAngles[i]=a;
+  } else if(unique.size===2){
+    // Duotone: link screens for paired channels [0,3] and [1,2]
+    layerAngles[3]=layerAngles[0];
+    layerAngles[2]=layerAngles[1];
+  } else if(unique.size===3){
+    // Tritone: link screens for channels [0,3]
+    layerAngles[3]=layerAngles[0];
   }
   newMisreg();cacheInkColors();updateUI();needsRedraw=true;
 }
@@ -2286,6 +2573,7 @@ function setPaperColor(idx){
   cached.paperColor=hexRGB(hex);
   document.querySelectorAll('#paperColorGrid .paper-dot').forEach((d,i)=>d.classList.toggle('active',i===idx));
   needsRedraw=true;
+  pushUndo();
 }
 function renderPaperUI(){
   const colorGrid=el('paperColorGrid');
@@ -2705,6 +2993,10 @@ document.addEventListener('DOMContentLoaded',()=>{
   applyProf(PROFILES[0]);
   setPaperColor(0);
 
+  // Load sample image so the app shows something immediately
+  loadSampleImage();
+  showOnboarding();
+
   // Initial layout
   layoutSwitch();
 
@@ -2721,6 +3013,16 @@ document.addEventListener('DOMContentLoaded',()=>{
 
   // Redraw on resize/orientation change
   window.addEventListener('resize',()=>{needsRedraw=true;needsAspectUpdate=true;});
+
+  // Undo/Redo keyboard shortcuts (Cmd+Z / Ctrl+Z, Cmd+Shift+Z / Ctrl+Shift+Z)
+  document.addEventListener('keydown',e=>{
+    const mod=e.metaKey||e.ctrlKey;
+    if(mod && e.key==='z' && !e.shiftKey){e.preventDefault();undo();}
+    if(mod && (e.key==='Z'||(e.key==='z'&&e.shiftKey))){e.preventDefault();redo();}
+    if(mod && e.key==='y'){e.preventDefault();redo();}
+  });
+  // Initial undo snapshot
+  pushUndo();
 
   // ─── PWA: Install as standalone app on Android/iOS ───
   const manifest={
