@@ -228,14 +228,14 @@ body.phone-mode .phone-ui{display:flex;flex-direction:column;height:100vh;height
 body.phone-mode{overflow:hidden;position:fixed;width:100%}
 body.phone-mode header,body.phone-mode .app-container{display:none!important}
 /* Top bar — floating over viewfinder */
-.ph-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;padding:calc(env(safe-area-inset-top,8px) + 8px) 12px 8px;gap:8px;z-index:10;background:linear-gradient(180deg,rgba(0,0,0,.55) 0%,transparent 100%)}
+.ph-top{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;padding:calc(env(safe-area-inset-top,8px) + 8px) 12px 8px;gap:8px;z-index:10}
 .ph-top-left{display:flex;gap:6px;align-items:center}
 .ph-top-center{position:absolute;left:50%;transform:translateX(-50%)}
-.ph-zoom-btn{font-family:'Space Mono',monospace!important;font-size:11px!important;font-weight:700;padding:0 14px!important;height:34px!important;background:rgba(0,0,0,.4)!important;border:1.5px solid rgba(255,255,255,.25)!important;color:white}
+.ph-zoom-btn{font-family:'Space Mono',monospace!important;font-size:9px!important;font-weight:700;letter-spacing:1px}
 .ph-top-right{display:flex;gap:6px;margin-left:auto;align-items:center}
-.ph-icon-btn{height:34px;padding:0 12px;border-radius:17px;background:#333;border:none;color:white;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;-webkit-tap-highlight-color:transparent}
-.ph-icon-btn:active{background:#555}
-.ph-icon-btn.active{background:white;color:#111}
+.ph-icon-btn{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;height:30px;padding:0 10px;border-radius:15px;background:white;border:1px solid var(--border);color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;-webkit-tap-highlight-color:transparent}
+.ph-icon-btn:active{background:#e8e2d8}
+.ph-icon-btn.active{background:var(--text);color:white;border-color:var(--text)}
 .ph-mode-pill{font-family:'Space Mono',monospace;font-size:10px;letter-spacing:.5px;font-weight:700}
 .ph-icon-btn svg{width:20px;height:20px}
 /* Rec badge */
@@ -427,14 +427,14 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
   <!-- Top bar — floats over viewfinder -->
   <div class="ph-top">
     <div class="ph-top-left">
-      <button class="ph-icon-btn" id="phSwitchCam" onclick="phFlipCam()" title="Switch camera">🔄</button>
+      <button class="ph-icon-btn" id="phSwitchCam" onclick="phFlipCam()" title="Switch camera"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M21 3l-7 7"/><path d="M8 21H3v-5"/><path d="M3 21l7-7"/></svg></button>
     </div>
     <div class="ph-top-center">
       <button class="ph-icon-btn ph-zoom-btn" id="phResBtn" onclick="phCycleRes()">2×</button>
     </div>
     <div class="ph-top-right">
-      <button class="ph-icon-btn" onclick="pickFile()" title="Upload">↑</button>
-      <button class="ph-icon-btn ph-exit-btn" onclick="togglePhoneMode()" title="Exit">✕</button>
+      <button class="ph-icon-btn" onclick="pickFile()" title="Upload">UPLOAD</button>
+      <button class="ph-icon-btn ph-exit-btn" onclick="togglePhoneMode()" title="Exit">EXIT</button>
     </div>
   </div>
   <!-- Bottom controls — float over viewfinder -->
@@ -1320,17 +1320,6 @@ void main(){
       result = mix(result, u_ink3, cm * 0.7);
     }
   }
-
-  // ─── Paper edge: subtle shadow/darkening at very edge of paper ───
-  // Creates a slightly rough edge with shadow, like a real sheet of paper
-  float dL = v_uv.x;
-  float dR = 1.0 - v_uv.x;
-  float dT = v_uv.y;
-  float dB = 1.0 - v_uv.y;
-  float dEdge = min(min(dL, dR), min(dT, dB));
-  // Subtle shadow at paper edge
-  float edgeShadow = smoothstep(0.0, 0.008, dEdge);
-  result *= 0.92 + 0.08 * edgeShadow;
 
   gl_FragColor = vec4(result, 1.0);
 }
@@ -2794,6 +2783,7 @@ function applyProf(p){
   // syncSameColorPlates (in onChannelsChanged) locks same-ink channels together
   onChannelsChanged();
   pushUndo();
+  if(isPhone()) phCloseOverlay();
 }
 
 function onChannelsChanged(){
@@ -3269,10 +3259,6 @@ function phPopulateOverlay(name){
     const body=el('phSettingsBody');
     body.innerHTML=`
       <div class="settings-body" style="padding:10px 14px">
-        <div style="display:flex;gap:6px;margin-bottom:12px">
-          <button class="mode-btn ${mode==='grain'?'active':''}" onclick="setMode('grain');el('phModeBtn').textContent='GRAIN'">GRAIN</button>
-          <button class="mode-btn ${mode==='screen'?'active':''}" onclick="setMode('screen');el('phModeBtn').textContent='SCREEN'">SCREEN</button>
-        </div>
         <div class="slider-row"><span class="slider-label">Grain Size</span><input type="range" id="phGrainSize" min="0.5" max="3" value="${cached.grainSize}" step="0.1"><span class="slider-value" id="phGrainSizeVal">${cached.grainSize}</span></div>
         <div class="slider-row"><span class="slider-label">Screen Cell</span><input type="range" id="phScreenCell" min="3" max="20" value="${cached.screenCell}" step="1"><span class="slider-value" id="phScreenCellVal">${cached.screenCell}</span></div>
         <div class="slider-row"><span class="slider-label">Dot Gain</span><input type="range" id="phDotGain" min="0" max="25" value="${cached.dotGain}" step="1"><span class="slider-value" id="phDotGainVal">${cached.dotGain}</span></div>
@@ -3409,6 +3395,25 @@ document.addEventListener('DOMContentLoaded',()=>{
     if(mod && e.key==='z' && !e.shiftKey){e.preventDefault();undo();}
     if(mod && (e.key==='Z'||(e.key==='z'&&e.shiftKey))){e.preventDefault();redo();}
     if(mod && e.key==='y'){e.preventDefault();redo();}
+    // Volume down = shutter (hold for video)
+    if(isPhone() && (e.key==='VolumeDown'||e.key==='AudioVolumeDown')){
+      e.preventDefault();
+      if(!_volDown){
+        _volDown=true;
+        _shutterIsLong=false;
+        _shutterTimer=setTimeout(()=>{_shutterIsLong=true;phStartRec();},400);
+      }
+    }
+  });
+  let _volDown=false;
+  document.addEventListener('keyup',e=>{
+    if(isPhone() && (e.key==='VolumeDown'||e.key==='AudioVolumeDown')){
+      e.preventDefault();
+      _volDown=false;
+      clearTimeout(_shutterTimer);
+      if(_shutterIsLong) phStopRec();
+      else saveHiRes();
+    }
   });
   // Initial undo snapshot
   pushUndo();
