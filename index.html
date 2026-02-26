@@ -2403,6 +2403,21 @@ async function saveHiRes(){
 }
 
 async function doSaveBlob(blob,filename,w,h){
+  // Android: must use share API to save to photo gallery (download goes to Downloads only)
+  const isMobile=/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+  if(isMobile && navigator.canShare){
+    try{
+      const file=new File([blob],filename,{type:blob.type});
+      if(navigator.canShare({files:[file]})){
+        await navigator.share({files:[file],title:'RISO/CAM'});
+        toast('Saved '+w+'×'+h+'!');
+        return;
+      }
+    }catch(e){
+      if(e.name==='AbortError') return;
+    }
+  }
+  // Desktop fallback: standard download
   const link=document.createElement('a');
   link.download=filename;
   link.href=URL.createObjectURL(blob);
@@ -3192,6 +3207,17 @@ function phStartRec(){
   window._recorder.onstop=async()=>{
     const blob=new Blob(window._recChunks,{type:window._recMime});
     const filename='riso_'+Date.now()+'.'+window._recExt;
+    const isMobile=/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+    if(isMobile && navigator.canShare){
+      try{
+        const file=new File([blob],filename,{type:blob.type});
+        if(navigator.canShare({files:[file]})){
+          await navigator.share({files:[file],title:'RISO/CAM'});
+          toast('VIDEO SAVED');
+          return;
+        }
+      }catch(e){if(e.name==='AbortError')return;}
+    }
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');a.href=url;a.download=filename;
     document.body.appendChild(a);a.click();document.body.removeChild(a);
