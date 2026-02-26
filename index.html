@@ -1876,6 +1876,7 @@ function render(){
       }
     } else {
       frame++;
+      frameSeed = Math.random();
     }
   } else {
     const animating = cached.grainStatic > 0 || videoOn;
