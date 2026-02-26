@@ -522,7 +522,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
   <div id="phLookBody"></div>
 </div>
 <div class="toast" id="toast"></div>
-<input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleFile(event)">
+<input type="file" id="fileInput" accept="image/*,video/*,.gif" style="display:none" onchange="handleFile(event)">
 
 <!-- ====== VERTEX SHADER ====== -->
 <script id="vs" type="x-shader/x-vertex">
@@ -1478,7 +1478,7 @@ function loadPaperTexture(key){
 let channels=[null,null,null,null]; // [C slot, M slot, Y slot, K slot]
 let layerOrder=[0,1,2,3]; // Print/render order (first = printed first = bottom)
 let activeProf=null, mode='grain';
-let srcImg=null, camStream=null, camOn=false, hasSrc=false;
+let srcImg=null, camStream=null, camOn=false, videoOn=false, hasSrc=false;
 let misreg=[[0,0],[0,0],[0,0],[0,0]], layerSkews=[0,0,0,0], gl, prog, locs={}, frame=0, frameSeed=Math.random();
 let fpsFrames=0, fpsLast=performance.now();
 let layerAngles=[15,75,0,45];
@@ -1512,7 +1512,8 @@ function el(id){return document.getElementById(id);}
 function computeCrop(){
   // Get source dimensions
   let sw, sh;
-  if(camOn&&$vid&&$vid.videoWidth){sw=$vid.videoWidth;sh=$vid.videoHeight;}
+  if((camOn||(videoOn&&!gifImg))&&$vid&&$vid.videoWidth){sw=$vid.videoWidth;sh=$vid.videoHeight;}
+  else if(videoOn&&gifImg&&gifCanvas){sw=gifCanvas.width;sh=gifCanvas.height;}
   else if(srcImg){sw=srcImg.width;sh=srcImg.height;}
   else{cropRect=[0,0,1,1];return;}
 
@@ -1854,9 +1855,9 @@ function render(){
     if(!isPhone()) setTimeout(()=>{updateCropGuide(0,0,0,0);},50);
   }
 
-  // Upload video frame only when new frame available
+  // Upload video frame only when new frame available (camera or uploaded video)
   let newCamFrame=false;
-  if(camOn&&$vid.readyState>=2){
+  if((camOn||(videoOn&&!gifImg))&&$vid.readyState>=2){
     if(videoFrameReady||!$vid.requestVideoFrameCallback){
       gl.activeTexture(gl.TEXTURE0);
       gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,$vid);
@@ -1865,12 +1866,17 @@ function render(){
       newCamFrame=true;
     }
   }
+  // GIF mode: gifLoop already uploads texture, just mark as new frame
+  if(videoOn&&gifImg&&videoFrameReady){
+    videoFrameReady=false;
+    newCamFrame=true;
+  }
 
   // ─── Riso-FPS throttle: choppy print-animation feel ───
   // When camera is live, only draw at risoFps intervals
   // Canvas holds previous frame between draws = natural stop-motion choppiness
   const now=performance.now();
-  if(camOn && risoFps > 0){
+  if((camOn||videoOn) && risoFps > 0){
     const interval=1000/risoFps;
     if(now - lastRisoFrame < interval && !needsRedraw){
       // Between riso frames: skip drawing, just update FPS counter
@@ -1892,7 +1898,7 @@ function render(){
     }
   } else {
     // Static image / no camera: normal dirty-flag rendering
-    const animating = cached.grainStatic > 0;
+    const animating = cached.grainStatic > 0 || videoOn;
     if(!needsRedraw && !newCamFrame && !isRecording && !animating) {
       fpsFrames++;
       if(now-fpsLast>=1000){$fps.textContent='idle';fpsFrames=0;fpsLast=now;}
@@ -1964,8 +1970,8 @@ function render(){
   // srcUV() remaps canvas UV to print-area space, so u_crop maps source to print area.
   let renderCrop=[0,0,1,1];
   if(hasSrc){
-    const srcW=camOn?($vid.videoWidth||1):(srcImg?srcImg.width:1);
-    const srcH=camOn?($vid.videoHeight||1):(srcImg?srcImg.height:1);
+    const srcW=(camOn||(videoOn&&!gifImg))?($vid.videoWidth||1):(gifImg?(gifCanvas.width||1):(srcImg?srcImg.width:1));
+    const srcH=(camOn||(videoOn&&!gifImg))?($vid.videoHeight||1):(gifImg?(gifCanvas.height||1):(srcImg?srcImg.height:1));
     // Target AR depends on mode:
     // 'fill' = paper AR (cover entire canvas), 'fit' = source native AR, array = that ratio
     let targetAR;
@@ -2076,8 +2082,8 @@ function render(){
       let imgAR;
       if (cropAspect === 'fit') {
         // Use source image native aspect ratio
-        const srcW = camOn ? ($vid.videoWidth||1) : (srcImg ? srcImg.width : 1);
-        const srcH = camOn ? ($vid.videoHeight||1) : (srcImg ? srcImg.height : 1);
+        const srcW = (camOn||(videoOn&&!gifImg)) ? ($vid.videoWidth||1) : (gifImg ? (gifCanvas.width||1) : (srcImg ? srcImg.width : 1));
+        const srcH = (camOn||(videoOn&&!gifImg)) ? ($vid.videoHeight||1) : (gifImg ? (gifCanvas.height||1) : (srcImg ? srcImg.height : 1));
         imgAR = srcW / srcH;
       } else {
         imgAR = cropAspect[0] / cropAspect[1];
@@ -2106,7 +2112,7 @@ function render(){
   fpsFrames++;
   const fpsNow=performance.now();
   if(fpsNow-fpsLast>=1000){
-    $fps.textContent=(camOn?risoFps+'fps':fpsFrames+' fps');
+    $fps.textContent=((camOn||videoOn)?risoFps+'fps':fpsFrames+' fps');
     $res.textContent=dw+'×'+dh+(resScale>1?' ('+resScale+'×)':'');
     fpsFrames=0;fpsLast=fpsNow;
   }
@@ -2115,29 +2121,93 @@ function render(){
 // Video frame callback — marks when a new video frame is available
 function onVideoFrame(){
   videoFrameReady=true;
-  if(camOn&&$vid.requestVideoFrameCallback){
+  if((camOn||videoOn)&&$vid.requestVideoFrameCallback){
     $vid.requestVideoFrameCallback(onVideoFrame);
   }
 }
 
 // ======================== SOURCE MANAGEMENT ========================
 function pickFile(){el('fileInput').click();}
+let gifImg=null, gifCanvas=null, gifCtx=null, gifRafId=0;
+function stopVideo(){
+  if(videoOn){
+    $vid.pause();$vid.removeAttribute('src');$vid.load();
+    videoOn=false;
+  }
+  if(gifRafId){cancelAnimationFrame(gifRafId);gifRafId=0;}
+  gifImg=null;
+}
+function startGifLoop(){
+  // Animated GIF: draw <img> to offscreen canvas each frame → upload as texture
+  if(!gifImg||!videoOn)return;
+  gifCtx.drawImage(gifImg,0,0,gifCanvas.width,gifCanvas.height);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifCanvas);
+  videoFrameReady=true;
+  needsRedraw=true;
+  gifRafId=requestAnimationFrame(startGifLoop);
+}
 function handleFile(e){
   const f=e.target.files[0];if(!f)return;
-  const r=new FileReader();
-  r.onload=ev=>{
+  const isVideo=f.type.startsWith('video/');
+  const isGif=f.type==='image/gif'||f.name.toLowerCase().endsWith('.gif');
+  if(isVideo){
+    // Video: load into <video> element and play looped
+    stopVideo();
+    if(camOn){if(camStream)camStream.getTracks().forEach(t=>t.stop());camOn=false;}
+    const url=URL.createObjectURL(f);
+    $vid.srcObject=null;
+    $vid.src=url;$vid.loop=true;$vid.muted=true;$vid.playsInline=true;
+    $vid.onloadeddata=()=>{
+      $vid.play();
+      videoOn=true;camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();
+      $status.textContent='▶ VIDEO';
+      $res.textContent=$vid.videoWidth+'×'+$vid.videoHeight;
+      if($vid.requestVideoFrameCallback){
+        $vid.requestVideoFrameCallback(onVideoFrame);
+      }else{
+        const fb=()=>{if(videoOn&&$vid.readyState>=2)videoFrameReady=true;requestAnimationFrame(fb);};fb();
+      }
+      needsRedraw=true;
+    };
+  }else if(isGif){
+    // Animated GIF: load into <img>, draw to canvas each frame
+    stopVideo();
+    if(camOn){if(camStream)camStream.getTracks().forEach(t=>t.stop());camOn=false;}
+    const url=URL.createObjectURL(f);
     const img=new Image();
     img.onload=()=>{
-      srcImg=img;
-      gl.activeTexture(gl.TEXTURE0);
-      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);
-      camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();
-      $status.textContent='◉ IMAGE';
-      $res.textContent=img.width+'×'+img.height;
+      gifImg=img;
+      if(!gifCanvas)gifCanvas=document.createElement('canvas');
+      gifCanvas.width=img.naturalWidth;gifCanvas.height=img.naturalHeight;
+      gifCtx=gifCanvas.getContext('2d');
+      // Set srcImg dimensions for aspect ratio calculations
+      srcImg=gifCanvas;
+      videoOn=true;camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();
+      $status.textContent='▶ GIF';
+      $res.textContent=img.naturalWidth+'×'+img.naturalHeight;
+      startGifLoop();
     };
-    img.src=ev.target.result;
-  };
-  r.readAsDataURL(f);e.target.value='';
+    img.src=url;
+  }else{
+    // Image: load as before
+    stopVideo();
+    const r=new FileReader();
+    r.onload=ev=>{
+      const img=new Image();
+      img.onload=()=>{
+        srcImg=img;
+        gl.activeTexture(gl.TEXTURE0);
+        gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);
+        camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();
+        $status.textContent='◉ IMAGE';
+        $res.textContent=img.width+'×'+img.height;
+      };
+      img.src=ev.target.result;
+    };
+    r.readAsDataURL(f);
+  }
+  e.target.value='';
   hideOnboarding();
 }
 
@@ -2211,6 +2281,7 @@ async function toggleCam(){
     return;
   }
   try{
+    stopVideo(); // stop any uploaded video before starting camera
     camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:isPhone()?640:1280}}});
     $vid.srcObject=camStream;
     // Wait for video to actually start playing
@@ -2257,8 +2328,8 @@ async function saveHiRes(){
     await doSaveBlob(blob,filename,saveW,saveH);
   } else if(hasSrc){
     // No crop aspect: save at source native aspect
-    const srcW=camOn?($vid.videoWidth||1):(srcImg?srcImg.width:1);
-    const srcH=camOn?($vid.videoHeight||1):(srcImg?srcImg.height:1);
+    const srcW=(camOn||(videoOn&&!gifImg))?($vid.videoWidth||1):(gifImg?(gifCanvas.width||1):(srcImg?srcImg.width:1));
+    const srcH=(camOn||(videoOn&&!gifImg))?($vid.videoHeight||1):(gifImg?(gifCanvas.height||1):(srcImg?srcImg.height:1));
     const srcAR=srcW/srcH;
     const baseW=$vf.clientWidth;
     const saveW=Math.round(baseW*scale);
