@@ -2392,22 +2392,6 @@ async function saveHiRes(){
 }
 
 async function doSaveBlob(blob,filename,w,h){
-  // Android: use Web Share API (gives native "Save to Gallery" option)
-  const isAndroid=/Android/i.test(navigator.userAgent);
-  if(isAndroid && navigator.canShare){
-    try{
-      const file=new File([blob],filename,{type:blob.type});
-      if(navigator.canShare({files:[file]})){
-        await navigator.share({files:[file]});
-        toast('Saved '+w+'×'+h+'!');
-        return;
-      }
-    }catch(e){
-      if(e.name==='AbortError') return; // user cancelled
-      // Fall through to download
-    }
-  }
-  // Desktop & iOS: standard download
   const link=document.createElement('a');
   link.download=filename;
   link.href=URL.createObjectURL(blob);
@@ -3198,17 +3182,6 @@ function phStartRec(){
   window._recorder.onstop=async()=>{
     const blob=new Blob(window._recChunks,{type:window._recMime});
     const filename='riso_'+Date.now()+'.'+window._recExt;
-    const isAndroid=/Android/i.test(navigator.userAgent);
-    if(isAndroid && navigator.canShare){
-      try{
-        const file=new File([blob],filename,{type:blob.type});
-        if(navigator.canShare({files:[file]})){
-          await navigator.share({files:[file]});
-          toast('VIDEO SAVED');
-          return;
-        }
-      }catch(e){if(e.name==='AbortError')return;}
-    }
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');a.href=url;a.download=filename;
     document.body.appendChild(a);a.click();document.body.removeChild(a);
