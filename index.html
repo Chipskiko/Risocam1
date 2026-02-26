@@ -1257,7 +1257,8 @@ void main(){
     float baseOff = 0.06 + hash(vec2(u_frameSeed * 3.3, 77.0)) * 0.03;
     // Streak length: how far the smudge extends vertically
     float streakLen = 0.12 + hash(vec2(u_frameSeed * 4.1, 88.0)) * 0.06;
-    // Accumulate smeared ink along the streak direction
+    // Accumulate smeared ink color along the streak direction
+    vec3 ghostColor = vec3(0.0);
     float ghostInk = 0.0;
     float totalWeight = 0.0;
     // Sample along vertical streak direction (8 taps for smooth smear)
@@ -1274,16 +1275,22 @@ void main(){
       vec2 sampleUV = uv + vec2(wobble, yOff);
       vec3 ghostSrc = texture2D(u_src, srcUV(sampleUV)).rgb;
       float ink = 1.0 - dot(ghostSrc, vec3(0.299, 0.587, 0.114));
-      ghostInk += ink * fade * breakup;
+      float w = fade * breakup;
+      ghostColor += (vec3(1.0) - ghostSrc) * w; // accumulate ink color (inverted RGB)
+      ghostInk += ink * w;
       totalWeight += fade;
     }
     ghostInk /= max(totalWeight, 1.0);
+    ghostColor /= max(totalWeight, 1.0);
+    // Normalize ghost color to unit ink direction
+    float colorLen = length(ghostColor);
+    vec3 ghostTint = colorLen > 0.001 ? ghostColor / colorLen : vec3(0.3);
     // Edge mask: ghost should fade near print edges (not extend outside print area)
     float ghostMask = printMask(uv, vec2(0.0), rpx);
     ghostInk *= ghostMask;
-    // Apply as smudgy darkening on paper
+    // Apply as faint colored smudge — ghost is lighter version of the ink color
     float ghostAmount = clamp(ghostInk * ghostStr * 1.2, 0.0, 0.18);
-    result *= 1.0 - ghostAmount;
+    result = result - ghostTint * ghostAmount;
   }
 
   // ─── Trim marks: L-shaped lines at all 4 corners of print area ───
