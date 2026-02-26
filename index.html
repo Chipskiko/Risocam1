@@ -390,6 +390,10 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
     <!-- Channels -->
     <div class="control-section">
       <div class="section-header">CHANNELS <span class="count" id="layerCount">4</span></div>
+      <div style="display:flex;gap:4px;margin:4px 0 6px 0" id="sepTypeRow">
+        <button class="header-mode-btn active" id="sepCmyk" onclick="setSepType(0)" style="font-size:8px;padding:2px 8px;letter-spacing:0.5px">CMYK</button>
+        <button class="header-mode-btn" id="sepApprox" onclick="setSepType(1)" style="font-size:8px;padding:2px 8px;letter-spacing:0.5px">APPROX</button>
+      </div>
       <div class="channel-list" id="channelList"></div>
     </div>
     <!-- Settings -->
@@ -584,6 +588,7 @@ uniform float u_sat;        // saturation -30..30
 uniform int u_mode;
 uniform int u_chan0, u_chan1, u_chan2, u_chan3;
 uniform int u_sepMode; // 0=normal, 1=output grayscale separation (black=ink)
+uniform int u_sepType; // 0=CMYK, 1=Approx (NNLS spot color decomposition)
 uniform vec3 u_paperColor;   // paper base color
 uniform float u_paperTex;    // paper texture intensity 0..1 (from slider 0-25 mapped)
 uniform sampler2D u_paperScan; // scanned paper fiber texture (grayscale, tiling)
@@ -671,6 +676,238 @@ vec4 toCMYK(vec3 rgb){
   y *= 1.0 - ucr;
   return vec4(c, m, y, k);
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// ─── NNLS Color Decomposition (Non-Negative Least Squares) ───────────
+// Given N ink colors and a target pixel RGB, find non-negative weights
+// w_i >= 0 that minimize ||target - paper - sum(w_i * delta_i)||^2
+// where delta_i = ink_i - paper (the color shift each ink produces).
+//
+// With 3 color channels (RGB), the system has rank <= 3, so at most 3
+// inks can be simultaneously active. For N=4, we enumerate all subsets
+// of size <= 3 and pick the best feasible (all weights >= 0) solution.
+//
+// The approach:
+//   1. Solve unconstrained least squares for each candidate subset
+//   2. Check non-negativity of all weights
+//   3. Pick the feasible solution with minimum residual
+//
+// All math uses the normal equations: (A^T A)x = A^T b
+//   where A = matrix of ink deltas (columns), b = target - paper
+// ═══════════════════════════════════════════════════════════════════════
+
+// Solve 1-ink: w = dot(b, a) / dot(a, a), clamped to [0, 1]
+// Returns weight and residual squared
+vec2 nnls1(vec3 b, vec3 a0) {
+  float d00 = dot(a0, a0);
+  if (d00 < 1e-10) return vec2(0.0, dot(b, b));
+  float w = clamp(dot(b, a0) / d00, 0.0, 1.0);
+  vec3 r = b - a0 * w;
+  return vec2(w, dot(r, r));
+}
+
+// Solve 2-ink: (A^T A) is 2x2, invert analytically
+// Returns vec3(w0, w1, residual^2)
+vec3 nnls2(vec3 b, vec3 a0, vec3 a1) {
+  // Normal equations: [d00 d01] [w0]   [b0]
+  //                   [d01 d11] [w1] = [b1]
+  float d00 = dot(a0, a0);
+  float d01 = dot(a0, a1);
+  float d11 = dot(a1, a1);
+  float b0 = dot(a0, b);
+  float b1 = dot(a1, b);
+
+  float det = d00 * d11 - d01 * d01;
+  if (abs(det) < 1e-10) {
+    // Degenerate (inks parallel): try each individually
+    vec2 s0 = nnls1(b, a0);
+    vec2 s1 = nnls1(b, a1);
+    if (s0.y <= s1.y) return vec3(s0.x, 0.0, s0.y);
+    return vec3(0.0, s1.x, s1.y);
+  }
+
+  float invDet = 1.0 / det;
+  float w0 = (d11 * b0 - d01 * b1) * invDet;
+  float w1 = (d00 * b1 - d01 * b0) * invDet;
+
+  // Both non-negative and <= 1? Accept.
+  if (w0 >= 0.0 && w1 >= 0.0) {
+    w0 = min(w0, 1.0);
+    w1 = min(w1, 1.0);
+    vec3 r = b - a0 * w0 - a1 * w1;
+    return vec3(w0, w1, dot(r, r));
+  }
+
+  // One or both negative: fall back to single-ink solutions
+  vec2 s0 = nnls1(b, a0);
+  vec2 s1 = nnls1(b, a1);
+  if (s0.y <= s1.y) return vec3(s0.x, 0.0, s0.y);
+  return vec3(0.0, s1.x, s1.y);
+}
+
+// Solve 3-ink: (A^T A) is 3x3, invert via cofactors (Cramer's rule)
+// Returns vec4(w0, w1, w2, residual^2)
+vec4 nnls3(vec3 b, vec3 a0, vec3 a1, vec3 a2) {
+  // Build 3x3 Gram matrix A^T A
+  float g00 = dot(a0, a0), g01 = dot(a0, a1), g02 = dot(a0, a2);
+  float g11 = dot(a1, a1), g12 = dot(a1, a2);
+  float g22 = dot(a2, a2);
+  // A^T b
+  float r0 = dot(a0, b), r1 = dot(a1, b), r2 = dot(a2, b);
+
+  // Determinant via cofactor expansion along first row
+  float c00 = g11 * g22 - g12 * g12;
+  float c01 = g01 * g22 - g12 * g02;  // note: cofactor is -c01
+  float c02 = g01 * g12 - g11 * g02;
+  float det = g00 * c00 - g01 * c01 + g02 * c02;
+
+  if (abs(det) < 1e-10) {
+    // Degenerate: fall back to all 2-ink pairs
+    vec3 p01 = nnls2(b, a0, a1);
+    vec3 p02 = nnls2(b, a0, a2);
+    vec3 p12 = nnls2(b, a1, a2);
+    vec4 best = vec4(p01.x, p01.y, 0.0, p01.z);
+    if (p02.z < best.w) best = vec4(p02.x, 0.0, p02.y, p02.z);
+    if (p12.z < best.w) best = vec4(0.0, p12.x, p12.y, p12.z);
+    return best;
+  }
+
+  float invDet = 1.0 / det;
+
+  // Cofactor matrix (symmetric, so adjugate = cofactor transposed)
+  float c10 = c01;  // g01*g22 - g12*g02 (symmetric: c10 = c01)
+  float c11 = g00 * g22 - g02 * g02;
+  float c12 = g00 * g12 - g01 * g02;  // cofactor is -c12
+  float c20 = c02;  // g01*g12 - g11*g02
+  float c21 = c12;  // g00*g12 - g01*g02 (symmetric: c21 = c12)
+  float c22 = g00 * g11 - g01 * g01;
+
+  // Solve: x = (1/det) * adj(G) * rhs
+  // adj(G) = cofactor matrix transposed, with sign pattern:
+  //   [+c00  -c10  +c20]
+  //   [-c01  +c11  -c21]
+  //   [+c02  -c12  +c22]
+  // But since G is symmetric, adj(G) is also symmetric with sign pattern:
+  //   [+c00  -c01  +c02]
+  //   [-c01  +c11  -c12]
+  //   [+c02  -c12  +c22]
+  float w0 = ( c00 * r0 - c01 * r1 + c02 * r2) * invDet;
+  float w1 = (-c01 * r0 + c11 * r1 - c12 * r2) * invDet;
+  float w2 = ( c02 * r0 - c12 * r1 + c22 * r2) * invDet;
+
+  // All non-negative? Accept (clamp to [0,1])
+  if (w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0) {
+    w0 = min(w0, 1.0);
+    w1 = min(w1, 1.0);
+    w2 = min(w2, 1.0);
+    vec3 r = b - a0 * w0 - a1 * w1 - a2 * w2;
+    return vec4(w0, w1, w2, dot(r, r));
+  }
+
+  // Active set fallback: try all 2-ink pairs and 1-ink solutions
+  // 3 pairs: (0,1), (0,2), (1,2)
+  vec3 p01 = nnls2(b, a0, a1);
+  vec3 p02 = nnls2(b, a0, a2);
+  vec3 p12 = nnls2(b, a1, a2);
+
+  vec4 best = vec4(p01.x, p01.y, 0.0, p01.z);
+  if (p02.z < best.w) best = vec4(p02.x, 0.0, p02.y, p02.z);
+  if (p12.z < best.w) best = vec4(0.0, p12.x, p12.y, p12.z);
+
+  // Also try single inks (nnls2 already includes these as fallbacks,
+  // but let's be explicit for robustness)
+  vec2 s0 = nnls1(b, a0);
+  vec2 s1 = nnls1(b, a1);
+  vec2 s2 = nnls1(b, a2);
+  if (s0.y < best.w) best = vec4(s0.x, 0.0, 0.0, s0.y);
+  if (s1.y < best.w) best = vec4(0.0, s1.x, 0.0, s1.y);
+  if (s2.y < best.w) best = vec4(0.0, 0.0, s2.x, s2.y);
+
+  return best;
+}
+
+// ─── Main NNLS entry point: decompose target RGB into ink weights ───
+// inkN = number of active inks (1-4)
+// paper = paper base color (RGB, 0-1)
+// target = desired pixel color (RGB, 0-1)
+// ink0..ink3 = ink colors at 100% coverage (RGB, 0-1)
+//
+// Returns vec4(w0, w1, w2, w3) — coverage weights in [0, 1]
+//
+// For N=4 inks with 3 equations, rank <= 3 so we try all C(4,3)=4
+// triples of inks and pick the feasible solution with lowest residual.
+// This is exact (not iterative) and handles all edge cases.
+vec4 nnlsDecompose(int inkN, vec3 paper, vec3 target, vec3 ink0, vec3 ink1, vec3 ink2, vec3 ink3) {
+  // b = target delta from paper (what the inks need to produce)
+  vec3 b = target - paper;
+
+  // Ink deltas: how much each ink shifts the color from paper
+  vec3 d0 = ink0 - paper;
+  vec3 d1 = ink1 - paper;
+  vec3 d2 = ink2 - paper;
+  vec3 d3 = ink3 - paper;
+
+  // ── 1 ink ──
+  if (inkN == 1) {
+    vec2 s = nnls1(b, d0);
+    return vec4(s.x, 0.0, 0.0, 0.0);
+  }
+
+  // ── 2 inks ──
+  if (inkN == 2) {
+    vec3 s = nnls2(b, d0, d1);
+    return vec4(s.x, s.y, 0.0, 0.0);
+  }
+
+  // ── 3 inks ──
+  if (inkN == 3) {
+    vec4 s = nnls3(b, d0, d1, d2);
+    return vec4(s.x, s.y, s.z, 0.0);
+  }
+
+  // ── 4 inks ──
+  // With 3 color channels and 4 inks, the system is underdetermined.
+  // We try all C(4,3)=4 triples and all C(4,2)=6 pairs, keeping the
+  // feasible solution with minimum residual. This is exact NNLS.
+
+  // Triple (0,1,2) — ink3 inactive
+  vec4 t012 = nnls3(b, d0, d1, d2);
+  vec4 best = vec4(t012.x, t012.y, t012.z, 0.0);
+  float bestErr = t012.w;
+
+  // Triple (0,1,3) — ink2 inactive
+  vec4 t013 = nnls3(b, d0, d1, d3);
+  if (t013.w < bestErr) {
+    best = vec4(t013.x, t013.y, 0.0, t013.z);
+    bestErr = t013.w;
+  }
+
+  // Triple (0,2,3) — ink1 inactive
+  vec4 t023 = nnls3(b, d0, d2, d3);
+  if (t023.w < bestErr) {
+    best = vec4(t023.x, 0.0, t023.y, t023.z);
+    bestErr = t023.w;
+  }
+
+  // Triple (1,2,3) — ink0 inactive
+  vec4 t123 = nnls3(b, d1, d2, d3);
+  if (t123.w < bestErr) {
+    best = vec4(0.0, t123.x, t123.y, t123.z);
+    bestErr = t123.w;
+  }
+
+  // Note: nnls3 already tries all 2-ink and 1-ink subsets internally
+  // as fallbacks, so we don't need to enumerate pairs separately here.
+  // The 4 triples cover all C(4,2)=6 pairs across their fallbacks:
+  //   t012 covers (0,1), (0,2), (1,2)
+  //   t013 covers (0,1), (0,3), (1,3)
+  //   t023 covers (0,2), (0,3), (2,3)
+  //   t123 covers (1,2), (1,3), (2,3)
+  // All 6 pairs and all 4 singles are reached. NNLS is complete.
+
+  return best;
+}
+// ═══════════════════════════════════════════════════════════════════════
 
 // ─── Grayscale detection: true when R≈G≈B (duotone source) ───
 float grayness(vec3 rgb){
@@ -882,6 +1119,31 @@ float getCoverage(vec4 cmyk, vec2 rpx, int idx, int ch, float noise1, float dens
   return clamp(ink, 0.0, 1.0);
 }
 
+// ─── Approximate mode: coverage from NNLS weight (no CMYK mapping) ───
+// Takes a pre-computed NNLS weight and applies physical print effects.
+// Same physics as getCoverage but skips CMYK channel extraction.
+float getCoverageApprox(float weight, vec2 rpx, int idx, float noise1, float dens, float pf){
+  if(dens < 0.5) return 0.0;
+  float ink = weight;
+  ink *= dens * 0.01;
+  ink = clamp(ink, 0.0, 1.0);
+  float dgSpread = u_dotGain * 0.008;
+  ink = clamp(ink + dgSpread * ink * (1.0 - ink) * 4.0, 0.0, 1.0);
+  ink *= 1.0 - 0.03 * float(idx);
+  float densFlicker = 1.0 + (hash(vec2(u_frameSeed * 7.3, float(idx) * 1.3)) - 0.5) * 0.07;
+  ink *= densFlicker;
+  ink *= pf;
+  float pressX = sin(rpx.x * 0.003 + float(idx) * 2.1) * 0.015;
+  float pressY = sin(rpx.y * 0.005 + float(idx) * 1.7) * 0.01;
+  float drumPhase = hash(vec2(u_frameSeed * 3.7, float(idx) * 2.9)) * 6.283;
+  float drumBand = sin(rpx.y * 0.004 + drumPhase) * 0.018;
+  ink *= 1.0 + pressX + pressY + drumBand;
+  float starvation = smoothstep(0.6, 1.0, ink) * sin(rpx.y * 0.01) * 0.03;
+  ink -= starvation;
+  ink += (noise1 - 0.5) * u_inkNoise * 0.006;
+  return clamp(ink, 0.0, 1.0);
+}
+
 // Compute grain/halftone texture value for visual effect (0-1).
 // This creates the risograph look without affecting tonal accuracy.
 float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, float pf, float grainMul){
@@ -1081,10 +1343,19 @@ void main(){
     float pf = paperEffect(rpx);
     vec3 src = texture2D(u_src, srcUV(uv + u_off0)).rgb;
     src = adjustRGB(src, rpx);
-    vec4 cmyk = toCMYK(src);
     float n1 = hash(rpx * 1.7);
-    float n2 = hash2(rpx * 3.1);
-    float d = processLayer(cmyk, rpx, pix, 0, u_chan0, u_angle0, n1, n2, u_dens0, pf, src, u_inkGamma0, u_grainMul0);
+    float d;
+    if(u_sepType == 1){
+      // Approx mode: NNLS decomposition for this channel
+      vec4 wts = nnlsDecompose(u_layers, u_paperColor, src, u_ink0, u_ink1, u_ink2, u_ink3);
+      float w = u_chan0==0?wts.x:(u_chan0==1?wts.y:(u_chan0==2?wts.z:wts.w));
+      float cov = getCoverageApprox(w, rpx, 0, n1, u_dens0, pf);
+      d = getGrainTexture(cov, rpx, pix, 0, u_angle0, pf, u_grainMul0);
+    } else {
+      vec4 cmyk = toCMYK(src);
+      float n2 = hash2(rpx * 3.1);
+      d = processLayer(cmyk, rpx, pix, 0, u_chan0, u_angle0, n1, n2, u_dens0, pf, src, u_inkGamma0, u_grainMul0);
+    }
     float gray = 1.0 - d; // invert: black=ink for print production
     gl_FragColor = vec4(gray, gray, gray, 1.0);
     return;
@@ -1117,6 +1388,18 @@ void main(){
   // Transport streak: earlier layers smear more — paper moved through more drum passes
   // Layer 0 (C, first printed) = most streak, Layer 3 (K, last) = sharpest
 
+  // ─── Approx mode: compute NNLS weights once at base UV ───
+  // In Approx mode, we decompose the source pixel into ink weights using NNLS.
+  // This is done once at the center UV (before misregistration) because the
+  // stencil is created from a single analysis — misregistration only shifts
+  // where the ink pattern lands, not the underlying color analysis.
+  vec4 approxW = vec4(0.0);
+  if(u_sepType == 1){
+    vec3 baseSrc = texture2D(u_src, srcUV(uv)).rgb;
+    baseSrc = adjustRGB(baseSrc, rpx);
+    approxW = nnlsDecompose(u_layers, u_paperColor, baseSrc, u_ink0, u_ink1, u_ink2, u_ink3);
+  }
+
   if(u_layers >= 1){
     vec2 dr0 = vec2(hash(vec2(u_frameSeed*5.1, 0.1))-0.5, hash(vec2(u_frameSeed*5.7, 0.2))-0.5)*0.0014;
     vec2 skUV0 = skewUV(uv, u_skew0);
@@ -1125,12 +1408,17 @@ void main(){
     vec2 lrpx = (skUV0 * REF) + off0 * REF;
     vec2 lpix = (skUV0 * u_res) + off0 * u_res;
     float n0 = hash(lrpx * 1.7);
-    vec3 src = texture2D(u_src, srcUV(uv0)).rgb;
-    vec3 srcS = texture2D(u_src, srcUV(uv0 + vec2(0.0, 0.0012))).rgb;
-    src = mix(src, srcS, 0.35);
-    src = adjustRGB(src, lrpx);
-    vec4 cmyk = toCMYK(src);
-    float cov = getCoverage(cmyk, lrpx, 0, u_chan0, n0, u_dens0, pf, src, u_inkGamma0);
+    float cov;
+    if(u_sepType == 1){
+      cov = getCoverageApprox(approxW.x, lrpx, 0, n0, u_dens0, pf);
+    } else {
+      vec3 src = texture2D(u_src, srcUV(uv0)).rgb;
+      vec3 srcS = texture2D(u_src, srcUV(uv0 + vec2(0.0, 0.0012))).rgb;
+      src = mix(src, srcS, 0.35);
+      src = adjustRGB(src, lrpx);
+      vec4 cmyk = toCMYK(src);
+      cov = getCoverage(cmyk, lrpx, 0, u_chan0, n0, u_dens0, pf, src, u_inkGamma0);
+    }
     float grain = getGrainTexture(cov, lrpx, lpix, 0, u_angle0, pf, u_grainMul0);
     float mask = printMask(skUV0, off0, lrpx);
     if (u_hasCal0 > 0.5) {
@@ -1151,12 +1439,17 @@ void main(){
     vec2 lrpx = (skUV1 * REF) + off1 * REF;
     vec2 lpix = (skUV1 * u_res) + off1 * u_res;
     float n1 = hash(lrpx * 1.7 + 100.0);
-    vec3 src = texture2D(u_src, srcUV(uv1)).rgb;
-    vec3 srcS = texture2D(u_src, srcUV(uv1 + vec2(0.0, 0.0008))).rgb;
-    src = mix(src, srcS, 0.25);
-    src = adjustRGB(src, lrpx);
-    vec4 cmyk = toCMYK(src);
-    float cov = getCoverage(cmyk, lrpx, 1, u_chan1, n1, u_dens1, pf, src, u_inkGamma1);
+    float cov;
+    if(u_sepType == 1){
+      cov = getCoverageApprox(approxW.y, lrpx, 1, n1, u_dens1, pf);
+    } else {
+      vec3 src = texture2D(u_src, srcUV(uv1)).rgb;
+      vec3 srcS = texture2D(u_src, srcUV(uv1 + vec2(0.0, 0.0008))).rgb;
+      src = mix(src, srcS, 0.25);
+      src = adjustRGB(src, lrpx);
+      vec4 cmyk = toCMYK(src);
+      cov = getCoverage(cmyk, lrpx, 1, u_chan1, n1, u_dens1, pf, src, u_inkGamma1);
+    }
     float grain = getGrainTexture(cov, lrpx, lpix, 1, u_angle1, pf, u_grainMul1);
     float mask = printMask(skUV1, off1, lrpx);
     if (u_hasCal1 > 0.5) {
@@ -1177,12 +1470,17 @@ void main(){
     vec2 lrpx = (skUV2 * REF) + off2 * REF;
     vec2 lpix = (skUV2 * u_res) + off2 * u_res;
     float n2 = hash(lrpx * 1.7 + 200.0);
-    vec3 src = texture2D(u_src, srcUV(uv2)).rgb;
-    vec3 srcS = texture2D(u_src, srcUV(uv2 + vec2(0.0, 0.0004))).rgb;
-    src = mix(src, srcS, 0.15);
-    src = adjustRGB(src, lrpx);
-    vec4 cmyk = toCMYK(src);
-    float cov = getCoverage(cmyk, lrpx, 2, u_chan2, n2, u_dens2, pf, src, u_inkGamma2);
+    float cov;
+    if(u_sepType == 1){
+      cov = getCoverageApprox(approxW.z, lrpx, 2, n2, u_dens2, pf);
+    } else {
+      vec3 src = texture2D(u_src, srcUV(uv2)).rgb;
+      vec3 srcS = texture2D(u_src, srcUV(uv2 + vec2(0.0, 0.0004))).rgb;
+      src = mix(src, srcS, 0.15);
+      src = adjustRGB(src, lrpx);
+      vec4 cmyk = toCMYK(src);
+      cov = getCoverage(cmyk, lrpx, 2, u_chan2, n2, u_dens2, pf, src, u_inkGamma2);
+    }
     float grain = getGrainTexture(cov, lrpx, lpix, 2, u_angle2, pf, u_grainMul2);
     float mask = printMask(skUV2, off2, lrpx);
     if (u_hasCal2 > 0.5) {
@@ -1202,10 +1500,15 @@ void main(){
     vec2 lrpx = (skUV3 * REF) + off3 * REF;
     vec2 lpix = (skUV3 * u_res) + off3 * u_res;
     float n3 = hash(lrpx * 1.7 + 300.0);
-    vec3 src = texture2D(u_src, srcUV(skUV3 + off3)).rgb;
-    src = adjustRGB(src, lrpx);
-    vec4 cmyk = toCMYK(src);
-    float cov = getCoverage(cmyk, lrpx, 3, u_chan3, n3, u_dens3, pf, src, u_inkGamma3);
+    float cov;
+    if(u_sepType == 1){
+      cov = getCoverageApprox(approxW.w, lrpx, 3, n3, u_dens3, pf);
+    } else {
+      vec3 src = texture2D(u_src, srcUV(skUV3 + off3)).rgb;
+      src = adjustRGB(src, lrpx);
+      vec4 cmyk = toCMYK(src);
+      cov = getCoverage(cmyk, lrpx, 3, u_chan3, n3, u_dens3, pf, src, u_inkGamma3);
+    }
     float grain = getGrainTexture(cov, lrpx, lpix, 3, u_angle3, pf, u_grainMul3);
     float mask = printMask(skUV3, off3, lrpx);
     if (u_hasCal3 > 0.5) {
@@ -1497,6 +1800,7 @@ let cropRect=[0,0,1,1]; // UV crop: x,y,w,h
 
 const cached={
   grainSize:1.5, dotGain:12, inkNoise:8, paperTex:10, lpi:35, grainStatic:0, imgBright:0, imgContrast:0, imgSat:0,
+  sepType:0, // 0=CMYK, 1=Approx (NNLS spot color)
   ucrStr:15, balC:150, balM:155, balY:105, balK:165, tac:280,
   inkRGB:[[0,0,0],[0,0,0],[0,0,0],[0,0,0]],
   paperColor:[0.96,0.94,0.91],
@@ -1634,7 +1938,7 @@ function getState(){
     prof:activeProf?activeProf.name:null,
     mode,
     grainSize:cached.grainSize, dotGain:cached.dotGain, inkNoise:cached.inkNoise,
-    paperTex:cached.paperTex, lpi:cached.lpi, grainStatic:cached.grainStatic, ghosting:cached.ghosting,
+    paperTex:cached.paperTex, lpi:cached.lpi, grainStatic:cached.grainStatic, ghosting:cached.ghosting, sepType:cached.sepType,
     imgBright:cached.imgBright, imgContrast:cached.imgContrast, imgSat:cached.imgSat,
     paper:curPaper, paperColor:curPaperColor
   });
@@ -1656,7 +1960,7 @@ function restoreState(json){
     cached.layerDens=s.dens;
     mode=s.mode;
     cached.grainSize=s.grainSize; cached.dotGain=s.dotGain; cached.inkNoise=s.inkNoise;
-    cached.paperTex=s.paperTex; cached.lpi=s.lpi||65; cached.grainStatic=s.grainStatic; if(s.ghosting!==undefined)cached.ghosting=s.ghosting;
+    cached.paperTex=s.paperTex; cached.lpi=s.lpi||65; cached.grainStatic=s.grainStatic; if(s.ghosting!==undefined)cached.ghosting=s.ghosting; cached.sepType=s.sepType||0;
     cached.imgBright=s.imgBright; cached.imgContrast=s.imgContrast; cached.imgSat=s.imgSat;
     // Restore profile ref
     activeProf=s.prof?allProfiles().find(p=>p.name===s.prof)||null:null;
@@ -1856,7 +2160,7 @@ function initGL(){
    'u_off0','u_off1','u_off2','u_off3',
    'u_angle0','u_angle1','u_angle2','u_angle3','u_screenCell',
    'u_chan0','u_chan1','u_chan2','u_chan3',
-   'u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_mode','u_sepMode',
+   'u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_mode','u_sepMode','u_sepType',
    'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_crop','u_paper',
    'u_lutA0','u_lutA1','u_lutA2','u_lutA3',
    'u_lutB0','u_lutB1','u_lutB2','u_lutB3',
@@ -2061,6 +2365,7 @@ function render(){
   gl.uniform1i(locs.u_layers,hasSrc?nLayers:0);
   gl.uniform1i(locs.u_mode,mode==='grain'?0:1);
   gl.uniform1i(locs.u_sepMode,0);
+  gl.uniform1i(locs.u_sepType,cached.sepType||0);
   gl.uniform1f(locs.u_grainSize,cached.grainSize);
   gl.uniform1f(locs.u_dotGain,cached.dotGain);
   gl.uniform1f(locs.u_inkNoise,cached.inkNoise);
@@ -2623,6 +2928,7 @@ async function exportSeparations(){
 
   // Set separation mode
   gl.uniform1i(locs.u_sepMode,1);
+  gl.uniform1i(locs.u_sepType,cached.sepType||0);
   gl.uniform1i(locs.u_layers,layers.length);
   gl.uniform2f(locs.u_res,dw,dh);
   gl.uniform1f(locs.u_grainSize,cached.grainSize);
@@ -2646,28 +2952,53 @@ async function exportSeparations(){
   gl.uniform1i(locs.u_mode,mode==='grain'?0:1);
   gl.uniform4f(locs.u_printArea, 0.01, 0.01, 0.01, 0.01); // separations: minimal margins
 
+  // In Approx mode, NNLS needs all ink colors uploaded simultaneously
+  // so the shader can decompose each pixel against the full palette.
+  if(cached.sepType===1){
+    for(let j=0;j<layers.length;j++){
+      const Lj=layers[j];
+      const calJ=RISO_CAL[Lj.color];
+      if(calJ){
+        gl.uniform3f(inkLocs[j],calJ.lut[4][0],calJ.lut[4][1],calJ.lut[4][2]);
+      } else {
+        const rgb=cached.inkRGB[j];
+        gl.uniform3f(inkLocs[j],rgb[0],rgb[1],rgb[2]);
+      }
+    }
+  }
+
   // Render each separation and collect as blobs
   const files=[];
   for(let i=0;i<layers.length;i++){
     const L=layers[i];
-    const cal=RISO_CAL[L.color];
-    if(cal){
-      const lt=cal.lut;
-      gl.uniform3f(inkLocs[0],lt[4][0],lt[4][1],lt[4][2]);
-      gl.uniform1f(locs.u_inkGamma0,cal.gamma);
-      gl.uniform1f(locs.u_grainMul0,cal.grainMul);
-      gl.uniform1f(locs.u_hasCal0,1.0);
+    if(cached.sepType!==1){
+      // CMYK mode: set u_ink0 to this layer's ink for getCoverage
+      const cal=RISO_CAL[L.color];
+      if(cal){
+        const lt=cal.lut;
+        gl.uniform3f(inkLocs[0],lt[4][0],lt[4][1],lt[4][2]);
+        gl.uniform1f(locs.u_inkGamma0,cal.gamma);
+        gl.uniform1f(locs.u_grainMul0,cal.grainMul);
+        gl.uniform1f(locs.u_hasCal0,1.0);
+      } else {
+        const rgb=cached.inkRGB[i];
+        gl.uniform3f(inkLocs[0],rgb[0],rgb[1],rgb[2]);
+        gl.uniform1f(locs.u_inkGamma0,1.0);
+        gl.uniform1f(locs.u_grainMul0,1.0);
+        gl.uniform1f(locs.u_hasCal0,0.0);
+      }
     } else {
-      const rgb=cached.inkRGB[i];
-      gl.uniform3f(inkLocs[0],rgb[0],rgb[1],rgb[2]);
-      gl.uniform1f(locs.u_inkGamma0,1.0);
-      gl.uniform1f(locs.u_grainMul0,1.0);
-      gl.uniform1f(locs.u_hasCal0,0.0);
+      // Approx mode: ink colors already uploaded; just set grain/gamma per layer
+      const cal=RISO_CAL[L.color];
+      gl.uniform1f(locs.u_inkGamma0,cal?cal.gamma:1.0);
+      gl.uniform1f(locs.u_grainMul0,cal?cal.grainMul:1.0);
     }
     gl.uniform2f(offLocs[0],misreg[L.ch][0],misreg[L.ch][1]);
     gl.uniform1f(skewLocs[0],layerSkews[L.ch]||0);
     gl.uniform1f(angLocs[0],(layerAngles[L.ch]||0)*0.01745329);
-    gl.uniform1i(chanLocs[0],L.ch);
+    // In Approx mode: u_chan0 = layer index (which NNLS weight to extract)
+    // In CMYK mode: u_chan0 = CMYK channel index (C=0, M=1, Y=2, K=3)
+    gl.uniform1i(chanLocs[0], cached.sepType===1 ? i : L.ch);
     gl.uniform1f(densLocs[0],cached.layerDens[L.ch]);
     gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
 
@@ -3072,9 +3403,9 @@ function updateUI(){
   const phInfo=el('phInfo');
   if(phInfo) phInfo.textContent=caption;
 
-  // Show CMYK tuning only in 4-layer mode
+  // Show CMYK tuning only in 4-layer CMYK mode
   const cmykDiv=el('cmykTuning');
-  if(cmykDiv) cmykDiv.style.display=unique.size===4?'':'none';
+  if(cmykDiv) cmykDiv.style.display=(unique.size===4 && cached.sepType===0)?'':'none';
   updateDebugInfo();
 }
 
@@ -3099,6 +3430,19 @@ function setMode(m){
   // Rebuild channels to show/hide angle buttons
   buildChannelUI();
   if(el('phChannelList')&&el('phChannelList').children.length) buildChannelUI('phChannelList');
+  markDirty();
+}
+function setSepType(t){
+  cached.sepType=t;
+  const cBtn=el('sepCmyk'),aBtn=el('sepApprox');
+  if(cBtn) cBtn.classList.toggle('active',t===0);
+  if(aBtn) aBtn.classList.toggle('active',t===1);
+  // Phone buttons
+  const pc=el('phSepCmyk'),pa=el('phSepApprox');
+  if(pc) pc.classList.toggle('active',t===0);
+  if(pa) pa.classList.toggle('active',t===1);
+  // Show/hide CMYK tuning (only relevant in CMYK mode)
+  updateUI();
   markDirty();
 }
 function setScale(s){
@@ -3157,7 +3501,7 @@ function toggleDebug(){
 function copyDebugValues(){
   const layers=activeLayers();
   const vals={
-    mode, resScale, lpi:cached.lpi,
+    mode, resScale, lpi:cached.lpi, sepType:cached.sepType===1?'approx':'cmyk',
     profile:activeProf?activeProf.name:'custom',
     channels:channels.filter(c=>c),
     dens:cached.layerDens.slice(0,layers.length),
@@ -3189,6 +3533,7 @@ function updateDebugInfo(){
   d.innerHTML=
     `canvas: ${$gl.width}×${$gl.height} (${resScale}×)<br>`+
     `layers: ${layers.length} | mode: ${mode}<br>`+
+    `sep: ${cached.sepType===1?'approx':'cmyk'}<br>`+
     `profile: ${activeProf?activeProf.name:'custom'}<br>`+
     `crop: ${Array.isArray(cropAspect)?cropAspect.join(':'):cropAspect}`;
 }
@@ -3589,7 +3934,7 @@ function phPopulateOverlay(name){
   if(name==='channels'){
     const body=el('phChannelsBody');
     if(!body.dataset.built){
-      body.innerHTML='<div class="channel-list" id="phChannelList"></div>';
+      body.innerHTML='<div style="display:flex;gap:4px;margin:4px 12px 6px"><button class="header-mode-btn '+(cached.sepType===0?'active':'')+'" id="phSepCmyk" onclick="setSepType(0)" style="font-size:8px;padding:2px 8px;letter-spacing:0.5px">CMYK</button><button class="header-mode-btn '+(cached.sepType===1?'active':'')+'" id="phSepApprox" onclick="setSepType(1)" style="font-size:8px;padding:2px 8px;letter-spacing:0.5px">APPROX</button></div><div class="channel-list" id="phChannelList"></div>';
       body.dataset.built='1';
     }
     buildChannelUI('phChannelList');
