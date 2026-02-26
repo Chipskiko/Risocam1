@@ -65,8 +65,8 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
   .img-slider{min-width:80px}
   .controls-sep{display:none}
 }
-.viewfinder-panel{position:relative;background:#2a2a28;border-radius:4px;overflow:hidden;aspect-ratio:4/3;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;padding:16px}
-.viewfinder-panel canvas{width:calc(100% - 8px);height:calc(100% - 8px);display:block;border-radius:1px;box-shadow:0 2px 12px rgba(0,0,0,.45),0 0 1px rgba(0,0,0,.3)}
+.viewfinder-panel{position:relative;background:transparent;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.viewfinder-panel canvas{width:100%;display:block;aspect-ratio:1.414/1}
 .status-bar{position:absolute;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;pointer-events:none}
 .status-badge{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:4px 8px;background:rgba(0,0,0,.6);color:rgba(255,255,255,.8);border-radius:2px;backdrop-filter:blur(4px)}
 .capture-info{position:absolute;bottom:12px;left:12px;font-family:'Space Mono',monospace;font-size:10px;color:rgba(255,255,255,.4);letter-spacing:1px}
@@ -86,10 +86,7 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 .onboard-actions{display:flex;gap:8px;justify-content:center}
 .onboard-btn{padding:7px 18px;border:1px solid rgba(255,255,255,.4);border-radius:4px;background:rgba(255,255,255,.1);color:#fff;font-family:'Space Mono',monospace;font-size:10px;letter-spacing:1px;cursor:pointer;transition:all .15s}
 .onboard-btn:hover{background:rgba(255,255,255,.25);border-color:rgba(255,255,255,.7)}
-.vf-overlay{position:absolute;inset:0;pointer-events:none}
-.vc{position:absolute;width:20px;height:20px;border-color:rgba(255,255,255,.4);border-style:solid;border-width:0}
-.vc.tl{top:12px;left:12px;border-top-width:1px;border-left-width:1px}.vc.tr{top:12px;right:12px;border-top-width:1px;border-right-width:1px}
-.vc.bl{bottom:12px;left:12px;border-bottom-width:1px;border-left-width:1px}.vc.br{bottom:12px;right:12px;border-bottom-width:1px;border-right-width:1px}
+/* viewfinder overlay marks removed for clean presentation */
 /* Image controls bar */
 .image-controls{display:flex;gap:6px;padding:5px 8px;background:white;border:1px solid var(--border);border-radius:4px;align-items:center;flex-wrap:wrap}
 .img-slider{display:flex;align-items:center;gap:3px;flex:1;min-width:60px}
@@ -201,6 +198,12 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 .slider-row input[type="range"]{flex:1;-webkit-appearance:none;height:2px;background:var(--border);border-radius:2px;outline:none}
 .slider-row input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--text);cursor:pointer;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.2)}
 .slider-value{font-family:'Space Mono',monospace;font-size:9px;width:22px;text-align:right;color:var(--text-muted)}
+.toggle-switch{position:relative;display:inline-block;width:28px;height:16px}
+.toggle-switch input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#ccc;border-radius:16px;transition:.2s}
+.toggle-slider:before{position:absolute;content:"";height:12px;width:12px;left:2px;bottom:2px;background:white;border-radius:50%;transition:.2s}
+.toggle-switch input:checked+.toggle-slider{background:var(--text)}
+.toggle-switch input:checked+.toggle-slider:before{transform:translateX(12px)}
 .scale-row{display:flex;align-items:center;gap:8px;padding:4px 0}
 .scale-label{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.5px;width:72px;color:var(--text-muted);flex-shrink:0}
 .scale-btns{display:flex;gap:0;border:1px solid var(--border);border-radius:3px;overflow:hidden}
@@ -218,6 +221,7 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 .aspect-btn{font-family:'Space Mono',monospace;font-size:9px;padding:3px 8px;border:1px solid var(--border);background:white;cursor:pointer;border-radius:3px;color:var(--text-muted);transition:all .12s}
 .aspect-btn.active{background:var(--text);color:white;border-color:var(--text)}
 .aspect-btn:hover{border-color:var(--text)}
+/* orient-btn removed */
 /* ═══════ PHONE UI ═══════ */
 .phone-ui{display:none}
 body.phone-mode .phone-ui{display:flex;flex-direction:column;height:100vh;height:100dvh;height:100svh;background:#000;color:white;overflow:hidden;position:fixed;inset:0;z-index:200;padding:env(safe-area-inset-top,0) 0 0 0}
@@ -237,8 +241,8 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
 .ph-rec-badge{position:absolute;top:60px;right:12px;font-family:'Space Mono',monospace;font-size:11px;color:var(--accent);letter-spacing:1px;display:none;z-index:11}
 .ph-rec-badge.show{display:block}
 /* Viewfinder — centers the canvas box on black */
-.ph-viewfinder{flex:1;position:relative;overflow:hidden;min-height:0;background:#1a1a18;display:flex;align-items:center;justify-content:center;padding:12px}
-.ph-viewfinder canvas{max-width:calc(100% - 12px);max-height:calc(100% - 12px);display:block;border-radius:2px;object-fit:contain;box-shadow:0 2px 16px rgba(0,0,0,.5),0 0 1px rgba(0,0,0,.3)}
+.ph-viewfinder{flex:1;position:relative;overflow:hidden;min-height:0;background:#111;display:flex;align-items:center;justify-content:center}
+.ph-viewfinder canvas{max-width:100%;max-height:100%;display:block;object-fit:contain}
 .ph-viewfinder video{display:none}
 /* Crop guide overlay — shows save area when aspect is set */
 .ph-crop-guide{position:absolute;inset:0;pointer-events:none;z-index:5;display:none}
@@ -365,11 +369,12 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
     <canvas id="gl"></canvas>
     <video id="vid" autoplay playsinline muted style="display:none"></video>
     <div class="compare-overlay" id="compareOverlay"><img id="compareImg" /><div class="compare-handle" id="compareHandle"></div><div class="compare-label compare-label-l">ORIGINAL</div><div class="compare-label compare-label-r">RISO</div></div>
-    <div class="vf-overlay"><div class="vc tl"></div><div class="vc tr"></div><div class="vc bl"></div><div class="vc br"></div></div>
     <div class="crop-guide" id="deskCropGuide"><div class="crop-guide-inner" id="deskCropInner"></div></div>
-    <div class="status-bar"><span class="status-badge" id="statusBadge">● READY</span><span class="status-badge" id="resBadge">--</span></div>
-    <div class="capture-info" id="captureInfo">RISO/CAM — GPU</div>
-    <div class="fps-counter" id="fps">--</div>
+    <div class="fps-counter" id="fps" style="display:none">--</div>
+    <!-- Hidden elements kept for JS references -->
+    <div id="captureInfo" style="display:none"></div>
+    <div id="statusBadge" style="display:none"></div>
+    <div id="resBadge" style="display:none"></div>
   </div>
   <div class="image-controls" id="imageControls">
     <div class="img-slider"><span class="img-label">B</span><input type="range" id="imgBright" min="-30" max="30" value="0" step="2"><span class="img-val" id="imgBrightVal">0</span></div>
@@ -377,6 +382,8 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
     <div class="img-slider"><span class="img-label">S</span><input type="range" id="imgSat" min="-30" max="30" value="0" step="2"><span class="img-val" id="imgSatVal">0</span></div>
     <div class="controls-sep"></div>
     <div class="aspect-row">
+      <button class="aspect-btn" data-ar="fill" onclick="setAspect('fill')">FILL</button>
+      <button class="aspect-btn" data-ar="fit" onclick="setAspect('fit')">FIT</button>
       <button class="aspect-btn active" data-ar="4:3" onclick="setAspect([4,3])">4:3</button>
       <button class="aspect-btn" data-ar="1:1" onclick="setAspect([1,1])">1:1</button>
       <button class="aspect-btn" data-ar="5:4" onclick="setAspect([5,4])">5:4</button>
@@ -385,10 +392,10 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
     <div class="controls-sep"></div>
     <div class="aspect-row">
       <span style="font-family:'Space Mono',monospace;font-size:8px;color:var(--text-muted);letter-spacing:.5px">RES</span>
-      <button class="scale-btn active" onclick="setScale(1)">1×</button>
-      <button class="scale-btn" onclick="setScale(2)">2×</button>
+      <button class="scale-btn active" onclick="setScale(2)">2×</button>
       <button class="scale-btn" onclick="setScale(4)">4×</button>
       <button class="scale-btn" onclick="setScale(5)">5×</button>
+      <button class="scale-btn" onclick="setScale(6)">6×</button>
     </div>
   </div>
   </div> <!-- end viewfinder-wrap -->
@@ -419,9 +426,14 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
         </div>
         <div class="slider-row"><span class="slider-label">Dot Gain</span><input type="range" id="dotGain" min="0" max="40" value="12" step="2"><span class="slider-value" id="dotGainVal">12</span></div>
         <div class="slider-row"><span class="slider-label">Misregister</span><input type="range" id="misreg" min="0" max="10" value="2" step="1"><span class="slider-value" id="misregVal">2</span></div>
+        <div class="slider-row" style="padding-left:12px"><span class="slider-label" style="opacity:0.7;font-size:9px">Skew</span><input type="range" id="skew" min="-1" max="1" value="0" step="0.1"><span class="slider-value" id="skewVal">0°</span></div>
         <div class="slider-row"><span class="slider-label">Ink Noise</span><input type="range" id="inkNoise" min="0" max="30" value="8" step="2"><span class="slider-value" id="inkNoiseVal">8</span></div>
         <div class="slider-row"><span class="slider-label">Paper Tex</span><input type="range" id="paperTex" min="0" max="25" value="10" step="1"><span class="slider-value" id="paperTexVal">10</span></div>
         <div class="slider-row"><span class="slider-label">Static</span><input type="range" id="grainStatic" min="0" max="20" value="0" step="1"><span class="slider-value" id="grainStaticVal">0</span></div>
+        <div class="slider-row"><span class="slider-label">Ghosting</span><input type="range" id="ghosting" min="0" max="30" value="0" step="2"><span class="slider-value" id="ghostingVal">0</span></div>
+        <div class="slider-row"><span class="slider-label">Margin</span><input type="range" id="margin" min="0" max="12" value="4" step="1"><span class="slider-value" id="marginVal">4</span></div>
+        <div class="slider-row"><span class="slider-label">Bleed</span><input type="range" id="bleed" min="0" max="10" value="0" step="1"><span class="slider-value" id="bleedVal">0</span></div>
+        <div class="slider-row" style="margin-top:4px"><span class="slider-label">Crop Marks</span><label class="toggle-switch"><input type="checkbox" id="cropMarksToggle" checked onchange="cached.showCropMarks=this.checked;needsRedraw=true"><span class="toggle-slider"></span></label></div>
       </div>
     </div>
   </div>
@@ -442,7 +454,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
       <button class="ph-icon-btn" id="phFlipAspect" onclick="phFlipAspectOrientation()" title="Flip orientation">↻</button>
     </div>
     <div class="ph-top-center">
-      <button class="ph-icon-btn ph-zoom-btn" id="phResBtn" onclick="phCycleRes()">1×</button>
+      <button class="ph-icon-btn ph-zoom-btn" id="phResBtn" onclick="phCycleRes()">2×</button>
     </div>
     <div class="ph-top-right">
       <button class="ph-icon-btn" id="phSwitchCam" onclick="phFlipCam()" title="Switch camera">🔄</button>
@@ -556,6 +568,11 @@ uniform float u_grainMul0, u_grainMul1, u_grainMul2, u_grainMul3;
 uniform float u_hasCal0, u_hasCal1, u_hasCal2, u_hasCal3;
 uniform float u_opaque0, u_opaque1, u_opaque2, u_opaque3; // 1.0 for metallic/opaque inks
 uniform vec3 u_paper; // paper white color for LUT blending
+uniform float u_showCropMarks; // toggle crop marks on/off
+uniform vec4 u_printArea;      // print area within paper: left, top, right, bottom (UV coords)
+uniform float u_ghosting;      // ghost image intensity 0-1
+uniform float u_bleed;         // bleed: image zoom relative to print area (0=no bleed)
+uniform float u_skew0, u_skew1, u_skew2, u_skew3; // per-layer skew angles (radians)
 
 uniform float u_grainSize;
 uniform float u_dotGain;
@@ -589,8 +606,35 @@ float hash2(vec2 p){
 }
 
 // ─── Source UV with crop region ───
+// Remap canvas UV so that the print area (u_printArea margins) maps to 0→1,
+// then apply u_crop to select the right region of the source texture.
+// u_bleed zooms the image relative to the print area:
+//   bleed > 0 = image extends beyond print edges (zoom in, less source visible)
 vec2 srcUV(vec2 uv){
-  return u_crop.xy + clamp(uv, 0.0, 1.0) * u_crop.zw;
+  // Remap: print area left edge → 0, right edge → 1
+  float paL = u_printArea.x;          // left margin
+  float paR = u_printArea.z;          // right margin (from right edge)
+  float paT = u_printArea.y;          // top margin
+  float paB = u_printArea.w;          // bottom margin
+  vec2 remapped = vec2(
+    (uv.x - paL) / (1.0 - paL - paR),
+    (uv.y - paT) / (1.0 - paT - paB)
+  );
+  // Apply bleed: zoom image relative to print area (always >= 0)
+  // bleed > 0 = zoom in (image bleeds past edges, less source visible)
+  vec2 cropPos = u_crop.xy;
+  vec2 cropSize = u_crop.zw;
+  if(abs(u_bleed) > 0.001){
+    float scale = 1.0 / (1.0 + u_bleed);
+    vec2 newSize = cropSize * scale;
+    vec2 newPos = cropPos + (cropSize - newSize) * 0.5;
+    // Clamp: don't let crop extend beyond source texture [0,1]
+    newPos = max(newPos, vec2(0.0));
+    newSize = min(newSize, vec2(1.0) - newPos);
+    cropPos = newPos;
+    cropSize = newSize;
+  }
+  return cropPos + clamp(remapped, 0.0, 1.0) * cropSize;
 }
 
 // ─── Image adjustments (applied to source before separation) ───
@@ -652,7 +696,7 @@ float getChannelInner(vec4 cmyk, int ch, int totalLayers){
     return base + cmyk.w*0.55;
   }
   float raw = ch==0?cmyk.x:(ch==1?cmyk.y:(ch==2?cmyk.z:cmyk.w));
-  float balance = ch==0 ? 1.10 : (ch==1 ? 1.0 : (ch==2 ? 0.88 : 1.05));
+  float balance = ch==0 ? 1.10 : (ch==1 ? 1.0 : (ch==2 ? 0.85 : 1.05));
   raw *= balance;
   if(ch == 0){
     float neutral = 1.0 - abs(cmyk.x - cmyk.y) - abs(cmyk.y - cmyk.z);
@@ -695,7 +739,9 @@ float dotGain(float v, float g){
 // u_static controls grain animation: smooth drift, not discrete jumps
 float grainDither(float val, vec2 pix, float scale, float layerOff){
   vec2 fiberScale = vec2(1.0, 1.25);
-  vec2 fiberDrift = vec2(0.0, sin(pix.x * 0.003) * 2.0);
+  // Use noise-based drift instead of sine wave to avoid visible wave banding
+  float driftNoise = texture2D(u_noise, fract(vec2(pix.x * 0.0004, 0.3 + layerOff))).r;
+  vec2 fiberDrift = vec2(0.0, (driftNoise - 0.5) * 2.0);
   // Limit UV scaling so noise never gets blocky (max 1.8× coarser)
   float uvScale = mix(1.0, 1.8, clamp((scale - 0.5) / 3.5, 0.0, 1.0));
   vec2 nuv = ((pix + fiberDrift) * fiberScale) / (256.0 * uvScale);
@@ -758,41 +804,43 @@ const float REF_BASE = 1024.0;
 // Creates paper margin where individual color layers' edges become visible
 float printMask(vec2 uv, vec2 layerOff, vec2 rpx){
   vec2 p = uv + layerOff;
-  float margin = 0.02;
-  // Rough stencil edge: noise modulates the margin for organic look
+  // u_printArea = (left, top, 1-right, 1-bottom) — margins from each edge
   float edgeNoise = texture2D(u_noise, fract(rpx * 0.008 + layerOff * 3.0)).r;
-  float roughness = 0.008; // how jagged the edge is
+  float roughness = 0.005; // how jagged the edge is
   float soft = 0.003;      // very thin feather — real stencil edges are sharp-ish
-  float m = margin + (edgeNoise - 0.5) * roughness;
-  float l = smoothstep(m - soft, m + soft, p.x);
-  float r = smoothstep(m - soft, m + soft, 1.0 - p.x);
-  float t = smoothstep(m - soft, m + soft, p.y);
-  float b = smoothstep(m - soft, m + soft, 1.0 - p.y);
+  float rough = (edgeNoise - 0.5) * roughness;
+  float l = smoothstep(u_printArea.x + rough - soft, u_printArea.x + rough + soft, p.x);
+  float r = smoothstep(u_printArea.z + rough - soft, u_printArea.z + rough + soft, 1.0 - p.x);
+  float t = smoothstep(u_printArea.y + rough - soft, u_printArea.y + rough + soft, p.y);
+  float b = smoothstep(u_printArea.w + rough - soft, u_printArea.w + rough + soft, 1.0 - p.y);
   return l * r * t * b;
 }
 
-// ─── Crop marks: L-shaped corner marks, one per layer in ink color ───
-// cornerType: 0=TL(_|), 1=TR(|_), 2=BL, 3=BR
-float cropMark(vec2 uv, vec2 corner, int cornerType, float armLen, float thickness){
+// ─── Plate skew: rigid rotation around bottom-left of print area ───
+// Simulates paper feeding at a slight angle. Each layer can have its own skew.
+// anchor = bottom-left corner of print area
+vec2 skewUV(vec2 p, float angle){
+  if(abs(angle) < 0.0001) return p;
+  // Anchor at bottom-left of print area
+  vec2 anchor = vec2(u_printArea.x, 1.0 - u_printArea.w);
+  vec2 d = p - anchor;
+  float cs = cos(angle);
+  float sn = sin(angle);
+  return anchor + vec2(d.x * cs - d.y * sn, d.x * sn + d.y * cs);
+}
+
+// ─── Trim marks: L-shaped lines at each corner of the print area ───
+// Two lines per corner per layer: one horizontal, one vertical.
+// Lines extend OUTWARD from the corner into the margin, with a small gap.
+// armLenH/armLenV are separate to compensate for non-square canvas aspect ratio,
+// so both arms look the same visual length on screen.
+float trimCorner(vec2 uv, vec2 corner, vec2 dir, float armLenH, float armLenV, float gapX, float gapY, float thickY, float thickX){
   vec2 p = uv - corner;
-  float hLine = 0.0, vLine = 0.0;
-  // Horizontal arm
-  if(cornerType == 0 || cornerType == 2){
-    // right-pointing horizontal
-    if(p.x > 0.0 && p.x < armLen && abs(p.y) < thickness) hLine = 1.0;
-  } else {
-    // left-pointing horizontal
-    if(p.x < 0.0 && p.x > -armLen && abs(p.y) < thickness) hLine = 1.0;
-  }
-  // Vertical arm
-  if(cornerType == 0 || cornerType == 1){
-    // downward vertical
-    if(p.y > 0.0 && p.y < armLen && abs(p.x) < thickness) vLine = 1.0;
-  } else {
-    // upward vertical
-    if(p.y < 0.0 && p.y > -armLen && abs(p.x) < thickness) vLine = 1.0;
-  }
-  return max(hLine, vLine);
+  // Horizontal arm: extends in dir.x direction, thickY controls visual line width
+  float h = step(gapX, p.x * dir.x) * step(p.x * dir.x, armLenH + gapX) * step(abs(p.y), thickY);
+  // Vertical arm: extends in dir.y direction, thickX controls visual line width
+  float v = step(gapY, p.y * dir.y) * step(p.y * dir.y, armLenV + gapY) * step(abs(p.x), thickX);
+  return max(h, v);
 }
 
 // ─── Process one layer ───
@@ -801,6 +849,7 @@ float cropMark(vec2 uv, vec2 corner, int cornerType, float armLen, float thickne
 // Returns continuous ink coverage (0-1) for LUT lookup.
 // The grain/halftone texture is applied separately in main() as a visual effect.
 float getCoverage(vec4 cmyk, vec2 rpx, int idx, int ch, float noise1, float dens, float pf, vec3 srcRGB, float inkGamma){
+  if(dens < 0.5) return 0.0; // density slider at 0 = no ink at all
   float ink = getChannel(cmyk, ch, u_layers, srcRGB);
   ink *= dens * 0.01;
 
@@ -855,8 +904,9 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
   val -= perfHole * 0.12 * stencilMask;
   val = clamp(val, 0.0, 1.0);
 
-  // Drum transport jitter
-  float slip = sin(rpx.y * 0.015 + float(idx) * 2.7) * 0.4;
+  // Drum transport jitter — use noise for organic variation, avoid sine-wave banding
+  float slipNoise = texture2D(u_noise, fract(vec2(0.1 + float(idx) * 0.17, rpx.y * 0.001))).r;
+  float slip = (slipNoise - 0.5) * 0.8;
   vec2 jitRpx = vec2(rpx.x + slip, rpx.y);
   vec2 jitPix = vec2(pix.x + slip * u_res.x / REF, pix.y);
 
@@ -883,46 +933,37 @@ vec3 lutBlend(float d, vec3 paper, vec3 p10, vec3 p30, vec3 p50, vec3 p70, vec3 
   return mix(p70, p100, (d - 0.70) / 0.30);
 }
 
-// ─── Apply calibrated ink to accumulated result via ratio transfer ───
-// coverage: continuous ink amount (0-1) from getCoverage()
-// grain: grain/halftone texture (0-1) from getGrainTexture() — adds visual texture
+// ─── Apply calibrated ink using Beer-Lambert physics with LUT color ───
+// Same model as yuBlend (V8) but with calibrated ink color from the LUT.
+// This avoids the color cast that ratio-transfer creates in highlights.
 vec3 calBlend(vec3 result, vec3 paper, float coverage, float grain, vec3 p10, vec3 p30, vec3 p50, vec3 p70, vec3 p100, float layerIdx) {
   if (coverage < 0.001) return result;
 
-  // LUT lookup with continuous coverage — gets the calibrated ink-on-paper color
-  vec3 singleInk = lutBlend(coverage, paper, p10, p30, p50, p70, p100);
-  vec3 safePaper = max(paper, vec3(0.05)); // prevent extreme ratios on dark paper
-  vec3 ratio = singleInk / safePaper;
+  // Use the grain texture directly as the ink density — same as V8.
+  // The grain value IS the printed texture (chunky dither pattern).
+  float d = grain;
 
-  // Grain texture drives the "printed" look — it IS the risograph character.
-  // The grain value from getGrainTexture is a chunky binary-ish dither pattern.
-  // We use it to strongly modulate coverage so the output has visible grain structure.
-  float grainRange = coverage * (1.0 - coverage) * 3.5; // peaks at 50%
-  grainRange = min(grainRange, 0.85);
-  float grainOffset = (grain - coverage) * grainRange;
+  // Beer-Lambert with Yule-Nielsen n=2 (same physics as yuBlend)
+  vec3 ink = p100; // calibrated 100% ink color from LUT
+  vec3 safeInk = max(ink, vec3(0.05));
+  vec3 paperYN = sqrt(max(result, vec3(0.001)));
+  vec3 inkYN = sqrt(safeInk);
+  vec3 absorption = pow(inkYN, vec3(d));
+  vec3 resultYN = paperYN * absorption;
+  vec3 transparent = resultYN * resultYN;
 
-  // Modulate: shift coverage up or down per pixel — this is what makes it look printed
-  float modCov = clamp(coverage + grainOffset, 0.0, 1.0);
-  vec3 modInk = lutBlend(modCov, paper, p10, p30, p50, p70, p100);
-  vec3 modRatio = modInk / safePaper;
+  // At high coverage, ink sits opaque on the surface
+  vec3 opaque = mix(result, ink, d);
 
-  // Fade out the ink effect at very low coverage to prevent color cast in highlights.
-  // Below ~8% coverage, blend ratio toward 1.0 (paper unchanged).
-  float highlightFade = smoothstep(0.0, 0.08, coverage);
-  modRatio = mix(vec3(1.0), modRatio, highlightFade);
+  // Crossfade: low coverage = transparent dots, high = opaque solid
+  float opacity = smoothstep(0.3, 0.85, d);
+  vec3 blended = mix(transparent, opaque, opacity * 0.88);
 
-  // On dark paper (paper lum < 0.15), blend toward opacity model to prevent blowout
-  float paperLum = dot(paper, vec3(0.299, 0.587, 0.114));
-  float darkPaperMix = smoothstep(0.15, 0.05, paperLum);
+  // Ink contamination
+  vec3 contam = blended * 0.02 * d;
+  blended += contam * (ink - blended);
 
-  // Ink order dependence: later layers sit on top — shift toward opacity model
-  // Layer 0: pure ratio-transfer. Layer 3: +12% toward opacity (fresher, wetter ink)
-  float orderBias = layerIdx * 0.04;
-
-  vec3 ratioResult = result * modRatio;
-  vec3 opaqueResult = mix(result, modInk, modCov);
-  float totalOpacity = clamp(darkPaperMix + orderBias, 0.0, 1.0);
-  return mix(ratioResult, opaqueResult, totalOpacity);
+  return blended;
 }
 
 // ─── Opaque ink blend (metallic inks that sit ON the surface) ───
@@ -1036,12 +1077,14 @@ float paperEffect(vec2 pix){
 }
 
 void main(){
+  vec2 uv = v_uv;
+
   // Separation mode: output single channel as grayscale (black=ink, white=no ink)
   if(u_sepMode == 1){
-    vec2 pix = v_uv * u_res;
-    vec2 rpx = v_uv * REF;
+    vec2 pix = uv * u_res;
+    vec2 rpx = uv * REF;
     float pf = paperEffect(rpx);
-    vec3 src = texture2D(u_src, srcUV(v_uv + u_off0)).rgb;
+    vec3 src = texture2D(u_src, srcUV(uv + u_off0)).rgb;
     src = adjustRGB(src, rpx);
     vec4 cmyk = toCMYK(src);
     float n1 = hash(rpx * 1.7);
@@ -1052,8 +1095,8 @@ void main(){
     return;
   }
 
-  vec2 pix = v_uv * u_res;
-  vec2 rpx = v_uv * REF;
+  vec2 pix = uv * u_res;
+  vec2 rpx = uv * REF;
 
   // Compute paper property field once (spatially fixed to sheet)
   float pf = paperEffect(rpx);
@@ -1081,10 +1124,11 @@ void main(){
 
   if(u_layers >= 1){
     vec2 dr0 = vec2(hash(vec2(u_frameSeed*5.1, 0.1))-0.5, hash(vec2(u_frameSeed*5.7, 0.2))-0.5)*0.0014;
+    vec2 skUV0 = skewUV(uv, u_skew0);
     vec2 off0 = u_off0 + dr0;
-    vec2 uv0 = v_uv + off0;
-    vec2 lrpx = rpx + off0 * REF;
-    vec2 lpix = pix + off0 * u_res;
+    vec2 uv0 = skUV0 + off0;
+    vec2 lrpx = (skUV0 * REF) + off0 * REF;
+    vec2 lpix = (skUV0 * u_res) + off0 * u_res;
     float n0 = hash(lrpx * 1.7);
     vec3 src = texture2D(u_src, srcUV(uv0)).rgb;
     vec3 srcS = texture2D(u_src, srcUV(uv0 + vec2(0.0, 0.0012))).rgb;
@@ -1093,7 +1137,7 @@ void main(){
     vec4 cmyk = toCMYK(src);
     float cov = getCoverage(cmyk, lrpx, 0, u_chan0, n0, u_dens0, pf, src, u_inkGamma0);
     float grain = getGrainTexture(cov, lrpx, lpix, 0, u_angle0, pf, u_grainMul0);
-    float mask = printMask(v_uv, off0, lrpx);
+    float mask = printMask(skUV0, off0, lrpx);
     if (u_hasCal0 > 0.5) {
       if (u_opaque0 > 0.5) {
         result = calBlendOpaque(result, u_paper, cov, grain * mask, u_lutA0, u_lutB0, u_lutC0, u_lutD0, u_ink0);
@@ -1106,10 +1150,11 @@ void main(){
   }
   if(u_layers >= 2){
     vec2 dr1 = vec2(hash(vec2(u_frameSeed*6.1, 1.1))-0.5, hash(vec2(u_frameSeed*6.7, 1.2))-0.5)*0.0014;
+    vec2 skUV1 = skewUV(uv, u_skew1);
     vec2 off1 = u_off1 + dr1;
-    vec2 uv1 = v_uv + off1;
-    vec2 lrpx = rpx + off1 * REF;
-    vec2 lpix = pix + off1 * u_res;
+    vec2 uv1 = skUV1 + off1;
+    vec2 lrpx = (skUV1 * REF) + off1 * REF;
+    vec2 lpix = (skUV1 * u_res) + off1 * u_res;
     float n1 = hash(lrpx * 1.7 + 100.0);
     vec3 src = texture2D(u_src, srcUV(uv1)).rgb;
     vec3 srcS = texture2D(u_src, srcUV(uv1 + vec2(0.0, 0.0008))).rgb;
@@ -1118,7 +1163,7 @@ void main(){
     vec4 cmyk = toCMYK(src);
     float cov = getCoverage(cmyk, lrpx, 1, u_chan1, n1, u_dens1, pf, src, u_inkGamma1);
     float grain = getGrainTexture(cov, lrpx, lpix, 1, u_angle1, pf, u_grainMul1);
-    float mask = printMask(v_uv, off1, lrpx);
+    float mask = printMask(skUV1, off1, lrpx);
     if (u_hasCal1 > 0.5) {
       if (u_opaque1 > 0.5) {
         result = calBlendOpaque(result, u_paper, cov, grain * mask, u_lutA1, u_lutB1, u_lutC1, u_lutD1, u_ink1);
@@ -1131,10 +1176,11 @@ void main(){
   }
   if(u_layers >= 3){
     vec2 dr2 = vec2(hash(vec2(u_frameSeed*7.1, 2.1))-0.5, hash(vec2(u_frameSeed*7.7, 2.2))-0.5)*0.0014;
+    vec2 skUV2 = skewUV(uv, u_skew2);
     vec2 off2 = u_off2 + dr2;
-    vec2 uv2 = v_uv + off2;
-    vec2 lrpx = rpx + off2 * REF;
-    vec2 lpix = pix + off2 * u_res;
+    vec2 uv2 = skUV2 + off2;
+    vec2 lrpx = (skUV2 * REF) + off2 * REF;
+    vec2 lpix = (skUV2 * u_res) + off2 * u_res;
     float n2 = hash(lrpx * 1.7 + 200.0);
     vec3 src = texture2D(u_src, srcUV(uv2)).rgb;
     vec3 srcS = texture2D(u_src, srcUV(uv2 + vec2(0.0, 0.0004))).rgb;
@@ -1143,7 +1189,7 @@ void main(){
     vec4 cmyk = toCMYK(src);
     float cov = getCoverage(cmyk, lrpx, 2, u_chan2, n2, u_dens2, pf, src, u_inkGamma2);
     float grain = getGrainTexture(cov, lrpx, lpix, 2, u_angle2, pf, u_grainMul2);
-    float mask = printMask(v_uv, off2, lrpx);
+    float mask = printMask(skUV2, off2, lrpx);
     if (u_hasCal2 > 0.5) {
       if (u_opaque2 > 0.5) {
         result = calBlendOpaque(result, u_paper, cov, grain * mask, u_lutA2, u_lutB2, u_lutC2, u_lutD2, u_ink2);
@@ -1156,16 +1202,17 @@ void main(){
   }
   if(u_layers >= 4){
     vec2 dr3 = vec2(hash(vec2(u_frameSeed*8.1, 3.1))-0.5, hash(vec2(u_frameSeed*8.7, 3.2))-0.5)*0.0014;
+    vec2 skUV3 = skewUV(uv, u_skew3);
     vec2 off3 = u_off3 + dr3;
-    vec2 lrpx = rpx + off3 * REF;
-    vec2 lpix = pix + off3 * u_res;
+    vec2 lrpx = (skUV3 * REF) + off3 * REF;
+    vec2 lpix = (skUV3 * u_res) + off3 * u_res;
     float n3 = hash(lrpx * 1.7 + 300.0);
-    vec3 src = texture2D(u_src, srcUV(v_uv + off3)).rgb;
+    vec3 src = texture2D(u_src, srcUV(skUV3 + off3)).rgb;
     src = adjustRGB(src, lrpx);
     vec4 cmyk = toCMYK(src);
     float cov = getCoverage(cmyk, lrpx, 3, u_chan3, n3, u_dens3, pf, src, u_inkGamma3);
     float grain = getGrainTexture(cov, lrpx, lpix, 3, u_angle3, pf, u_grainMul3);
-    float mask = printMask(v_uv, off3, lrpx);
+    float mask = printMask(skUV3, off3, lrpx);
     if (u_hasCal3 > 0.5) {
       if (u_opaque3 > 0.5) {
         result = calBlendOpaque(result, u_paper, cov, grain * mask, u_lutA3, u_lutB3, u_lutC3, u_lutD3, u_ink3);
@@ -1197,45 +1244,116 @@ void main(){
   float scanNoise = hash(rpx * 1.37 + 99.0);
   result *= 1.0 + (scanNoise - 0.5) * 0.004;
 
-  // Edge vignette: subtle ink squeeze/roller fade at print edges
-  vec2 edgeDist = v_uv * (1.0 - v_uv); // 0 at edges, 0.25 at center
-  float vignette = edgeDist.x * edgeDist.y * 16.0; // 0→1
-  vignette = smoothstep(0.0, 0.06, vignette); // narrow dark zone at edges
-  result *= 0.97 + 0.03 * vignette; // max 3% darkening at very edge
+  // Edge vignette removed for clean presentation
 
-  // ─── Crop marks: L-shaped, one per layer in its ink color ───
-  // Each mark shifts with its layer's offset — shows misregistration
-  float armLen = 0.035;
-  float thick = 0.0018;
-  vec2 inset = vec2(0.025, 0.025);
-  if(u_layers >= 1){
-    vec2 off0 = u_off0 + vec2(hash(vec2(u_frameSeed*5.1, 0.1))-0.5, hash(vec2(u_frameSeed*5.7, 0.2))-0.5)*0.0014;
-    float cm = cropMark(v_uv + off0, inset, 0, armLen, thick);
-    float cmGrain = texture2D(u_noise, fract(rpx * 0.01 + 0.1)).r;
-    cm *= smoothstep(0.3, 0.5, cmGrain + 0.3);
-    result = mix(result, u_ink0, cm * 0.85);
+  // ─── Ghosting: smudgy directional ink streak simulating drum transfer ───
+  // In real riso, ink from a previous print transfers to the drum and prints
+  // a faint, smeared streak in the feed direction (vertical). It looks like
+  // a directional smudge — not a clean copy. The streak fades and blurs
+  // progressively along the feed direction with noise/irregularity.
+  if(u_ghosting > 0.01){
+    float ghostStr = u_ghosting; // already normalized 0-0.3 from JS
+    // Base offset: how far above the ghost starts (shifted in feed direction)
+    float baseOff = 0.06 + hash(vec2(u_frameSeed * 3.3, 77.0)) * 0.03;
+    // Streak length: how far the smudge extends vertically
+    float streakLen = 0.12 + hash(vec2(u_frameSeed * 4.1, 88.0)) * 0.06;
+    // Accumulate smeared ink along the streak direction
+    float ghostInk = 0.0;
+    float totalWeight = 0.0;
+    // Sample along vertical streak direction (8 taps for smooth smear)
+    for(int i = 0; i < 8; i++){
+      float t = float(i) / 7.0; // 0 to 1 along streak
+      float yOff = baseOff + t * streakLen;
+      // Fade out along streak: strongest at start, fading to nothing
+      float fade = (1.0 - t) * (1.0 - t);
+      // Add horizontal wobble for smudgy look (irregular transfer)
+      float wobble = (hash(vec2(float(i) * 13.7, u_frameSeed * 5.5)) - 0.5) * 0.008;
+      // Add noise-driven breakup (not all areas transfer equally)
+      float breakup = hash(vec2(rpx.x * 0.01 + float(i) * 3.3, rpx.y * 0.01 + yOff * 7.0));
+      breakup = smoothstep(0.2, 0.8, breakup); // some areas get more ghost
+      vec2 sampleUV = uv + vec2(wobble, yOff);
+      vec3 ghostSrc = texture2D(u_src, srcUV(sampleUV)).rgb;
+      float ink = 1.0 - dot(ghostSrc, vec3(0.299, 0.587, 0.114));
+      ghostInk += ink * fade * breakup;
+      totalWeight += fade;
+    }
+    ghostInk /= max(totalWeight, 1.0);
+    // Edge mask: ghost should fade near print edges (not extend outside print area)
+    float ghostMask = printMask(uv, vec2(0.0), rpx);
+    ghostInk *= ghostMask;
+    // Apply as smudgy darkening on paper
+    float ghostAmount = clamp(ghostInk * ghostStr * 1.2, 0.0, 0.18);
+    result *= 1.0 - ghostAmount;
   }
-  if(u_layers >= 2){
-    vec2 off1 = u_off1 + vec2(hash(vec2(u_frameSeed*6.1, 1.1))-0.5, hash(vec2(u_frameSeed*6.7, 1.2))-0.5)*0.0014;
-    float cm = cropMark(v_uv + off1, vec2(1.0 - inset.x, inset.y), 1, armLen, thick);
-    float cmGrain = texture2D(u_noise, fract(rpx * 0.01 + 0.3)).r;
-    cm *= smoothstep(0.3, 0.5, cmGrain + 0.3);
-    result = mix(result, u_ink1, cm * 0.85);
+
+  // ─── Trim marks: L-shaped lines at all 4 corners of print area ───
+  // Each corner has two lines extending outward: one horizontal, one vertical.
+  // Both arms should look the same length visually, so we compensate for aspect ratio.
+  // Each layer's marks shift with misregistration to show multi-pass offset.
+  float ar = u_res.x / u_res.y;  // canvas aspect ratio
+  float tmVisual = 0.02;         // desired visual arm length (relative to height)
+  // All values defined in "visual units" relative to canvas height, then converted
+  float tmArmH = tmVisual / ar;    // horizontal arm length in X-UV
+  float tmArmV = tmVisual;         // vertical arm length in Y-UV
+  float tmGapX = 0.003 / ar;       // gap before horizontal arm (in X-UV)
+  float tmGapY = 0.003;            // gap before vertical arm (in Y-UV)
+  float tmThickY = 0.001;          // thickness of horizontal line (in Y-UV)
+  float tmThickX = 0.001 / ar;     // thickness of vertical line (in X-UV)
+  if(u_showCropMarks > 0.5){
+    // Print area corners
+    float paL = u_printArea.x;
+    float paR = 1.0 - u_printArea.z;
+    float paT = u_printArea.y;
+    float paB = 1.0 - u_printArea.w;
+    // 4 corners with direction vectors pointing outward
+    vec2 c0 = vec2(paL, paT); vec2 d0 = vec2(-1.0, -1.0); // top-left: lines go left & up
+    vec2 c1 = vec2(paR, paT); vec2 d1 = vec2( 1.0, -1.0); // top-right: lines go right & up
+    vec2 c2 = vec2(paL, paB); vec2 d2 = vec2(-1.0,  1.0); // bottom-left: lines go left & down
+    vec2 c3 = vec2(paR, paB); vec2 d3 = vec2( 1.0,  1.0); // bottom-right: lines go right & down
+    if(u_layers >= 1){
+      vec2 off0 = u_off0 + vec2(hash(vec2(u_frameSeed*5.1, 0.1))-0.5, hash(vec2(u_frameSeed*5.7, 0.2))-0.5)*0.0014;
+      float cm = trimCorner(uv + off0, c0, d0, tmArmH, tmArmV, tmGapX, tmGapY, tmThickY, tmThickX);
+      cm = max(cm, trimCorner(uv + off0, c1, d1, tmArmH, tmArmV, tmGapX, tmGapY, tmThickY, tmThickX));
+      cm = max(cm, trimCorner(uv + off0, c2, d2, tmArmH, tmArmV, tmGapX, tmGapY, tmThickY, tmThickX));
+      cm = max(cm, trimCorner(uv + off0, c3, d3, tmArmH, tmArmV, tmGapX, tmGapY, tmThickY, tmThickX));
+      result = mix(result, u_ink0, cm * 0.7);
+    }
+    if(u_layers >= 2){
+      vec2 off1 = u_off1 + vec2(hash(vec2(u_frameSeed*6.1, 1.1))-0.5, hash(vec2(u_frameSeed*6.7, 1.2))-0.5)*0.0014;
+      float cm = trimCorner(uv + off1, c0, d0, tmArmH, tmArmV, tmGapX, tmGapY, tmThickY, tmThickX);
+      cm = max(cm, trimCorner(uv + off1, c1, d1, tmArmH, tmArmV, tmGapX, tmGapY, tmThickY, tmThickX));
+      cm = max(cm, trimCorner(uv + off1, c2, d2, tmArmH, tmArmV, tmGapX, tmGapY, tmThickY, tmThickX));
+      cm = max(cm, trimCorner(uv + off1, c3, d3, tmArmH, tmArmV, tmGapX, tmGapY, tmThickY, tmThickX));
+      result = mix(result, u_ink1, cm * 0.7);
+    }
+    if(u_layers >= 3){
+      vec2 off2 = u_off2 + vec2(hash(vec2(u_frameSeed*7.1, 2.1))-0.5, hash(vec2(u_frameSeed*7.7, 2.2))-0.5)*0.0014;
+      float cm = trimCorner(uv + off2, c0, d0, tmArmH, tmArmV, tmGapX, tmGapY, tmThickY, tmThickX);
+      cm = max(cm, trimCorner(uv + off2, c1, d1, tmArmH, tmArmV, tmGapX, tmGapY, tmThickY, tmThickX));
+      cm = max(cm, trimCorner(uv + off2, c2, d2, tmArmH, tmArmV, tmGapX, tmGapY, tmThickY, tmThickX));
+      cm = max(cm, trimCorner(uv + off2, c3, d3, tmArmH, tmArmV, tmGapX, tmGapY, tmThickY, tmThickX));
+      result = mix(result, u_ink2, cm * 0.7);
+    }
+    if(u_layers >= 4){
+      vec2 off3 = u_off3 + vec2(hash(vec2(u_frameSeed*8.1, 3.1))-0.5, hash(vec2(u_frameSeed*8.7, 3.2))-0.5)*0.0014;
+      float cm = trimCorner(uv + off3, c0, d0, tmArmH, tmArmV, tmGapX, tmGapY, tmThickY, tmThickX);
+      cm = max(cm, trimCorner(uv + off3, c1, d1, tmArmH, tmArmV, tmGapX, tmGapY, tmThickY, tmThickX));
+      cm = max(cm, trimCorner(uv + off3, c2, d2, tmArmH, tmArmV, tmGapX, tmGapY, tmThickY, tmThickX));
+      cm = max(cm, trimCorner(uv + off3, c3, d3, tmArmH, tmArmV, tmGapX, tmGapY, tmThickY, tmThickX));
+      result = mix(result, u_ink3, cm * 0.7);
+    }
   }
-  if(u_layers >= 3){
-    vec2 off2 = u_off2 + vec2(hash(vec2(u_frameSeed*7.1, 2.1))-0.5, hash(vec2(u_frameSeed*7.7, 2.2))-0.5)*0.0014;
-    float cm = cropMark(v_uv + off2, vec2(inset.x, 1.0 - inset.y), 2, armLen, thick);
-    float cmGrain = texture2D(u_noise, fract(rpx * 0.01 + 0.5)).r;
-    cm *= smoothstep(0.3, 0.5, cmGrain + 0.3);
-    result = mix(result, u_ink2, cm * 0.85);
-  }
-  if(u_layers >= 4){
-    vec2 off3 = u_off3 + vec2(hash(vec2(u_frameSeed*8.1, 3.1))-0.5, hash(vec2(u_frameSeed*8.7, 3.2))-0.5)*0.0014;
-    float cm = cropMark(v_uv + off3, vec2(1.0 - inset.x, 1.0 - inset.y), 3, armLen, thick);
-    float cmGrain = texture2D(u_noise, fract(rpx * 0.01 + 0.7)).r;
-    cm *= smoothstep(0.3, 0.5, cmGrain + 0.3);
-    result = mix(result, u_ink3, cm * 0.85);
-  }
+
+  // ─── Paper edge: subtle shadow/darkening at very edge of paper ───
+  // Creates a slightly rough edge with shadow, like a real sheet of paper
+  float dL = v_uv.x;
+  float dR = 1.0 - v_uv.x;
+  float dT = v_uv.y;
+  float dB = 1.0 - v_uv.y;
+  float dEdge = min(min(dL, dR), min(dT, dB));
+  // Subtle shadow at paper edge
+  float edgeShadow = smoothstep(0.0, 0.008, dEdge);
+  result *= 0.92 + 0.08 * edgeShadow;
 
   gl_FragColor = vec4(result, 1.0);
 }
@@ -1302,7 +1420,7 @@ const PROFILES=[
   {name:"Forest",colors:["Hunter Green","Brown","Yellow"]},{name:"Sunset",colors:["Orange","Scarlet","Yellow"]},
   {name:"Ocean",colors:["Teal","Cornflower"]},{name:"Berry",colors:["Purple","Cranberry"]},
   {name:"Earthy",colors:["Brown","Flat Gold","Hunter Green"]},{name:"Night",colors:["Federal Blue","Violet","Fl. Green"]},
-  {name:"CMYK",colors:["Blue","Bright Red","Yellow","Black"],dens:[80,75,85,35]},{name:"Tropical",colors:["Fl. Orange","Turquoise","Yellow"]},
+  {name:"CMYK",colors:["Blue","Bright Red","Yellow","Black"],dens:[85,80,65,40]},{name:"Tropical",colors:["Fl. Orange","Turquoise","Yellow"]},
   {name:"Mono",colors:["Black"]},{name:"Vintage",colors:["Brick","Flat Gold","Federal Blue"]},
 ];
 
@@ -1361,10 +1479,10 @@ let channels=[null,null,null,null]; // [C slot, M slot, Y slot, K slot]
 let layerOrder=[0,1,2,3]; // Print/render order (first = printed first = bottom)
 let activeProf=null, mode='grain';
 let srcImg=null, camStream=null, camOn=false, hasSrc=false;
-let misreg=[[0,0],[0,0],[0,0],[0,0]], gl, prog, locs={}, frame=0, frameSeed=Math.random();
+let misreg=[[0,0],[0,0],[0,0],[0,0]], layerSkews=[0,0,0,0], gl, prog, locs={}, frame=0, frameSeed=Math.random();
 let fpsFrames=0, fpsLast=performance.now();
 let layerAngles=[15,75,0,45];
-let resScale=1;
+let resScale=2;
 let curPaper=0, curPaperColor=0;
 let cropAspect=[4,3]; // default 4:3
 let cropRect=[0,0,1,1]; // UV crop: x,y,w,h
@@ -1374,6 +1492,11 @@ const cached={
   inkRGB:[[0,0,0],[0,0,0],[0,0,0],[0,0,0]],
   paperColor:[0.96,0.94,0.91],
   layerDens:[88,88,88,88],
+  showCropMarks:true,
+  ghosting:0,
+  margin:4,
+  bleed:0,
+  skew:0,
 };
 let needsAspectUpdate=true;
 let videoFrameReady=false;
@@ -1393,7 +1516,11 @@ function computeCrop(){
   else if(srcImg){sw=srcImg.width;sh=srcImg.height;}
   else{cropRect=[0,0,1,1];return;}
 
-  if(!cropAspect){cropRect=[0,0,1,1];return;}
+  // 'fill' and 'fit' are special modes that use source native aspect
+  if(!cropAspect || cropAspect==='fill' || cropAspect==='fit'){
+    cropRect=[0,0,1,1];
+    return;
+  }
 
   const srcAR=sw/sh;
   const cropAR=cropAspect[0]/cropAspect[1];
@@ -1413,10 +1540,25 @@ function setAspect(ratio){
   cropAspect=ratio||[4,3];
   computeCrop();
   needsAspectUpdate=true;
-  const ar=cropAspect.join(':');
+  const ar = (typeof cropAspect === 'string') ? cropAspect : cropAspect.join(':');
   document.querySelectorAll('.aspect-btn').forEach(b=>{
     b.classList.toggle('active',b.dataset.ar===ar);
   });
+}
+
+let paperOrient='landscape'; // 'landscape' or 'portrait'
+function setPaperOrient(orient){
+  paperOrient=orient;
+  // Aspect ratio is now on the canvas, not the panel
+  if($gl){
+    if(orient==='portrait'){
+      $gl.style.aspectRatio='1/1.414';
+    } else {
+      $gl.style.aspectRatio='1.414/1';
+    }
+  }
+  needsAspectUpdate=true;
+  needsRedraw=true;
 }
 
 // Phone mode detection — state-based, not screen-size
@@ -1464,7 +1606,7 @@ function getState(){
     prof:activeProf?activeProf.name:null,
     mode,
     grainSize:cached.grainSize, dotGain:cached.dotGain, inkNoise:cached.inkNoise,
-    paperTex:cached.paperTex, screenCell:cached.screenCell, grainStatic:cached.grainStatic,
+    paperTex:cached.paperTex, screenCell:cached.screenCell, grainStatic:cached.grainStatic, ghosting:cached.ghosting,
     imgBright:cached.imgBright, imgContrast:cached.imgContrast, imgSat:cached.imgSat,
     paper:curPaper, paperColor:curPaperColor
   });
@@ -1486,7 +1628,7 @@ function restoreState(json){
     cached.layerDens=s.dens;
     mode=s.mode;
     cached.grainSize=s.grainSize; cached.dotGain=s.dotGain; cached.inkNoise=s.inkNoise;
-    cached.paperTex=s.paperTex; cached.screenCell=s.screenCell; cached.grainStatic=s.grainStatic;
+    cached.paperTex=s.paperTex; cached.screenCell=s.screenCell; cached.grainStatic=s.grainStatic; if(s.ghosting!==undefined)cached.ghosting=s.ghosting;
     cached.imgBright=s.imgBright; cached.imgContrast=s.imgContrast; cached.imgSat=s.imgSat;
     // Restore profile ref
     activeProf=s.prof?allProfiles().find(p=>p.name===s.prof)||null:null;
@@ -1509,15 +1651,42 @@ function redo(){
 }
 
 function newMisreg(){
-  // Mono: single drum pass = no misregistration
+  const m=parseFloat(el('misreg').value)/500;
+  // When misreg is 0, skew should also be 0 (no plate rotation without misregistration)
+  const misregVal=parseFloat(el('misreg').value);
+  const skewMax= misregVal > 0 ? cached.skew * Math.PI / 180.0 : 0;
   if(isMono()){
-    for(let i=0;i<4;i++) misreg[i]=[0,0];
+    // Mono: single drum pass — all plates share same offset/skew
+    const mx=(Math.random()-.5)*m*2, my=(Math.random()-.5)*m*2;
+    const sk=(Math.random()-.5)*2*skewMax;
+    for(let i=0;i<4;i++){ misreg[i]=[mx,my]; layerSkews[i]=sk; }
     needsRedraw=true;
     return;
   }
-  const m=parseFloat(el('misreg').value)/500;
-  for(let i=0;i<4;i++) misreg[i]=[(Math.random()-.5)*m*2,(Math.random()-.5)*m*2];
+  for(let i=0;i<4;i++){
+    misreg[i]=[(Math.random()-.5)*m*2,(Math.random()-.5)*m*2];
+    layerSkews[i]=(Math.random()-.5)*2*skewMax;
+  }
+  // Same-color plates share one master = same misreg offset + skew
+  syncSameColorPlates();
   needsRedraw=true;
+}
+
+// Lock same-color channels: shared misreg, screen angles, and skew
+function syncSameColorPlates(){
+  const seen={};
+  for(let i=0;i<4;i++){
+    const c=channels[i];
+    if(!c) continue;
+    if(c in seen){
+      // Same ink as a previous channel — lock to its offset, angle & skew
+      misreg[i]=[...misreg[seen[c]]];
+      layerAngles[i]=layerAngles[seen[c]];
+      layerSkews[i]=layerSkews[seen[c]];
+    } else {
+      seen[c]=i;
+    }
+  }
 }
 
 // ======================== COMPARE MODE ========================
@@ -1594,7 +1763,9 @@ function initGL(){
    'u_inkGamma0','u_inkGamma1','u_inkGamma2','u_inkGamma3',
    'u_grainMul0','u_grainMul1','u_grainMul2','u_grainMul3',
    'u_hasCal0','u_hasCal1','u_hasCal2','u_hasCal3',
-   'u_opaque0','u_opaque1','u_opaque2','u_opaque3'
+   'u_opaque0','u_opaque1','u_opaque2','u_opaque3',
+   'u_showCropMarks','u_printArea','u_ghosting','u_bleed',
+   'u_skew0','u_skew1','u_skew2','u_skew3'
   ].forEach(n=>{locs[n]=gl.getUniformLocation(prog,n);});
 
   // Blue noise texture (tex unit 1)
@@ -1662,21 +1833,25 @@ function genBlueNoise(sz){
 function render(){
   requestAnimationFrame(render);
 
-  // Aspect ratio — canvas shape matches crop aspect in phone mode
+  // Aspect ratio — canvas shape
   if(needsAspectUpdate){
-    if(isPhone() && cropAspect){
+    if(isPhone() && cropAspect && typeof cropAspect !== 'string'){
       $gl.style.aspectRatio = cropAspect[0]+'/'+cropAspect[1];
       $gl.style.width = '';
       $gl.style.height = '';
-    } else {
+    } else if(isPhone()){
       $gl.style.aspectRatio = '';
       $gl.style.width = '100%';
       $gl.style.height = '100%';
+    } else {
+      // Desktop: canvas keeps A3 aspect from CSS, width fills parent
+      $gl.style.width = '100%';
+      $gl.style.height = '';
+      // A3 aspect is set in CSS, don't override unless paperOrient changed
     }
     needsAspectUpdate=false;
     needsRedraw=true;
-    // Update crop guide for desktop
-    if(!isPhone()) setTimeout(()=>{updateDeskCropGuide();updateCropGuide(0,0,0,0);},50);
+    if(!isPhone()) setTimeout(()=>{updateCropGuide(0,0,0,0);},50);
   }
 
   // Upload video frame only when new frame available
@@ -1723,8 +1898,25 @@ function render(){
       if(now-fpsLast>=1000){$fps.textContent='idle';fpsFrames=0;fpsLast=now;}
       return;
     }
-    frame++;
-    frameSeed = Math.random();
+    if(animating){
+      // Static slider = re-reg animation: re-randomize misregistration like pressing RE-REG
+      // Slider value controls FPS (1=2fps, 10=10fps, 20=20fps)
+      const staticFps = Math.max(2, cached.grainStatic);
+      const staticInterval = 1000 / staticFps;
+      if(!window._lastStaticFrame) window._lastStaticFrame = 0;
+      if(now - window._lastStaticFrame < staticInterval && !needsRedraw) {
+        fpsFrames++;
+        return;
+      }
+      window._lastStaticFrame = now;
+      frame++;
+      frameSeed = Math.random();
+      // Re-reg: fresh misregistration per frame (like pressing RE-REG button)
+      newMisreg();
+    } else {
+      frame++;
+      frameSeed = Math.random();
+    }
   }
   needsRedraw=false;
 
@@ -1768,14 +1960,19 @@ function render(){
   gl.uniform1f(locs.u_screenCell,cached.screenCell);
   gl.uniform3fv(locs.u_paperColor,cached.paperColor);
 
-  // Cover crop: fill viewport completely, no black bars
-  // ALWAYS use canvas native aspect for viewport — never stretch
+  // Cover crop: source image covers the print area (crop aspect ratio), not the full canvas
+  // srcUV() remaps canvas UV to print-area space, so u_crop maps source to print area.
   let renderCrop=[0,0,1,1];
   if(hasSrc){
     const srcW=camOn?($vid.videoWidth||1):(srcImg?srcImg.width:1);
     const srcH=camOn?($vid.videoHeight||1):(srcImg?srcImg.height:1);
-    // Viewport always fills at its own aspect ratio
-    const targetAR=dw/dh;
+    // Target AR depends on mode:
+    // 'fill' = paper AR (cover entire canvas), 'fit' = source native AR, array = that ratio
+    let targetAR;
+    if(cropAspect === 'fill') targetAR = dw/dh; // fill the paper
+    else if(cropAspect === 'fit') targetAR = srcW/srcH; // use source native
+    else if(cropAspect) targetAR = cropAspect[0]/cropAspect[1];
+    else targetAR = dw/dh;
     const srcAR=srcW/srcH;
     // Cover: fill target from source (crop excess)
     if(targetAR>srcAR){
@@ -1788,9 +1985,8 @@ function render(){
     // Update crop guide on phone
     if(isPhone()&&cropAspect) updateCropGuide(dw,dh,srcW,srcH);
     else if(isPhone()){const g=el('phCropGuide');if(g)g.classList.remove('visible');}
-    // Update crop guide on desktop
-    if(!isPhone()&&cropAspect) updateDeskCropGuide();
-    else if(!isPhone()){const g=el('deskCropGuide');if(g)g.classList.remove('visible');}
+    // Desktop: hide crop guide overlay — shader printMask handles the print area visually
+    if(!isPhone()){const g=el('deskCropGuide');if(g)g.classList.remove('visible');}
   }
   gl.uniform4f(locs.u_crop,renderCrop[0],renderCrop[1],renderCrop[2],renderCrop[3]);
 
@@ -1806,6 +2002,7 @@ function render(){
   const grainMulLocs=[locs.u_grainMul0,locs.u_grainMul1,locs.u_grainMul2,locs.u_grainMul3];
   const hasCalLocs=[locs.u_hasCal0,locs.u_hasCal1,locs.u_hasCal2,locs.u_hasCal3];
   const opaqueLocs=[locs.u_opaque0,locs.u_opaque1,locs.u_opaque2,locs.u_opaque3];
+  const skewLocs=[locs.u_skew0,locs.u_skew1,locs.u_skew2,locs.u_skew3];
   for(let i=0;i<4;i++){
     if(i<nLayers){
       const L=layers[i];
@@ -1836,12 +2033,14 @@ function render(){
         gl.uniform1f(opaqueLocs[i],0.0);
       }
       gl.uniform2f(offLocs[i],misreg[L.ch][0],misreg[L.ch][1]);
+      gl.uniform1f(skewLocs[i],layerSkews[L.ch]||0);
       gl.uniform1f(angLocs[i],(layerAngles[L.ch]||0)*0.01745329);
       gl.uniform1i(chanLocs[i],L.ch); // actual CMYK channel
       gl.uniform1f(densLocs[i],cached.layerDens[L.ch]);
     }else{
       gl.uniform3f(inkLocs[i],0,0,0);
       gl.uniform2f(offLocs[i],0,0);
+      gl.uniform1f(skewLocs[i],0);
       gl.uniform1f(angLocs[i],0);
       gl.uniform1i(chanLocs[i],0);
       gl.uniform1f(densLocs[i],0);
@@ -1849,6 +2048,55 @@ function render(){
       gl.uniform1f(opaqueLocs[i],0.0);
       gl.uniform1f(gammaLocs[i],1.0);
       gl.uniform1f(grainMulLocs[i],1.0);
+    }
+  }
+
+  gl.uniform1f(locs.u_showCropMarks, cached.showCropMarks ? 1.0 : 0.0);
+  // When static/animation is on, ghosting activates automatically (simulates contact sheet scanning)
+  const effectiveGhosting = cached.grainStatic > 0 ? Math.max(cached.ghosting, cached.grainStatic * 1.0) : cached.ghosting;
+  gl.uniform1f(locs.u_ghosting, effectiveGhosting * 0.01);
+  gl.uniform1f(locs.u_bleed, cached.bleed * 0.01); // bleed slider 0..10 → 0..0.10
+
+  // Compute print area: where the image sits within the A3 paper canvas
+  // Margin slider (0-12) maps to 0% - 12% margin
+  // 'fill' = image fills entire canvas, 'fit' = image fits with native AR
+  {
+    const paperW = dw, paperH = dh;
+    const paperAR = paperW / paperH;
+    const minMargin = cached.margin * 0.01; // margin slider 0-12 → 0%-12%
+
+    if (isPhone()) {
+      gl.uniform4f(locs.u_printArea, 0.01, 0.01, 0.01, 0.01);
+    } else if (cropAspect === 'fill') {
+      // Fill: image fills entire canvas, only margin slider controls border
+      const m = Math.max(minMargin, 0.005);
+      gl.uniform4f(locs.u_printArea, m, m, m, m);
+    } else {
+      // For 'fit' or specific ratio: compute image AR within paper
+      let imgAR;
+      if (cropAspect === 'fit') {
+        // Use source image native aspect ratio
+        const srcW = camOn ? ($vid.videoWidth||1) : (srcImg ? srcImg.width : 1);
+        const srcH = camOn ? ($vid.videoHeight||1) : (srcImg ? srcImg.height : 1);
+        imgAR = srcW / srcH;
+      } else {
+        imgAR = cropAspect[0] / cropAspect[1];
+      }
+      const availW = 1.0 - 2.0 * minMargin;
+      const availH = 1.0 - 2.0 * minMargin;
+      let printW, printH;
+      if (imgAR > (availW * paperAR) / availH) {
+        printW = availW;
+        printH = availW * paperAR / imgAR;
+        if (printH > availH) { printH = availH; printW = availH * imgAR / paperAR; }
+      } else {
+        printH = availH;
+        printW = availH * imgAR / paperAR;
+        if (printW > availW) { printW = availW; printH = availW * paperAR / imgAR; }
+      }
+      const marginL = (1.0 - printW) / 2.0;
+      const marginT = (1.0 - printH) / 2.0;
+      gl.uniform4f(locs.u_printArea, marginL, marginT, marginL, marginT);
     }
   }
 
@@ -2000,6 +2248,8 @@ async function saveHiRes(){
     // Use cropRect (letterbox/pillarbox of source to fit target aspect)
     gl.uniform4f(locs.u_crop,cropRect[0],cropRect[1],cropRect[2],cropRect[3]);
     gl.uniform2f(locs.u_res,saveW,saveH);
+    // Save canvas is crop-shaped: image fills it with small margins
+    gl.uniform4f(locs.u_printArea, 0.01, 0.01, 0.01, 0.01);
     gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
     const filename='risocam_'+(names||'empty')+'_'+saveW+'x'+saveH+'_'+Date.now()+'.png';
     const blob=await new Promise(r=>$gl.toBlob(b=>r(b),'image/png'));
@@ -2017,6 +2267,7 @@ async function saveHiRes(){
     gl.viewport(0,0,saveW,saveH);
     gl.uniform4f(locs.u_crop,0,0,1,1);
     gl.uniform2f(locs.u_res,saveW,saveH);
+    gl.uniform4f(locs.u_printArea, 0.01, 0.01, 0.01, 0.01);
     gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
     const filename='risocam_'+(names||'empty')+'_'+saveW+'x'+saveH+'_'+Date.now()+'.png';
     const blob=await new Promise(r=>$gl.toBlob(b=>r(b),'image/png'));
@@ -2032,6 +2283,19 @@ async function saveHiRes(){
 }
 
 async function doSaveBlob(blob,filename,w,h){
+  // On mobile: use Web Share API to save to Photos app
+  if(navigator.share && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)){
+    try{
+      const file=new File([blob],filename,{type:blob.type});
+      await navigator.share({files:[file]});
+      toast('Shared '+w+'×'+h+'!');
+      return;
+    }catch(e){
+      if(e.name==='AbortError') return; // user cancelled
+      // Fall through to download
+    }
+  }
+  // Desktop: standard download
   const link=document.createElement('a');
   link.download=filename;
   link.href=URL.createObjectURL(blob);
@@ -2062,6 +2326,8 @@ async function exportSeparations(){
   gl.uniform1f(locs.u_inkNoise,cached.inkNoise);
   gl.uniform1f(locs.u_paperTex,cached.paperTex);
   gl.uniform1f(locs.u_static,cached.grainStatic);
+  gl.uniform1f(locs.u_ghosting,cached.ghosting*0.01);
+  gl.uniform1f(locs.u_bleed,cached.bleed*0.01);
   gl.uniform1f(locs.u_resScale,resScale);
   gl.uniform1f(locs.u_frameSeed,frameSeed);
   gl.uniform1f(locs.u_bright,cached.imgBright);
@@ -2071,6 +2337,7 @@ async function exportSeparations(){
   gl.uniform3fv(locs.u_paperColor,cached.paperColor);
   gl.uniform4f(locs.u_crop,cropRect[0],cropRect[1],cropRect[2],cropRect[3]);
   gl.uniform1i(locs.u_mode,mode==='grain'?0:1);
+  gl.uniform4f(locs.u_printArea, 0.01, 0.01, 0.01, 0.01); // separations: minimal margins
 
   // Render each separation and collect as blobs
   const files=[];
@@ -2091,6 +2358,7 @@ async function exportSeparations(){
       gl.uniform1f(locs.u_hasCal0,0.0);
     }
     gl.uniform2f(offLocs[0],misreg[L.ch][0],misreg[L.ch][1]);
+    gl.uniform1f(skewLocs[0],layerSkews[L.ch]||0);
     gl.uniform1f(angLocs[0],(layerAngles[L.ch]||0)*0.01745329);
     gl.uniform1i(chanLocs[0],L.ch);
     gl.uniform1f(densLocs[0],cached.layerDens[L.ch]);
@@ -2252,6 +2520,24 @@ function buildChannelUI(targetId){
     return; // No drag, no multi-row
   }
 
+  // Build link groups: channels sharing same ink color
+  const linkGroups={};
+  for(let i=0;i<4;i++){
+    const c=channels[i];
+    if(!c) continue;
+    if(!linkGroups[c]) linkGroups[c]=[];
+    linkGroups[c].push(i);
+  }
+  // Only mark as linked if >1 channel shares the color
+  const linkedColor={}; // ch index → ink hex (only if linked)
+  for(const [color,chs] of Object.entries(linkGroups)){
+    if(chs.length>1){
+      const rc=RISO_COLORS.find(r=>r.name===color);
+      const hex=rc?rc.hex:'#888';
+      for(const ch of chs) linkedColor[ch]=hex;
+    }
+  }
+
   // ─── Multi-layer mode: individual rows with drag handles ───
   for(let pos=0;pos<4;pos++){
     const i=layerOrder[pos]; // actual CMYK channel index
@@ -2264,6 +2550,7 @@ function buildChannelUI(targetId){
     const dens=Math.round(cached.layerDens[i]);
     const trackBg=rc?`linear-gradient(90deg,${hex}15,${hex})`:`linear-gradient(90deg,#eee,#aaa)`;
     const curAngle=layerAngles[i]||0;
+    const isLinked=i in linkedColor;
 
     let html=`<div class="ch-slot" data-ch="${i}" data-pos="${pos}">`;
     // Compact row: [drag] [badge] [color-btn] [density slider] [angle buttons]
@@ -2275,7 +2562,8 @@ function buildChannelUI(targetId){
         oninput="setChannelDens(${i},this.value)"
         style="background:${trackBg}">`;
     if(isScreen){
-      html+=`<div class="ch-angles">`;
+      const linkStyle=isLinked?` style="border-bottom:2px solid ${linkedColor[i]};padding-bottom:1px"`:' ';
+      html+=`<div class="ch-angles"${linkStyle}>`;
       angles.forEach(a=>{
         html+=`<button class="ch-angle-btn${curAngle===a?' active':''}" onclick="event.stopPropagation();setAngle(${i},${a})">${a}°</button>`;
       });
@@ -2438,40 +2726,17 @@ function applyProf(p){
   } else {
     for(let i=0;i<4;i++) cached.layerDens[i]=88;
   }
-  // Screen linking: channels sharing the same physical ink share the same angle
-  if(p.colors.length===1){
-    // Mono: all layers share one screen
-    const a=layerAngles[0]||15;
-    for(let i=0;i<4;i++) layerAngles[i]=a;
-  } else if(p.colors.length===2){
-    // Duotone: slots [0,3] = ink A, slots [1,2] = ink B — link their screens
-    layerAngles=[15,75,75,15];
-  } else if(p.colors.length===3){
-    // Tritone: slots [0,3] = ink A, slot 1 = ink B, slot 2 = ink C
-    layerAngles=[15,75,45,15];
-  } else {
-    // 4-color (CMYK): each slot = independent ink, classic halftone angles
-    layerAngles=[15,75,0,45];
-  }
+  // Assign classic halftone angles per unique ink, then sync same-color plates
+  const defaultAngles=[15,75,0,45];
+  layerAngles=[...defaultAngles];
+  // syncSameColorPlates (in onChannelsChanged) locks same-ink channels together
   onChannelsChanged();
   pushUndo();
 }
 
 function onChannelsChanged(){
-  // Screen linking: sync angles for channels sharing the same physical ink
-  const unique=new Set(channels.filter(c=>c));
-  if(unique.size===1){
-    // Mono: all share one screen
-    const a=layerAngles[0];
-    for(let i=1;i<4;i++) layerAngles[i]=a;
-  } else if(unique.size===2){
-    // Duotone: link screens for paired channels [0,3] and [1,2]
-    layerAngles[3]=layerAngles[0];
-    layerAngles[2]=layerAngles[1];
-  } else if(unique.size===3){
-    // Tritone: link screens for channels [0,3]
-    layerAngles[3]=layerAngles[0];
-  }
+  // Sync same-color plates: shared angles + misreg (one master per ink)
+  syncSameColorPlates();
   newMisreg();cacheInkColors();updateUI();needsRedraw=true;
 }
 
@@ -2529,7 +2794,7 @@ function setMode(m){
 function setScale(s){
   resScale=s;
   document.querySelectorAll('.scale-btn').forEach((b,i)=>{
-    b.classList.toggle('active',[1,2,4,5][i]===s);
+    b.classList.toggle('active',[2,4,5,6][i]===s);
   });
   needsRedraw=true;
 }
@@ -2547,17 +2812,24 @@ function setRisoFps(fps){
 }
 function setAngle(ch,deg){
   layerAngles[ch]=deg;
+  // Sync same-color channels to the same angle
+  const color=channels[ch];
+  if(color){
+    for(let i=0;i<4;i++){
+      if(i!==ch && channels[i]===color) layerAngles[i]=deg;
+    }
+  }
   buildChannelUI();
   if(el('phChannelList')&&el('phChannelList').children.length) buildChannelUI('phChannelList');
   needsRedraw=true;
 }
 function bindSliders(){
-  ['grainSize','dotGain','misreg','inkNoise','paperTex','screenCell','grainStatic','imgBright','imgContrast','imgSat'].forEach(id=>{
+  ['grainSize','dotGain','misreg','inkNoise','paperTex','screenCell','grainStatic','ghosting','margin','bleed','skew','imgBright','imgContrast','imgSat'].forEach(id=>{
     const s=el(id),v=el(id+'Val');
     if(!s||!v)return;
     s.oninput=()=>{
-      v.textContent=s.value;
-      if(id==='misreg')newMisreg();
+      v.textContent=id==='skew'?s.value+'°':s.value;
+      if(id==='misreg'||id==='skew'){ cacheSlider(id,s.value); newMisreg(); }
       else cacheSlider(id,s.value);
     };
     cacheSlider(id,s.value);
@@ -2627,7 +2899,7 @@ const ASPECT_CYCLE=[[1,1],[4,3],[3,4],[5,4],[4,5],[16,9],[9,16]];
 const ASPECT_LABELS=['1:1','4:3','3:4','5:4','4:5','16:9','9:16'];
 let aspectIdx=1; // default to 4:3
 
-const RES_CYCLE=[1,2,4];
+const RES_CYCLE=[2,4,5];
 let resIdx=0;
 
 // Crop guide: shows what area will be saved when aspect is set
@@ -2808,6 +3080,15 @@ function phStartRec(){
   window._recorder.onstop=async()=>{
     const blob=new Blob(window._recChunks,{type:window._recMime});
     const filename='riso_'+Date.now()+'.'+window._recExt;
+    // Mobile: share to Photos app
+    if(navigator.share && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)){
+      try{
+        const file=new File([blob],filename,{type:blob.type});
+        await navigator.share({files:[file]});
+        toast('VIDEO SHARED');
+        return;
+      }catch(e){if(e.name==='AbortError')return;}
+    }
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');a.href=url;a.download=filename;
     document.body.appendChild(a);a.click();document.body.removeChild(a);
@@ -2905,6 +3186,8 @@ function phPopulateOverlay(name){
         <div class="slider-row"><span class="slider-label">Ink Noise</span><input type="range" id="phInkNoise" min="0" max="30" value="${cached.inkNoise}" step="2"><span class="slider-value" id="phInkNoiseVal">${cached.inkNoise}</span></div>
         <div class="slider-row"><span class="slider-label">Paper Tex</span><input type="range" id="phPaperTex" min="0" max="25" value="${el('paperTex').value}" step="1"><span class="slider-value" id="phPaperTexVal">${el('paperTex').value}</span></div>
         <div class="slider-row"><span class="slider-label">Static</span><input type="range" id="phGrainStatic" min="0" max="20" value="${cached.grainStatic}" step="1"><span class="slider-value" id="phGrainStaticVal">${cached.grainStatic}</span></div>
+        <div class="slider-row"><span class="slider-label">Ghosting</span><input type="range" id="phGhosting" min="0" max="30" value="${cached.ghosting}" step="2"><span class="slider-value" id="phGhostingVal">${cached.ghosting}</span></div>
+        <div class="slider-row"><span class="slider-label">Bleed</span><input type="range" id="phBleed" min="0" max="10" value="${cached.bleed}" step="1"><span class="slider-value" id="phBleedVal">${cached.bleed}</span></div>
       </div>`;
     phBindSliders();
   }
@@ -2919,6 +3202,8 @@ function phBindSliders(){
     ['phInkNoise','inkNoise','inkNoise'],
     ['phPaperTex','paperTex',null],
     ['phGrainStatic','grainStatic','grainStatic'],
+    ['phGhosting','ghosting','ghosting'],
+    ['phBleed','bleed','bleed'],
   ];
   map.forEach(([phId,deskId,cacheKey])=>{
     const phEl=el(phId);
@@ -2998,9 +3283,8 @@ document.addEventListener('DOMContentLoaded',()=>{
   applyProf(PROFILES[0]);
   setPaperColor(0);
 
-  // Load sample image so the app shows something immediately
+  // Load test pattern immediately — no upload overlay needed
   loadSampleImage();
-  showOnboarding();
 
   // Initial layout
   layoutSwitch();
