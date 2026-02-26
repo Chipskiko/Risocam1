@@ -1640,10 +1640,9 @@ function redo(){
 }
 
 function newMisreg(){
-  const m=parseFloat(el('misreg').value)/500;
+  const m=cached.misreg/500;
   // When misreg is 0, skew should also be 0 (no plate rotation without misregistration)
-  const misregVal=parseFloat(el('misreg').value);
-  const skewMax= misregVal > 0 ? cached.skew * Math.PI / 180.0 : 0;
+  const skewMax= cached.misreg > 0 ? cached.skew * Math.PI / 180.0 : 0;
   if(isMono()){
     // Mono: single drum pass — all plates share same offset/skew
     const mx=(Math.random()-.5)*m*2, my=(Math.random()-.5)*m*2;
@@ -1854,70 +1853,32 @@ function render(){
     if(!isPhone()) setTimeout(()=>{updateCropGuide(0,0,0,0);},50);
   }
 
-  // Upload video frame only when new frame available (camera or uploaded video)
-  // Double-buffer: swap src textures so previous frame is preserved in u_prevSrc
-  let newCamFrame=false;
-  if((camOn||(videoOn&&!gifImg))&&$vid.readyState>=2){
-    if(videoFrameReady||!$vid.requestVideoFrameCallback){
-      // Swap: current source becomes previous, upload new frame to the other texture
-      const tmp=window._srcTexA; window._srcTexA=window._srcTexB; window._srcTexB=tmp;
-      window._srcFlip=!window._srcFlip;
-      // Upload new frame to the active source texture
-      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
-      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,$vid);
-      // Bind previous frame texture
-      gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
-      gl.uniform1i(locs.u_src,0);
-      gl.uniform1i(locs.u_prevSrc,3);
-      hasSrc=true;
-      videoFrameReady=false;
-      newCamFrame=true;
-    }
-  }
-  // GIF mode: gifLoop already uploads texture via gifCanvas, just swap and mark
-  if(videoOn&&gifImg&&videoFrameReady){
-    const tmp=window._srcTexA; window._srcTexA=window._srcTexB; window._srcTexB=tmp;
-    window._srcFlip=!window._srcFlip;
-    gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
-    // gifLoop already called texImage2D on the previously active texture — re-upload to new active
-    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifCanvas);
-    gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
-    gl.uniform1i(locs.u_src,0);
-    gl.uniform1i(locs.u_prevSrc,3);
-    videoFrameReady=false;
-    newCamFrame=true;
-  }
-
   // ─── Riso-FPS throttle: choppy print-animation feel ───
-  // When camera is live, only draw at risoFps intervals
-  // Canvas holds previous frame between draws = natural stop-motion choppiness
+  // Check throttle BEFORE uploading textures to avoid GPU work on skipped frames
   const now=performance.now();
+  let newCamFrame=false;
+  const hasCamData=(camOn||(videoOn&&!gifImg))&&$vid.readyState>=2&&(videoFrameReady||!$vid.requestVideoFrameCallback);
+  const hasGifData=videoOn&&gifImg&&videoFrameReady;
+
   if((camOn||videoOn) && risoFps > 0){
     const interval=1000/risoFps;
     if(now - lastRisoFrame < interval && !needsRedraw){
-      // Between riso frames: skip drawing, just update FPS counter
       fpsFrames++;
-      if(now-fpsLast>=1000){$fps.textContent=risoFps+'fps';fpsFrames=0;fpsLast=now;}
       return;
     }
     lastRisoFrame=now;
-    // Grain boil: large frame jump so each riso-frame has distinct grain pattern
     frame += Math.floor(Math.random()*40)+15;
-    frameSeed = Math.random(); // discrete seed — every frame is a new print
-    // Per-frame fresh misregistration: each "print" lands slightly differently
-    // Scaled by the misreg slider so user controls the magnitude
+    frameSeed = Math.random();
     if(!isMono()){
-      const m=parseFloat(el('misreg').value)/500;
+      const m=cached.misreg/500;
       for(let i=0;i<4;i++){
         misreg[i]=[(Math.random()-.5)*m*2,(Math.random()-.5)*m*2];
       }
     }
   } else {
-    // Static image / no camera: normal dirty-flag rendering
     const animating = cached.grainStatic > 0 || videoOn;
-    if(!needsRedraw && !newCamFrame && !isRecording && !animating) {
+    if(!needsRedraw && !hasCamData && !hasGifData && !isRecording && !animating) {
       fpsFrames++;
-      if(now-fpsLast>=1000){$fps.textContent='idle';fpsFrames=0;fpsLast=now;}
       return;
     }
     if(animating){
@@ -1941,6 +1902,26 @@ function render(){
     }
   }
   needsRedraw=false;
+
+  // Upload video/GIF frame only when we'll actually draw (after throttle check)
+  if(hasCamData){
+    const tmp=window._srcTexA; window._srcTexA=window._srcTexB; window._srcTexB=tmp;
+    window._srcFlip=!window._srcFlip;
+    gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,$vid);
+    gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
+    gl.uniform1i(locs.u_src,0);gl.uniform1i(locs.u_prevSrc,3);
+    hasSrc=true;videoFrameReady=false;newCamFrame=true;
+  }
+  if(hasGifData){
+    const tmp=window._srcTexA; window._srcTexA=window._srcTexB; window._srcTexB=tmp;
+    window._srcFlip=!window._srcFlip;
+    gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifCanvas);
+    gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
+    gl.uniform1i(locs.u_src,0);gl.uniform1i(locs.u_prevSrc,3);
+    videoFrameReady=false;newCamFrame=true;
+  }
 
   // Canvas sizing — DPR-aware, respects crop aspect in phone mode
   let cssW=$vf.clientWidth, cssH=$vf.clientHeight;
