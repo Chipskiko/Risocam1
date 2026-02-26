@@ -3059,8 +3059,13 @@ function phBindBcs(){
 }
 
 async function phFlipCam(){
+  if(!camOn){
+    // Camera not active — start it
+    stopVideo();
+    toggleCam();
+    return;
+  }
   const newFacing=facingMode==='environment'?'user':'environment';
-  if(!camOn)return;
   if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}
   $vid.srcObject=null;
   camOn=false;
