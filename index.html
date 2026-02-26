@@ -66,14 +66,14 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
   .controls-sep{display:none}
 }
 .viewfinder-panel{position:relative;background:transparent;overflow:hidden;display:flex;align-items:center;justify-content:center}
-.viewfinder-panel canvas{width:100%;display:block;aspect-ratio:1.414/1}
+.viewfinder-panel>#gl{width:100%;display:block;aspect-ratio:1.414/1}
 .status-bar{position:absolute;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;pointer-events:none}
 .status-badge{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:4px 8px;background:rgba(0,0,0,.6);color:rgba(255,255,255,.8);border-radius:2px;backdrop-filter:blur(4px)}
 .capture-info{position:absolute;bottom:12px;left:12px;font-family:'Space Mono',monospace;font-size:10px;color:rgba(255,255,255,.4);letter-spacing:1px}
 .fps-counter{position:absolute;bottom:12px;right:12px;font-family:'Space Mono',monospace;font-size:9px;color:rgba(255,255,255,.3)}
-.compare-overlay{position:absolute;inset:0;display:none;z-index:4;pointer-events:none;overflow:hidden}
+.compare-overlay{position:absolute;display:none;z-index:4;pointer-events:none;overflow:hidden}
 .compare-overlay.active{display:block;pointer-events:auto}
-.compare-overlay img{width:100%;height:100%;object-fit:contain;clip-path:inset(0 50% 0 0)}
+.compare-overlay img,.compare-overlay canvas{width:100%;height:100%;object-fit:fill;clip-path:inset(0 50% 0 0)}
 .compare-handle{position:absolute;top:0;bottom:0;left:50%;width:3px;background:rgba(255,255,255,.8);cursor:ew-resize;transform:translateX(-50%);box-shadow:0 0 6px rgba(0,0,0,.5)}
 .compare-handle::after{content:'⟷';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.7);color:#fff;font-size:11px;padding:4px 6px;border-radius:10px;white-space:nowrap}
 .compare-label{position:absolute;top:8px;font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;color:rgba(255,255,255,.7);background:rgba(0,0,0,.5);padding:3px 8px;border-radius:3px;pointer-events:none}
@@ -312,7 +312,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
 <header>
   <div class="header-inner">
   <div class="header-row">
-    <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text-muted);opacity:0.6">v1.1</span>
+    <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text-muted);opacity:0.6">v1.2</span>
     <div class="header-mode">
       <button class="header-mode-btn active" id="modeGrain" onclick="setMode('grain')">GRAIN</button>
       <button class="header-mode-btn" id="modeScreen" onclick="setMode('screen')">SCREEN</button>
@@ -346,7 +346,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
   <div class="viewfinder-panel" id="viewfinder">
     <canvas id="gl"></canvas>
     <video id="vid" autoplay playsinline muted style="display:none"></video>
-    <div class="compare-overlay" id="compareOverlay"><img id="compareImg" /><div class="compare-handle" id="compareHandle"></div><div class="compare-label compare-label-l">ORIGINAL</div><div class="compare-label compare-label-r">RISO</div></div>
+    <div class="compare-overlay" id="compareOverlay"><img id="compareImg" /><canvas id="compareCanvas" style="display:none"></canvas><div class="compare-handle" id="compareHandle"></div><div class="compare-label compare-label-l">ORIGINAL</div><div class="compare-label compare-label-r">RISO</div></div>
     <div class="crop-guide" id="deskCropGuide"><div class="crop-guide-inner" id="deskCropInner"></div></div>
     <div class="fps-counter" id="fps" style="display:none">--</div>
     <!-- Hidden elements kept for JS references -->
@@ -643,9 +643,9 @@ vec4 toCMYK(vec3 rgb){
   float c = (1.0-rgb.r-k)*ik;
   float m = (1.0-rgb.g-k)*ik;
   float y = (1.0-rgb.b-k)*ik;
-  // UCR: when K is high, reduce CMY proportionally to avoid oversaturation
-  // Ramps from 0% reduction at K=0.2 to 45% reduction at K=1.0
-  float ucr = smoothstep(0.2, 0.8, k) * 0.45;
+  // UCR: when K is high, reduce CMY to avoid oversaturation and ink mud
+  // Gentler than before — keeps more CMY color in shadows for richness
+  float ucr = smoothstep(0.25, 0.85, k) * 0.35;
   c *= 1.0 - ucr;
   m *= 1.0 - ucr;
   y *= 1.0 - ucr;
@@ -674,15 +674,13 @@ float getChannelInner(vec4 cmyk, int ch, int totalLayers){
     return base + cmyk.w*0.55;
   }
   float raw = ch==0?cmyk.x:(ch==1?cmyk.y:(ch==2?cmyk.z:cmyk.w));
-  float balance = ch==0 ? 1.10 : (ch==1 ? 1.0 : (ch==2 ? 0.85 : 1.05));
+  // Balance: Yellow ink is very transparent so needs less coverage,
+  // Black carries shadows and needs more presence
+  float balance = ch==0 ? 1.05 : (ch==1 ? 1.0 : (ch==2 ? 0.70 : 1.15));
   raw *= balance;
-  if(ch == 0){
-    float neutral = 1.0 - abs(cmyk.x - cmyk.y) - abs(cmyk.y - cmyk.z);
-    neutral = clamp(neutral, 0.0, 1.0);
-    raw += neutral * cmyk.w * 0.04;
-  }
+  // Gentle total ink limit — prevent oversaturation at >260% TAC
   float total = cmyk.x + cmyk.y + cmyk.z + cmyk.w;
-  if(total > 2.0) raw *= 2.0 / total;
+  if(total > 2.6) raw *= 2.6 / total;
   return clamp(raw, 0.0, 1.0);
 }
 
@@ -1231,33 +1229,56 @@ void main(){
   // progressively along the feed direction with noise/irregularity.
   if(u_ghosting > 0.01){
     // Inter-frame ghosting: faint residual ink from previous frame's content
-    // In real riso, ink left on the drum from the previous print transfers
-    // to the next sheet. Ghosting slider controls the strength/visibility.
+    // Ghost only carries ink from channels that are actually printing.
     float ghostStr = u_ghosting; // 0-0.3 from JS
     // Sample previous frame with slight horizontal smudge (feed direction streak)
-    // Paper feeds horizontally through the drum, so ghost streaks sideways
-    vec3 prevInk = vec3(0.0);
+    vec3 prevRGB = vec3(0.0);
     float totalW = 0.0;
     for(int i = 0; i < 4; i++){
-      float t = float(i) / 3.0; // 0 to 1
-      float xOff = t * 0.015; // small horizontal smear range
-      float w = 1.0 - t * 0.6; // fade along streak
+      float t = float(i) / 3.0;
+      float xOff = t * 0.015;
+      float w = 1.0 - t * 0.6;
       vec2 smearUV = srcUV(uv + vec2(xOff, 0.0));
-      vec3 s = texture2D(u_prevSrc, smearUV).rgb;
-      prevInk += (vec3(1.0) - s) * w;
+      prevRGB += texture2D(u_prevSrc, smearUV).rgb * w;
       totalW += w;
     }
-    prevInk /= totalW;
-    float inkAmount = dot(prevInk, vec3(0.333));
-    // Edge mask: ghost should fade near print edges
+    prevRGB /= totalW;
+    // Decompose into CMYK, then sum only active layers' ink contributions
+    vec4 gCmyk = toCMYK(prevRGB);
+    vec3 ghostInk = vec3(0.0);
+    float ghostTotal = 0.0;
+    // Layer 0
+    if(u_layers >= 1){
+      float ch = u_chan0==0?gCmyk.x:(u_chan0==1?gCmyk.y:(u_chan0==2?gCmyk.z:gCmyk.w));
+      ghostInk += (vec3(1.0) - u_ink0) * ch;
+      ghostTotal += ch;
+    }
+    // Layer 1
+    if(u_layers >= 2){
+      float ch = u_chan1==0?gCmyk.x:(u_chan1==1?gCmyk.y:(u_chan1==2?gCmyk.z:gCmyk.w));
+      ghostInk += (vec3(1.0) - u_ink1) * ch;
+      ghostTotal += ch;
+    }
+    // Layer 2
+    if(u_layers >= 3){
+      float ch = u_chan2==0?gCmyk.x:(u_chan2==1?gCmyk.y:(u_chan2==2?gCmyk.z:gCmyk.w));
+      ghostInk += (vec3(1.0) - u_ink2) * ch;
+      ghostTotal += ch;
+    }
+    // Layer 3
+    if(u_layers >= 4){
+      float ch = u_chan3==0?gCmyk.x:(u_chan3==1?gCmyk.y:(u_chan3==2?gCmyk.z:gCmyk.w));
+      ghostInk += (vec3(1.0) - u_ink3) * ch;
+      ghostTotal += ch;
+    }
+    float inkAmount = ghostTotal / max(float(u_layers), 1.0);
+    // Edge mask & noise breakup
     float ghostMask = printMask(uv, vec2(0.0), rpx);
-    // Subtle noise breakup via noise texture (avoids hash moiré)
     float breakup = texture2D(u_noise, fract(uv * 3.0 + u_frameSeed)).r;
-    breakup = 0.7 + breakup * 0.3; // range 0.7-1.0: subtle variation, no moiré
-    // Ghost amount: strength × ink density × mask × breakup
+    breakup = 0.7 + breakup * 0.3;
     float ghostAmount = clamp(inkAmount * ghostStr * breakup * ghostMask * 1.5, 0.0, 0.25);
-    // Tint direction: ghost carries the color of the previous frame's ink
-    vec3 ghostTint = length(prevInk) > 0.001 ? normalize(prevInk) : vec3(0.333);
+    // Tint from active inks only
+    vec3 ghostTint = ghostTotal > 0.001 ? normalize(ghostInk) : vec3(0.333);
     result = result - ghostTint * ghostAmount;
   }
 
@@ -1388,7 +1409,7 @@ const PROFILES=[
   {name:"Forest",colors:["Hunter Green","Brown","Yellow"]},{name:"Sunset",colors:["Orange","Scarlet","Yellow"]},
   {name:"Ocean",colors:["Teal","Cornflower"]},{name:"Berry",colors:["Purple","Cranberry"]},
   {name:"Earthy",colors:["Brown","Flat Gold","Hunter Green"]},{name:"Night",colors:["Federal Blue","Violet","Fl. Green"]},
-  {name:"CMYK",colors:["Blue","Bright Red","Yellow","Black"],dens:[85,80,65,40]},{name:"Tropical",colors:["Fl. Orange","Turquoise","Yellow"]},
+  {name:"CMYK",colors:["Blue","Bright Red","Yellow","Black"],dens:[88,85,70,75]},{name:"Tropical",colors:["Fl. Orange","Turquoise","Yellow"]},
   {name:"Mono",colors:["Black"]},{name:"Vintage",colors:["Brick","Flat Gold","Federal Blue"]},
 ];
 
@@ -1676,27 +1697,102 @@ function syncSameColorPlates(){
 }
 
 // ======================== COMPARE MODE ========================
-let compareOn=false;
+let compareOn=false,_compareRAF=0,_compareLive=false;
+function getCompareCrop(){
+  // Compute the same crop the shader uses, returns {sx,sy,sw,sh} in source pixels
+  let srcW,srcH;
+  if(camOn||(videoOn&&!gifImg)){srcW=$vid.videoWidth||1;srcH=$vid.videoHeight||1;}
+  else if(gifImg){srcW=gifCanvas.width||1;srcH=gifCanvas.height||1;}
+  else if(srcImg){srcW=srcImg.width;srcH=srcImg.height;}
+  else return null;
+  const glc=el('gl');
+  const dw=glc.width,dh=glc.height;
+  let targetAR;
+  if(cropAspect==='fill') targetAR=dw/dh;
+  else if(cropAspect==='fit') targetAR=srcW/srcH;
+  else if(cropAspect) targetAR=cropAspect[0]/cropAspect[1];
+  else targetAR=dw/dh;
+  const srcAR=srcW/srcH;
+  let cx=0,cy=0,cw=srcW,ch=srcH;
+  if(targetAR>srcAR){
+    const h=srcAR/targetAR;
+    cy=((1-h)/2)*srcH;ch=h*srcH;
+  } else {
+    const w=targetAR/srcAR;
+    cx=((1-w)/2)*srcW;cw=w*srcW;
+  }
+  return {sx:cx,sy:cy,sw:cw,sh:ch};
+}
+function sizeCompareOverlay(){
+  const glc=el('gl');
+  const parent=glc.parentElement;
+  const pr=parent.getBoundingClientRect();
+  const gr=glc.getBoundingClientRect();
+  const ov=el('compareOverlay');
+  ov.style.left=(gr.left-pr.left)+'px';
+  ov.style.top=(gr.top-pr.top)+'px';
+  ov.style.width=gr.width+'px';
+  ov.style.height=gr.height+'px';
+}
+function drawCompareFrame(source){
+  // Draw source (img or video) onto compare canvas with correct crop
+  const cv=el('compareCanvas');
+  const ctx=cv.getContext('2d');
+  const crop=getCompareCrop();
+  if(!crop)return;
+  const glc=el('gl');
+  cv.width=glc.width;cv.height=glc.height;
+  ctx.drawImage(source,crop.sx,crop.sy,crop.sw,crop.sh,0,0,cv.width,cv.height);
+}
 function toggleCompare(){
   compareOn=!compareOn;
   const overlay=el('compareOverlay');
   const btn=el('compareBtn');
-  if(compareOn && srcImg){
-    el('compareImg').src=srcImg.src;
+  const img=el('compareImg');
+  const cv=el('compareCanvas');
+  if(compareOn){
+    const isLive=camOn||videoOn;
+    // Always use the canvas (handles crop correctly for both static and video)
+    img.style.display='none';cv.style.display='';
+    if(srcImg){
+      drawCompareFrame(srcImg);
+      _compareLive=false;
+    } else if(isLive){
+      drawCompareFrame($vid);
+      _compareLive=true;
+    } else {
+      compareOn=false;return;
+    }
+    sizeCompareOverlay();
     overlay.classList.add('active');
     btn.classList.add('active');
     initCompareDrag();
+    if(_compareLive) startCompareLoop();
   } else {
     compareOn=false;
     overlay.classList.remove('active');
     btn.classList.remove('active');
+    stopCompareLoop();
+    _compareLive=false;
   }
 }
+function startCompareLoop(){
+  stopCompareLoop();
+  function tick(){
+    if(!compareOn||!_compareLive){stopCompareLoop();return;}
+    sizeCompareOverlay();
+    drawCompareFrame($vid);
+    _compareRAF=requestAnimationFrame(tick);
+  }
+  _compareRAF=requestAnimationFrame(tick);
+}
+function stopCompareLoop(){if(_compareRAF){cancelAnimationFrame(_compareRAF);_compareRAF=0;}}
 function setComparePos(x){
   const overlay=el('compareOverlay');
   const rect=overlay.getBoundingClientRect();
   const pct=Math.max(0.05,Math.min(0.95,(x-rect.left)/rect.width));
-  el('compareImg').style.clipPath=`inset(0 ${(1-pct)*100}% 0 0)`;
+  const clip=`inset(0 ${(1-pct)*100}% 0 0)`;
+  el('compareCanvas').style.clipPath=clip;
   el('compareHandle').style.left=pct*100+'%';
 }
 function initCompareDrag(){
@@ -3588,7 +3684,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   }
 
   // Redraw on resize/orientation change
-  window.addEventListener('resize',()=>{markDirty();needsAspectUpdate=true;});
+  window.addEventListener('resize',()=>{markDirty();needsAspectUpdate=true;if(compareOn)setTimeout(sizeCompareOverlay,50);});
 
   // Undo/Redo keyboard shortcuts (Cmd+Z / Ctrl+Z, Cmd+Shift+Z / Ctrl+Shift+Z)
   document.addEventListener('keydown',e=>{
