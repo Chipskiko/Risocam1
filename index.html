@@ -312,7 +312,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
 <header>
   <div class="header-inner">
   <div class="header-row">
-    <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text-muted);opacity:0.6">v1.0</span>
+    <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text-muted);opacity:0.6">v1.1</span>
     <div class="header-mode">
       <button class="header-mode-btn active" id="modeGrain" onclick="setMode('grain')">GRAIN</button>
       <button class="header-mode-btn" id="modeScreen" onclick="setMode('screen')">SCREEN</button>
@@ -411,7 +411,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
         <div class="slider-row"><span class="slider-label">Ghosting</span><input type="range" id="ghosting" min="0" max="30" value="0" step="2"><span class="slider-value" id="ghostingVal">0</span></div>
         <div class="slider-row"><span class="slider-label">Margin</span><input type="range" id="margin" min="0" max="12" value="4" step="1"><span class="slider-value" id="marginVal">4</span></div>
         <div class="slider-row"><span class="slider-label">Bleed</span><input type="range" id="bleed" min="0" max="10" value="0" step="1"><span class="slider-value" id="bleedVal">0</span></div>
-        <div class="slider-row" style="margin-top:4px"><span class="slider-label">Crop Marks</span><label class="toggle-switch"><input type="checkbox" id="cropMarksToggle" checked onchange="cached.showCropMarks=this.checked;needsRedraw=true"><span class="toggle-slider"></span></label></div>
+        <div class="slider-row" style="margin-top:4px"><span class="slider-label">Crop Marks</span><label class="toggle-switch"><input type="checkbox" id="cropMarksToggle" checked onchange="cached.showCropMarks=this.checked;markDirty()"><span class="toggle-slider"></span></label></div>
       </div>
     </div>
   </div>
@@ -1436,7 +1436,7 @@ function loadPaperTexture(key){
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
     gl.uniform1i(locs.u_paperScan,2);
     gl.uniform1f(locs.u_usePaperScan,1.0);
-    needsRedraw=true;
+    markDirty();
   };
   img.src=tex.data;
 }
@@ -1469,9 +1469,17 @@ const cached={
 let needsAspectUpdate=true;
 let videoFrameReady=false;
 let needsRedraw=true; // dirty flag — skip GPU work when nothing changed
+let uniformsDirty=true; // only upload non-per-frame uniforms when settings change
+let _rafId=0;
+
+function scheduleRender(){if(!_rafId) _rafId=requestAnimationFrame(render);}
+function markDirty(){needsRedraw=true;uniformsDirty=true;scheduleRender();}
 
 const inkLocs=new Array(4), offLocs=new Array(4), angLocs=new Array(4), chanLocs=new Array(4), densLocs=new Array(4);
-let $gl,$vf,$vid,$fps,$res,$status;
+// Pre-built uniform location arrays (populated in init, avoids per-frame allocation)
+let lutALocs,lutBLocs,lutCLocs,lutDLocs,gammaLocs,grainMulLocs,hasCalLocs,opaqueLocs,skewLocs;
+let $gl,$vf,$vid,$fps,$res,$status,$phCropGuide,$deskCropGuide;
+let cachedVfW=0,cachedVfH=0; // cached viewfinder dimensions, updated on resize
 
 function hexRGB(h){return[parseInt(h.slice(1,3),16)/255,parseInt(h.slice(3,5),16)/255,parseInt(h.slice(5,7),16)/255];}
 function el(id){return document.getElementById(id);}
@@ -1508,7 +1516,7 @@ function computeCrop(){
 function setAspect(ratio){
   cropAspect=ratio||[4,3];
   computeCrop();
-  needsAspectUpdate=true;
+  needsAspectUpdate=true;scheduleRender();
   const ar = (typeof cropAspect === 'string') ? cropAspect : cropAspect.join(':');
   document.querySelectorAll('.aspect-btn').forEach(b=>{
     b.classList.toggle('active',b.dataset.ar===ar);
@@ -1527,7 +1535,7 @@ function setPaperOrient(orient){
     }
   }
   needsAspectUpdate=true;
-  needsRedraw=true;
+  markDirty();
 }
 
 // Phone mode detection — state-based, not screen-size
@@ -1546,7 +1554,7 @@ function togglePhoneMode(){
     el('margin').value=_desktopMargin;el('marginVal').textContent=_desktopMargin;
   }
   document.body.classList.toggle('phone-mode',phoneActive);
-  needsRedraw=true;needsAspectUpdate=true;
+  markDirty();needsAspectUpdate=true;
   layoutSwitch();
 }
 
@@ -1572,7 +1580,7 @@ function cacheInkColors(){
   }
 }
 let _undoTimer=0;
-function cacheSlider(id,val){cached[id]=parseFloat(val);needsRedraw=true;clearTimeout(_undoTimer);_undoTimer=setTimeout(pushUndo,300);}
+function cacheSlider(id,val){cached[id]=parseFloat(val);markDirty();clearTimeout(_undoTimer);_undoTimer=setTimeout(pushUndo,300);}
 
 // ======================== UNDO / REDO ========================
 const undoStack=[], redoStack=[];
@@ -1615,7 +1623,7 @@ function restoreState(json){
     // Sync UI sliders
     const sliders={imgBright:s.imgBright,imgContrast:s.imgContrast,imgSat:s.imgSat};
     for(const[id,v] of Object.entries(sliders)){const e=document.getElementById(id);if(e)e.value=v;const ve=document.getElementById(id+'Val');if(ve)ve.textContent=v;}
-    cacheInkColors();updateUI();needsRedraw=true;
+    cacheInkColors();updateUI();markDirty();
   }finally{ undoLock=false; }
 }
 function undo(){
@@ -1639,7 +1647,7 @@ function newMisreg(){
     const mx=(Math.random()-.5)*m*2, my=(Math.random()-.5)*m*2;
     const sk=(Math.random()-.5)*2*skewMax;
     for(let i=0;i<4;i++){ misreg[i]=[mx,my]; layerSkews[i]=sk; }
-    needsRedraw=true;
+    markDirty();
     return;
   }
   for(let i=0;i<4;i++){
@@ -1648,7 +1656,7 @@ function newMisreg(){
   }
   // Same-color plates share one master = same misreg offset + skew
   syncSameColorPlates();
-  needsRedraw=true;
+  markDirty();
 }
 
 // Lock same-color channels: shared misreg, screen angles, and skew
@@ -1821,31 +1829,30 @@ function genBlueNoise(sz){
 
 // ======================== RENDER LOOP ========================
 function render(){
-  requestAnimationFrame(render);
+  _rafId=0;
+  const isPhoneNow=phoneActive;
 
   // Aspect ratio — canvas shape
   if(needsAspectUpdate){
-    if(isPhone() && cropAspect && typeof cropAspect !== 'string'){
+    if(isPhoneNow && cropAspect && typeof cropAspect !== 'string'){
       $gl.style.aspectRatio = cropAspect[0]+'/'+cropAspect[1];
       $gl.style.width = '';
       $gl.style.height = '';
-    } else if(isPhone()){
+    } else if(isPhoneNow){
       $gl.style.aspectRatio = '';
       $gl.style.width = '100%';
       $gl.style.height = '100%';
     } else {
-      // Desktop: canvas keeps A3 aspect from CSS, width fills parent
       $gl.style.width = '100%';
       $gl.style.height = '';
-      // A3 aspect is set in CSS, don't override unless paperOrient changed
     }
+    cachedVfW=$vf.clientWidth;cachedVfH=$vf.clientHeight;
     needsAspectUpdate=false;
     needsRedraw=true;
-    if(!isPhone()) setTimeout(()=>{updateCropGuide(0,0,0,0);},50);
+    if(!isPhoneNow) setTimeout(()=>{updateCropGuide(0,0,0,0);},50);
   }
 
   // ─── Riso-FPS throttle: choppy print-animation feel ───
-  // Check throttle BEFORE uploading textures to avoid GPU work on skipped frames
   const now=performance.now();
   let newCamFrame=false;
   const hasCamData=(camOn||(videoOn&&!gifImg))&&$vid.readyState>=2&&(videoFrameReady||!$vid.requestVideoFrameCallback);
@@ -1855,10 +1862,10 @@ function render(){
     const interval=1000/risoFps;
     if(now - lastRisoFrame < interval && !needsRedraw){
       fpsFrames++;
+      scheduleRender(); // continuous mode — keep ticking
       return;
     }
     lastRisoFrame=now;
-    // Only vary grain/misreg when static > 0 (animation mode)
     if(cached.grainStatic > 0){
       frame += Math.floor(Math.random()*40)+15;
       frameSeed = Math.random();
@@ -1875,22 +1882,20 @@ function render(){
     const animating = cached.grainStatic > 0 || videoOn;
     if(!needsRedraw && !hasCamData && !hasGifData && !isRecording && !animating) {
       fpsFrames++;
-      return;
+      return; // truly idle — no scheduleRender(), engine sleeps
     }
     if(animating){
-      // Static slider = re-reg animation: re-randomize misregistration like pressing RE-REG
-      // Slider value controls FPS (1=2fps, 10=10fps, 20=20fps)
       const staticFps = Math.max(2, cached.grainStatic);
       const staticInterval = 1000 / staticFps;
       if(!window._lastStaticFrame) window._lastStaticFrame = 0;
       if(now - window._lastStaticFrame < staticInterval && !needsRedraw) {
         fpsFrames++;
+        scheduleRender();
         return;
       }
       window._lastStaticFrame = now;
       frame++;
       frameSeed = Math.random();
-      // Re-reg: fresh misregistration per frame (like pressing RE-REG button)
       newMisreg();
     } else {
       frame++;
@@ -1899,81 +1904,135 @@ function render(){
   }
   needsRedraw=false;
 
-  // Upload video/GIF frame only when we'll actually draw (after throttle check)
+  // Upload video/GIF frame only when we'll actually draw
   if(hasCamData){
-    const tmp=window._srcTexA; window._srcTexA=window._srcTexB; window._srcTexB=tmp;
-    window._srcFlip=!window._srcFlip;
-    gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
+    swapSrcTextures();
     gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,$vid);
     gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
     gl.uniform1i(locs.u_src,0);gl.uniform1i(locs.u_prevSrc,3);
     hasSrc=true;videoFrameReady=false;newCamFrame=true;
   }
   if(hasGifData){
-    const tmp=window._srcTexA; window._srcTexA=window._srcTexB; window._srcTexB=tmp;
-    window._srcFlip=!window._srcFlip;
-    gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
+    swapSrcTextures();
     gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifCanvas);
     gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
     gl.uniform1i(locs.u_src,0);gl.uniform1i(locs.u_prevSrc,3);
     videoFrameReady=false;newCamFrame=true;
   }
 
-  // Canvas sizing — DPR-aware, respects crop aspect in phone mode
-  let cssW=$vf.clientWidth, cssH=$vf.clientHeight;
-  if(isPhone() && cropAspect){
+  // Canvas sizing — use cached dimensions (updated on resize/aspect change)
+  let cssW=cachedVfW||$vf.clientWidth, cssH=cachedVfH||$vf.clientHeight;
+  if(isPhoneNow && cropAspect){
     const ar=cropAspect[0]/cropAspect[1];
     const containerAR=cssW/cssH;
-    if(ar>containerAR){
-      // Wider than container: fit to width
-      cssH=Math.round(cssW/ar);
-    } else {
-      // Taller than container: fit to height
-      cssW=Math.round(cssH*ar);
-    }
+    if(ar>containerAR) cssH=Math.round(cssW/ar);
+    else cssW=Math.round(cssH*ar);
   }
-  const dpr=isPhone()?1:Math.min(window.devicePixelRatio||1, 2);
+  const dpr=isPhoneNow?1:Math.min(window.devicePixelRatio||1, 2);
   const baseScale=Math.max(resScale, dpr);
   const dw=Math.round(cssW*baseScale), dh=Math.round(cssH*baseScale);
   if($gl.width!==dw||$gl.height!==dh){$gl.width=dw;$gl.height=dh;}
   gl.viewport(0,0,dw,dh);
 
-  // Uniforms — all from cached values, zero DOM access
+  // ─── Per-frame uniforms (always uploaded) ───
   const layers=activeLayers();
   const nLayers=layers.length;
   gl.uniform2f(locs.u_res,dw,dh);
   gl.uniform1f(locs.u_time,frame);
   gl.uniform1f(locs.u_frameSeed,frameSeed);
-  gl.uniform1i(locs.u_layers,hasSrc?nLayers:0);
-  gl.uniform1i(locs.u_mode,mode==='grain'?0:1);
-  gl.uniform1i(locs.u_sepMode,0);
-  gl.uniform1f(locs.u_grainSize,cached.grainSize);
-  gl.uniform1f(locs.u_dotGain,cached.dotGain);
-  gl.uniform1f(locs.u_inkNoise,cached.inkNoise);
-  gl.uniform1f(locs.u_paperTex,cached.paperTex);
-  gl.uniform1f(locs.u_static,cached.grainStatic);
   gl.uniform1f(locs.u_resScale,resScale);
-  gl.uniform1f(locs.u_bright,cached.imgBright);
-  gl.uniform1f(locs.u_contrast,cached.imgContrast);
-  gl.uniform1f(locs.u_sat,cached.imgSat);
-  gl.uniform1f(locs.u_screenCell,cached.screenCell);
-  gl.uniform3fv(locs.u_paperColor,cached.paperColor);
 
-  // Cover crop: source image covers the print area (crop aspect ratio), not the full canvas
-  // srcUV() remaps canvas UV to print-area space, so u_crop maps source to print area.
+  // ─── On-change uniforms (only when settings change) ───
+  if(uniformsDirty){
+    gl.uniform1i(locs.u_layers,hasSrc?nLayers:0);
+    gl.uniform1i(locs.u_mode,mode==='grain'?0:1);
+    gl.uniform1i(locs.u_sepMode,0);
+    gl.uniform1f(locs.u_grainSize,cached.grainSize);
+    gl.uniform1f(locs.u_dotGain,cached.dotGain);
+    gl.uniform1f(locs.u_inkNoise,cached.inkNoise);
+    gl.uniform1f(locs.u_paperTex,cached.paperTex);
+    gl.uniform1f(locs.u_static,cached.grainStatic);
+    gl.uniform1f(locs.u_bright,cached.imgBright);
+    gl.uniform1f(locs.u_contrast,cached.imgContrast);
+    gl.uniform1f(locs.u_sat,cached.imgSat);
+    gl.uniform1f(locs.u_screenCell,cached.screenCell);
+    gl.uniform3fv(locs.u_paperColor,cached.paperColor);
+    gl.uniform3f(locs.u_paper, 0.910, 0.912, 0.908);
+    gl.uniform1f(locs.u_showCropMarks, cached.showCropMarks ? 1.0 : 0.0);
+    const effectiveGhosting = cached.grainStatic > 0 ? Math.max(cached.ghosting, cached.grainStatic * 1.0) : cached.ghosting;
+    gl.uniform1f(locs.u_ghosting, effectiveGhosting * 0.01);
+    gl.uniform1f(locs.u_bleed, cached.bleed * 0.01);
+
+    // Ink layer data
+    for(let i=0;i<4;i++){
+      if(i<nLayers){
+        const L=layers[i];
+        const cal=RISO_CAL[L.color];
+        if(cal){
+          const lt=cal.lut;
+          gl.uniform1f(opaqueLocs[i], cal.opaque ? 1.0 : 0.0);
+          gl.uniform3f(inkLocs[i],lt[4][0],lt[4][1],lt[4][2]);
+          gl.uniform3f(lutALocs[i],lt[0][0],lt[0][1],lt[0][2]);
+          gl.uniform3f(lutBLocs[i],lt[1][0],lt[1][1],lt[1][2]);
+          gl.uniform3f(lutCLocs[i],lt[2][0],lt[2][1],lt[2][2]);
+          gl.uniform3f(lutDLocs[i],lt[3][0],lt[3][1],lt[3][2]);
+          gl.uniform1f(gammaLocs[i],cal.gamma);
+          gl.uniform1f(grainMulLocs[i],cal.grainMul);
+          gl.uniform1f(hasCalLocs[i],1.0);
+        } else {
+          const rgb=cached.inkRGB[i];
+          gl.uniform3f(inkLocs[i],rgb[0],rgb[1],rgb[2]);
+          gl.uniform3f(lutALocs[i],0,0,0);
+          gl.uniform3f(lutBLocs[i],0,0,0);
+          gl.uniform3f(lutCLocs[i],0,0,0);
+          gl.uniform3f(lutDLocs[i],0,0,0);
+          gl.uniform1f(gammaLocs[i],1.0);
+          gl.uniform1f(grainMulLocs[i],1.0);
+          gl.uniform1f(hasCalLocs[i],0.0);
+          gl.uniform1f(opaqueLocs[i],0.0);
+        }
+        gl.uniform1f(angLocs[i],(layerAngles[L.ch]||0)*0.01745329);
+        gl.uniform1i(chanLocs[i],L.ch);
+        gl.uniform1f(densLocs[i],cached.layerDens[L.ch]);
+      }else{
+        gl.uniform3f(inkLocs[i],0,0,0);
+        gl.uniform1f(angLocs[i],0);
+        gl.uniform1i(chanLocs[i],0);
+        gl.uniform1f(densLocs[i],0);
+        gl.uniform1f(hasCalLocs[i],0.0);
+        gl.uniform1f(opaqueLocs[i],0.0);
+        gl.uniform1f(gammaLocs[i],1.0);
+        gl.uniform1f(grainMulLocs[i],1.0);
+      }
+    }
+    uniformsDirty=false;
+  }
+
+  // ─── Per-frame: misreg offsets and skew (change every frame in animation) ───
+  {
+    const ls=activeLayers();
+    for(let i=0;i<4;i++){
+      if(i<ls.length){
+        gl.uniform2f(offLocs[i],misreg[ls[i].ch][0],misreg[ls[i].ch][1]);
+        gl.uniform1f(skewLocs[i],layerSkews[ls[i].ch]||0);
+      }else{
+        gl.uniform2f(offLocs[i],0,0);
+        gl.uniform1f(skewLocs[i],0);
+      }
+    }
+  }
+
+  // Cover crop
   let renderCrop=[0,0,1,1];
   if(hasSrc){
     const srcW=(camOn||(videoOn&&!gifImg))?($vid.videoWidth||1):(gifImg?(gifCanvas.width||1):(srcImg?srcImg.width:1));
     const srcH=(camOn||(videoOn&&!gifImg))?($vid.videoHeight||1):(gifImg?(gifCanvas.height||1):(srcImg?srcImg.height:1));
-    // Target AR depends on mode:
-    // 'fill' = paper AR (cover entire canvas), 'fit' = source native AR, array = that ratio
     let targetAR;
-    if(cropAspect === 'fill') targetAR = dw/dh; // fill the paper
-    else if(cropAspect === 'fit') targetAR = srcW/srcH; // use source native
+    if(cropAspect === 'fill') targetAR = dw/dh;
+    else if(cropAspect === 'fit') targetAR = srcW/srcH;
     else if(cropAspect) targetAR = cropAspect[0]/cropAspect[1];
     else targetAR = dw/dh;
     const srcAR=srcW/srcH;
-    // Cover: fill target from source (crop excess)
     if(targetAR>srcAR){
       const h=srcAR/targetAR;
       renderCrop=[0,(1-h)/2,1,h];
@@ -1981,101 +2040,22 @@ function render(){
       const w=targetAR/srcAR;
       renderCrop=[(1-w)/2,0,w,1];
     }
-    // Update crop guide on phone
-    if(isPhone()&&cropAspect) updateCropGuide(dw,dh,srcW,srcH);
-    else if(isPhone()){const g=el('phCropGuide');if(g)g.classList.remove('visible');}
-    // Desktop: hide crop guide overlay — shader printMask handles the print area visually
-    if(!isPhone()){const g=el('deskCropGuide');if(g)g.classList.remove('visible');}
   }
   gl.uniform4f(locs.u_crop,renderCrop[0],renderCrop[1],renderCrop[2],renderCrop[3]);
 
-  // Upload paper white for LUT blending
-  gl.uniform3f(locs.u_paper, 0.910, 0.912, 0.908);
-
-  // Send active layers to shader slots 0-3
-  const lutALocs=[locs.u_lutA0,locs.u_lutA1,locs.u_lutA2,locs.u_lutA3];
-  const lutBLocs=[locs.u_lutB0,locs.u_lutB1,locs.u_lutB2,locs.u_lutB3];
-  const lutCLocs=[locs.u_lutC0,locs.u_lutC1,locs.u_lutC2,locs.u_lutC3];
-  const lutDLocs=[locs.u_lutD0,locs.u_lutD1,locs.u_lutD2,locs.u_lutD3];
-  const gammaLocs=[locs.u_inkGamma0,locs.u_inkGamma1,locs.u_inkGamma2,locs.u_inkGamma3];
-  const grainMulLocs=[locs.u_grainMul0,locs.u_grainMul1,locs.u_grainMul2,locs.u_grainMul3];
-  const hasCalLocs=[locs.u_hasCal0,locs.u_hasCal1,locs.u_hasCal2,locs.u_hasCal3];
-  const opaqueLocs=[locs.u_opaque0,locs.u_opaque1,locs.u_opaque2,locs.u_opaque3];
-  const skewLocs=[locs.u_skew0,locs.u_skew1,locs.u_skew2,locs.u_skew3];
-  for(let i=0;i<4;i++){
-    if(i<nLayers){
-      const L=layers[i];
-      const cal=RISO_CAL[L.color];
-      if(cal){
-        // Calibrated ink: upload LUT from scanned data
-        const lt=cal.lut;
-        gl.uniform1f(opaqueLocs[i], cal.opaque ? 1.0 : 0.0);
-        gl.uniform3f(inkLocs[i],lt[4][0],lt[4][1],lt[4][2]); // 100% from scan
-        gl.uniform3f(lutALocs[i],lt[0][0],lt[0][1],lt[0][2]); // 10%
-        gl.uniform3f(lutBLocs[i],lt[1][0],lt[1][1],lt[1][2]); // 30%
-        gl.uniform3f(lutCLocs[i],lt[2][0],lt[2][1],lt[2][2]); // 50%
-        gl.uniform3f(lutDLocs[i],lt[3][0],lt[3][1],lt[3][2]); // 70%
-        gl.uniform1f(gammaLocs[i],cal.gamma);
-        gl.uniform1f(grainMulLocs[i],cal.grainMul);
-        gl.uniform1f(hasCalLocs[i],1.0);
-      } else {
-        // Uncalibrated: use hex color + Beer-Lambert fallback
-        const rgb=cached.inkRGB[i];
-        gl.uniform3f(inkLocs[i],rgb[0],rgb[1],rgb[2]);
-        gl.uniform3f(lutALocs[i],0,0,0);
-        gl.uniform3f(lutBLocs[i],0,0,0);
-        gl.uniform3f(lutCLocs[i],0,0,0);
-        gl.uniform3f(lutDLocs[i],0,0,0);
-        gl.uniform1f(gammaLocs[i],1.0);
-        gl.uniform1f(grainMulLocs[i],1.0);
-        gl.uniform1f(hasCalLocs[i],0.0);
-        gl.uniform1f(opaqueLocs[i],0.0);
-      }
-      gl.uniform2f(offLocs[i],misreg[L.ch][0],misreg[L.ch][1]);
-      gl.uniform1f(skewLocs[i],layerSkews[L.ch]||0);
-      gl.uniform1f(angLocs[i],(layerAngles[L.ch]||0)*0.01745329);
-      gl.uniform1i(chanLocs[i],L.ch); // actual CMYK channel
-      gl.uniform1f(densLocs[i],cached.layerDens[L.ch]);
-    }else{
-      gl.uniform3f(inkLocs[i],0,0,0);
-      gl.uniform2f(offLocs[i],0,0);
-      gl.uniform1f(skewLocs[i],0);
-      gl.uniform1f(angLocs[i],0);
-      gl.uniform1i(chanLocs[i],0);
-      gl.uniform1f(densLocs[i],0);
-      gl.uniform1f(hasCalLocs[i],0.0);
-      gl.uniform1f(opaqueLocs[i],0.0);
-      gl.uniform1f(gammaLocs[i],1.0);
-      gl.uniform1f(grainMulLocs[i],1.0);
-    }
-  }
-
-  gl.uniform1f(locs.u_showCropMarks, cached.showCropMarks ? 1.0 : 0.0);
-  // When static/animation is on, ghosting activates automatically (simulates contact sheet scanning)
-  const effectiveGhosting = cached.grainStatic > 0 ? Math.max(cached.ghosting, cached.grainStatic * 1.0) : cached.ghosting;
-  gl.uniform1f(locs.u_ghosting, effectiveGhosting * 0.01);
-  gl.uniform1f(locs.u_bleed, cached.bleed * 0.01); // bleed slider 0..10 → 0..0.10
-
-  // Compute print area: where the image sits within the A3 paper canvas
-  // Margin slider (0-12) maps to 0% - 12% margin
-  // 'fill' = image fills entire canvas, 'fit' = image fits with native AR
+  // Print area
   {
-    const paperW = dw, paperH = dh;
-    const paperAR = paperW / paperH;
-    const minMargin = cached.margin * 0.01; // margin slider 0-12 → 0%-12%
-
-    if (isPhone()) {
+    const paperAR = dw / dh;
+    const minMargin = cached.margin * 0.01;
+    if (isPhoneNow) {
       const pm = Math.max(minMargin, 0.005);
       gl.uniform4f(locs.u_printArea, pm, pm, pm, pm);
     } else if (cropAspect === 'fill') {
-      // Fill: image fills entire canvas, only margin slider controls border
       const m = Math.max(minMargin, 0.005);
       gl.uniform4f(locs.u_printArea, m, m, m, m);
     } else {
-      // For 'fit' or specific ratio: compute image AR within paper
       let imgAR;
       if (cropAspect === 'fit') {
-        // Use source image native aspect ratio
         const srcW = (camOn||(videoOn&&!gifImg)) ? ($vid.videoWidth||1) : (gifImg ? (gifCanvas.width||1) : (srcImg ? srcImg.width : 1));
         const srcH = (camOn||(videoOn&&!gifImg)) ? ($vid.videoHeight||1) : (gifImg ? (gifCanvas.height||1) : (srcImg ? srcImg.height : 1));
         imgAR = srcW / srcH;
@@ -2100,9 +2080,12 @@ function render(){
     }
   }
 
+  // Also need layers count for per-frame path
+  gl.uniform1i(locs.u_layers,hasSrc?nLayers:0);
+
   gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
 
-  // FPS — update DOM only once per second
+  // FPS counter — DOM write once per second
   fpsFrames++;
   const fpsNow=performance.now();
   if(fpsNow-fpsLast>=1000){
@@ -2110,6 +2093,17 @@ function render(){
     $res.textContent=dw+'×'+dh+(resScale>1?' ('+resScale+'×)':'');
     fpsFrames=0;fpsLast=fpsNow;
   }
+
+  // Schedule next frame only if continuous mode
+  const continuous = camOn || videoOn || isRecording || cached.grainStatic > 0;
+  if(continuous) scheduleRender();
+}
+
+// Texture double-buffer swap helper
+function swapSrcTextures(){
+  const tmp=window._srcTexA; window._srcTexA=window._srcTexB; window._srcTexB=tmp;
+  window._srcFlip=!window._srcFlip;
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
 }
 
 // Video frame callback — marks when a new video frame is available
@@ -2138,7 +2132,7 @@ function startGifLoop(){
   gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
   gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifCanvas);
   videoFrameReady=true;
-  needsRedraw=true;
+  markDirty();
   gifRafId=requestAnimationFrame(startGifLoop);
 }
 function handleFile(e){
@@ -2154,7 +2148,7 @@ function handleFile(e){
     $vid.src=url;$vid.loop=true;$vid.muted=true;$vid.playsInline=true;
     $vid.onloadeddata=()=>{
       $vid.play();
-      videoOn=true;camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();
+      videoOn=true;camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();scheduleRender();
       $status.textContent='▶ VIDEO';
       $res.textContent=$vid.videoWidth+'×'+$vid.videoHeight;
       if($vid.requestVideoFrameCallback){
@@ -2162,7 +2156,7 @@ function handleFile(e){
       }else{
         const fb=()=>{if(videoOn&&$vid.readyState>=2)videoFrameReady=true;requestAnimationFrame(fb);};fb();
       }
-      needsRedraw=true;
+      markDirty();
     };
   }else if(isGif){
     // Animated GIF: load into <img>, draw to canvas each frame
@@ -2177,7 +2171,7 @@ function handleFile(e){
       gifCtx=gifCanvas.getContext('2d');
       // Set srcImg dimensions for aspect ratio calculations
       srcImg=gifCanvas;
-      videoOn=true;camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();
+      videoOn=true;camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();scheduleRender();
       $status.textContent='▶ GIF';
       $res.textContent=img.naturalWidth+'×'+img.naturalHeight;
       startGifLoop();
@@ -2196,7 +2190,7 @@ function handleFile(e){
         gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);
         gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
         gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);
-        camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();
+        camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();scheduleRender();
         $status.textContent='◉ IMAGE';
         $res.textContent=img.width+'×'+img.height;
       };
@@ -2251,7 +2245,7 @@ function loadSampleImage(){
     gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);
     gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
     gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);
-    hasSrc=true;needsAspectUpdate=true;computeCrop();
+    hasSrc=true;needsAspectUpdate=true;computeCrop();scheduleRender();
     $status.textContent='● SAMPLE';
     $res.textContent=w+'×'+h;
   };
@@ -2277,7 +2271,7 @@ async function toggleCam(){
       gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
       gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,srcImg);
     }
-    needsAspectUpdate=true;
+    needsAspectUpdate=true;scheduleRender();
     $status.textContent=srcImg?'◉ IMAGE':'● READY';
     return;
   }
@@ -2287,7 +2281,7 @@ async function toggleCam(){
     $vid.srcObject=camStream;
     // Wait for video to actually start playing
     await $vid.play();
-    camOn=true;needsAspectUpdate=true;computeCrop();
+    camOn=true;needsAspectUpdate=true;computeCrop();scheduleRender();
     el('camBtn').textContent='STOP CAM';
     $status.textContent='● LIVE';
     hideOnboarding();
@@ -2319,7 +2313,7 @@ async function saveHiRes(){
   const filename='risocam_'+(names||'empty')+'_'+saveW+'x'+saveH+'_'+Date.now()+'.png';
   const blob=await new Promise(r=>$gl.toBlob(b=>r(b),'image/png'));
   // Restore
-  needsRedraw=true;needsAspectUpdate=true;
+  markDirty();needsAspectUpdate=true;
   await doSaveBlob(blob,filename,saveW,saveH);
 }
 
@@ -2329,34 +2323,41 @@ function GIFEncoder(w,h,delay){
 }
 GIFEncoder.prototype.addFrame=function(ctx){
   const d=ctx.getImageData(0,0,this.w,this.h).data;
-  // Quantize to 256-color palette using median-cut simplification
+  const w=this.w,h=this.h,n=w*h;
+  // Build palette from reduced color space
   const palette=[],pMap=new Map();
-  const pixels=[];
   for(let i=0;i<d.length;i+=4){
-    const r=d[i]&0xF8,g=d[i+1]&0xFC,b=d[i+2]&0xF8; // reduce color space
+    const r=d[i]&0xF8,g=d[i+1]&0xFC,b=d[i+2]&0xF8;
     const k=(r<<8)|(g<<2)|((b>>3));
     if(!pMap.has(k)&&palette.length<256){pMap.set(k,palette.length);palette.push([r,g,b]);}
-    pixels.push(k);
   }
-  // Pad palette to power of 2
   let palBits=1;while((1<<palBits)<palette.length)palBits++;
-  const palSize=1<<palBits;
-  while(palette.length<palSize)palette.push([0,0,0]);
-  // Map pixels to indices
-  const idx=new Uint8Array(pixels.length);
-  for(let i=0;i<pixels.length;i++){
-    const k=pixels[i];
-    if(pMap.has(k))idx[i]=pMap.get(k);
-    else{
-      // Find nearest
-      const r=(k>>8)&0xF8,g=(k>>2)&0xFC,b=(k<<3)&0xF8;
+  while(palette.length<(1<<palBits))palette.push([0,0,0]);
+  // Floyd-Steinberg dithering
+  const err=new Float32Array(n*3);
+  for(let i=0;i<n;i++){err[i*3]=d[i*4];err[i*3+1]=d[i*4+1];err[i*3+2]=d[i*4+2];}
+  const idx=new Uint8Array(n);
+  const clamp=(v)=>v<0?0:v>255?255:v;
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      const i=y*w+x;
+      const cr=clamp(Math.round(err[i*3])),cg=clamp(Math.round(err[i*3+1])),cb=clamp(Math.round(err[i*3+2]));
+      // Find nearest palette color
       let best=0,bestD=Infinity;
       for(let j=0;j<palette.length;j++){
-        const dr=r-palette[j][0],dg=g-palette[j][1],db=b-palette[j][2];
+        const dr=cr-palette[j][0],dg=cg-palette[j][1],db=cb-palette[j][2];
         const dist=dr*dr+dg*dg+db*db;
         if(dist<bestD){bestD=dist;best=j;}
       }
       idx[i]=best;
+      // Distribute error
+      const er=cr-palette[best][0],eg=cg-palette[best][1],eb=cb-palette[best][2];
+      if(x+1<w){const j=(i+1)*3;err[j]+=er*7/16;err[j+1]+=eg*7/16;err[j+2]+=eb*7/16;}
+      if(y+1<h){
+        if(x>0){const j=(i+w-1)*3;err[j]+=er*3/16;err[j+1]+=eg*3/16;err[j+2]+=eb*3/16;}
+        {const j=(i+w)*3;err[j]+=er*5/16;err[j+1]+=eg*5/16;err[j+2]+=eb*5/16;}
+        if(x+1<w){const j=(i+w+1)*3;err[j]+=er/16;err[j+1]+=eg/16;err[j+2]+=eb/16;}
+      }
     }
   }
   this.frames.push({palette,palBits,idx});
@@ -2489,7 +2490,7 @@ async function saveGif(){
   misreg=origMisreg;
   layerSkews=origSkews;
   frame=origFrame;
-  needsRedraw=true;
+  markDirty();
   const data=enc.finish();
   const blob=new Blob([data],{type:'image/gif'});
   const filename='risocam_'+(names||'empty')+'_'+gw+'x'+gh+'_'+Date.now()+'.gif';
@@ -2600,7 +2601,7 @@ async function exportSeparations(){
   document.body.removeChild(link);
   setTimeout(()=>URL.revokeObjectURL(link.href),1000);
   toast(files.length+' separation'+(files.length>1?'s':'')+' saved!');
-  needsRedraw=true;
+  markDirty();
 }
 
 // ======================== UI ========================
@@ -2634,14 +2635,14 @@ function pickColor(ch, name){
 function setMonoDens(val){
   const v=parseFloat(val);
   for(let i=0;i<4;i++) cached.layerDens[i]=v;
-  needsRedraw=true;
+  markDirty();
 }
 
 function setMonoAngle(deg){
   for(let i=0;i<4;i++) layerAngles[i]=deg;
   buildChannelUI();
   if(el('phChannelList')&&el('phChannelList').children.length) buildChannelUI('phChannelList');
-  needsRedraw=true;
+  markDirty();
 }
 
 // Map profile colors to 4 CMYK slots (always fill all 4)
@@ -2826,7 +2827,7 @@ function initLayerDrag(container){
         const item=layerOrder.splice(dragPos,1)[0];
         layerOrder.splice(overPos,0,item);
         cacheInkColors();
-        needsRedraw=true;
+        markDirty();
         buildChannelUI();
       }
       dragPos=-1;overPos=-1;
@@ -2939,7 +2940,7 @@ function applyProf(p){
 function onChannelsChanged(){
   // Sync same-color plates: shared angles + misreg (one master per ink)
   syncSameColorPlates();
-  newMisreg();cacheInkColors();updateUI();needsRedraw=true;
+  newMisreg();cacheInkColors();updateUI();markDirty();
 }
 
 function updateUI(){
@@ -2968,12 +2969,9 @@ function updateUI(){
 }
 
 function setChannelDens(ch,val){
-  cached.layerDens[ch]=parseFloat(val);needsRedraw=true;
+  cached.layerDens[ch]=parseFloat(val);markDirty();
 }
 
-function bindChannelDensSliders(){
-  // Now handled via inline oninput in buildChannelUI
-}
 
 function setMode(m){
   mode=m;
@@ -2991,14 +2989,14 @@ function setMode(m){
   // Rebuild channels to show/hide angle buttons
   buildChannelUI();
   if(el('phChannelList')&&el('phChannelList').children.length) buildChannelUI('phChannelList');
-  needsRedraw=true;
+  markDirty();
 }
 function setScale(s){
   resScale=s;
   document.querySelectorAll('.scale-btn').forEach((b,i)=>{
     b.classList.toggle('active',[2,4,5,6][i]===s);
   });
-  needsRedraw=true;
+  markDirty();
 }
 
 function setRisoFps(fps){
@@ -3010,7 +3008,7 @@ function setRisoFps(fps){
   // Phone FPS button
   const phBtn=el('phFpsBtn');
   if(phBtn) phBtn.textContent=fps+'FPS';
-  needsRedraw=true;
+  markDirty();
 }
 function setAngle(ch,deg){
   layerAngles[ch]=deg;
@@ -3023,7 +3021,7 @@ function setAngle(ch,deg){
   }
   buildChannelUI();
   if(el('phChannelList')&&el('phChannelList').children.length) buildChannelUI('phChannelList');
-  needsRedraw=true;
+  markDirty();
 }
 function bindSliders(){
   ['grainSize','dotGain','misreg','inkNoise','paperTex','screenCell','grainStatic','ghosting','margin','bleed','skew','imgBright','imgContrast','imgSat'].forEach(id=>{
@@ -3052,7 +3050,7 @@ function setPaperColor(idx){
   cached.paperColor=hexRGB(hex);
   document.querySelectorAll('#paperColorGrid .paper-dot').forEach((d,i)=>d.classList.toggle('active',i===idx));
   document.documentElement.style.setProperty('--ph-paper-bg',hex);
-  needsRedraw=true;
+  markDirty();
   pushUndo();
 }
 function renderPaperUI(){
@@ -3084,7 +3082,7 @@ function setPaperTex(key){
   if(idx>=0&&btns[idx]) btns[idx].classList.add('active');
   // Also update phone UI
   document.querySelectorAll('.ph-paper-tex-btn').forEach(b=>b.classList.toggle('active',b.dataset.tex===key));
-  needsRedraw=true;
+  markDirty();
 }
 
 // ======================== BOOT ========================
@@ -3172,7 +3170,7 @@ function phReset(){
   newMisreg();
   // Re-init GL state
   needsAspectUpdate=true;
-  needsRedraw=true;
+  markDirty();
   // Restart camera
   setTimeout(()=>{if(!camOn) toggleCam();},200);
   toast('RESET');
@@ -3242,7 +3240,7 @@ function phBindBcs(){
       if(desk)desk.value=v;
       const deskVal=el(key+'Val');
       if(deskVal)deskVal.textContent=v;
-      needsRedraw=true;
+      markDirty();
     });
   });
 }
@@ -3270,7 +3268,7 @@ async function phFlipCam(){
       camStream=s;
       $vid.srcObject=s;
       await $vid.play();
-      camOn=true;needsAspectUpdate=true;computeCrop();
+      camOn=true;needsAspectUpdate=true;computeCrop();scheduleRender();
       if($vid.requestVideoFrameCallback) $vid.requestVideoFrameCallback(onVideoFrame);
       else{const fb=()=>{if(camOn&&$vid.readyState>=2)videoFrameReady=true;requestAnimationFrame(fb);};fb();}
       return;
@@ -3280,7 +3278,7 @@ async function phFlipCam(){
   try{
     const s=await navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:isPhone()?640:1280}}});
     camStream=s;$vid.srcObject=s;await $vid.play();
-    camOn=true;needsAspectUpdate=true;computeCrop();
+    camOn=true;needsAspectUpdate=true;computeCrop();scheduleRender();
     if($vid.requestVideoFrameCallback) $vid.requestVideoFrameCallback(onVideoFrame);
     else{const fb=()=>{if(camOn&&$vid.readyState>=2)videoFrameReady=true;requestAnimationFrame(fb);};fb();}
     toast('Only one camera available');
@@ -3509,9 +3507,9 @@ function phBindSliders(){
       const deskVal=el(deskId+'Val');
       if(deskVal)deskVal.textContent=vLabel;
       if(deskId==='misreg'||deskId==='skew'){cacheSlider(deskId,v);newMisreg();return;}
-      if(deskId==='margin'){cached.margin=v;needsRedraw=true;needsAspectUpdate=true;return;}
-      if(deskId==='paperTex'){cached.paperTex=v;needsRedraw=true;return;}
-      if(cacheKey){cached[cacheKey]=v;needsRedraw=true;}
+      if(deskId==='margin'){cached.margin=v;markDirty();needsAspectUpdate=true;return;}
+      if(deskId==='paperTex'){cached.paperTex=v;markDirty();return;}
+      if(cacheKey){cached[cacheKey]=v;markDirty();}
     });
   });
 }
@@ -3539,7 +3537,7 @@ function layoutSwitch(){
     $vf=vf;
     phCloseOverlay();
   }
-  needsAspectUpdate=true;
+  needsAspectUpdate=true;scheduleRender();
 }
 
 // Update aspect buttons across both UIs
@@ -3547,7 +3545,7 @@ const origSetAspect=setAspect;
 setAspect=function(ratio){
   cropAspect=ratio||[4,3];
   computeCrop();
-  needsAspectUpdate=true;
+  needsAspectUpdate=true;scheduleRender();
   const key=cropAspect.join(':');
   document.querySelectorAll('.aspect-btn').forEach(b=>{
     b.classList.toggle('active',b.dataset.ar===key);
@@ -3564,14 +3562,28 @@ document.addEventListener('DOMContentLoaded',()=>{
   $gl=el('gl'); $vf=el('viewfinder'); $vid=el('vid');
   $fps=el('fps'); $res=el('resBadge'); $status=el('statusBadge');
 
-  renderColors();renderProfiles();renderPaperUI();bindSliders();bindChannelDensSliders();initShutter();initOverlaySwipe();
+  renderColors();renderProfiles();renderPaperUI();bindSliders();initShutter();initOverlaySwipe();
   initGL();
 
+  // Cache DOM refs used in render loop
+  $phCropGuide=el('phCropGuide');$deskCropGuide=el('deskCropGuide');
+  cachedVfW=$vf.clientWidth;cachedVfH=$vf.clientHeight;
+
+  // Pre-build uniform location arrays (avoids per-frame allocation)
   inkLocs[0]=locs.u_ink0;inkLocs[1]=locs.u_ink1;inkLocs[2]=locs.u_ink2;inkLocs[3]=locs.u_ink3;
   offLocs[0]=locs.u_off0;offLocs[1]=locs.u_off1;offLocs[2]=locs.u_off2;offLocs[3]=locs.u_off3;
   angLocs[0]=locs.u_angle0;angLocs[1]=locs.u_angle1;angLocs[2]=locs.u_angle2;angLocs[3]=locs.u_angle3;
   chanLocs[0]=locs.u_chan0;chanLocs[1]=locs.u_chan1;chanLocs[2]=locs.u_chan2;chanLocs[3]=locs.u_chan3;
   densLocs[0]=locs.u_dens0;densLocs[1]=locs.u_dens1;densLocs[2]=locs.u_dens2;densLocs[3]=locs.u_dens3;
+  lutALocs=[locs.u_lutA0,locs.u_lutA1,locs.u_lutA2,locs.u_lutA3];
+  lutBLocs=[locs.u_lutB0,locs.u_lutB1,locs.u_lutB2,locs.u_lutB3];
+  lutCLocs=[locs.u_lutC0,locs.u_lutC1,locs.u_lutC2,locs.u_lutC3];
+  lutDLocs=[locs.u_lutD0,locs.u_lutD1,locs.u_lutD2,locs.u_lutD3];
+  gammaLocs=[locs.u_inkGamma0,locs.u_inkGamma1,locs.u_inkGamma2,locs.u_inkGamma3];
+  grainMulLocs=[locs.u_grainMul0,locs.u_grainMul1,locs.u_grainMul2,locs.u_grainMul3];
+  hasCalLocs=[locs.u_hasCal0,locs.u_hasCal1,locs.u_hasCal2,locs.u_hasCal3];
+  opaqueLocs=[locs.u_opaque0,locs.u_opaque1,locs.u_opaque2,locs.u_opaque3];
+  skewLocs=[locs.u_skew0,locs.u_skew1,locs.u_skew2,locs.u_skew3];
 
   applyProf(PROFILES[0]);
   setPaperColor(0);
@@ -3594,7 +3606,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   }
 
   // Redraw on resize/orientation change
-  window.addEventListener('resize',()=>{needsRedraw=true;needsAspectUpdate=true;});
+  window.addEventListener('resize',()=>{markDirty();needsAspectUpdate=true;});
 
   // Undo/Redo keyboard shortcuts (Cmd+Z / Ctrl+Z, Cmd+Shift+Z / Ctrl+Shift+Z)
   document.addEventListener('keydown',e=>{
@@ -3656,7 +3668,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     navigator.serviceWorker.register(swUrl).catch(()=>{});
   }
 
-  render();
+  scheduleRender();
 });
 </script>
 </body>
