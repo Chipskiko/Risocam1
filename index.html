@@ -2299,52 +2299,21 @@ async function toggleCam(){
 async function saveHiRes(){
   const unique=[...new Set(channels.filter(c=>c))];
   const names=unique.join('-').replace(/[\s.]/g,'');
-  const dpr=Math.min(window.devicePixelRatio||1,2);
-  const scale=Math.max(resScale,dpr);
-
-  if(cropAspect){
-    // Save at the crop aspect ratio
-    const cropAR=cropAspect[0]/cropAspect[1];
-    const baseW=$vf.clientWidth;
-    const saveW=Math.round(baseW*scale);
-    const saveH=Math.round(saveW/cropAR);
-    $gl.width=saveW;$gl.height=saveH;
-    gl.viewport(0,0,saveW,saveH);
-    // Use cropRect (letterbox/pillarbox of source to fit target aspect)
-    gl.uniform4f(locs.u_crop,cropRect[0],cropRect[1],cropRect[2],cropRect[3]);
-    gl.uniform2f(locs.u_res,saveW,saveH);
-    // Save canvas is crop-shaped: image fills it with small margins
-    gl.uniform4f(locs.u_printArea, 0.01, 0.01, 0.01, 0.01);
-    gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
-    const filename='risocam_'+(names||'empty')+'_'+saveW+'x'+saveH+'_'+Date.now()+'.png';
-    const blob=await new Promise(r=>$gl.toBlob(b=>r(b),'image/png'));
-    needsRedraw=true;
-    await doSaveBlob(blob,filename,saveW,saveH);
-  } else if(hasSrc){
-    // No crop aspect: save at source native aspect
-    const srcW=(camOn||(videoOn&&!gifImg))?($vid.videoWidth||1):(gifImg?(gifCanvas.width||1):(srcImg?srcImg.width:1));
-    const srcH=(camOn||(videoOn&&!gifImg))?($vid.videoHeight||1):(gifImg?(gifCanvas.height||1):(srcImg?srcImg.height:1));
-    const srcAR=srcW/srcH;
-    const baseW=$vf.clientWidth;
-    const saveW=Math.round(baseW*scale);
-    const saveH=Math.round(saveW/srcAR);
-    $gl.width=saveW;$gl.height=saveH;
-    gl.viewport(0,0,saveW,saveH);
-    gl.uniform4f(locs.u_crop,0,0,1,1);
-    gl.uniform2f(locs.u_res,saveW,saveH);
-    gl.uniform4f(locs.u_printArea, 0.01, 0.01, 0.01, 0.01);
-    gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
-    const filename='risocam_'+(names||'empty')+'_'+saveW+'x'+saveH+'_'+Date.now()+'.png';
-    const blob=await new Promise(r=>$gl.toBlob(b=>r(b),'image/png'));
-    needsRedraw=true;
-    await doSaveBlob(blob,filename,saveW,saveH);
-  } else {
-    // No source, just save what's on screen
-    const dw=$gl.width, dh=$gl.height;
-    const filename='risocam_'+(names||'empty')+'_'+dw+'x'+dh+'_'+Date.now()+'.png';
-    const blob=await new Promise(r=>$gl.toBlob(b=>r(b),'image/png'));
-    await doSaveBlob(blob,filename,dw,dh);
-  }
+  // Save the full paper view (with margins, crop marks, paper color) at high resolution
+  const saveScale=Math.max(resScale,3);
+  const cssW=$vf.clientWidth, cssH=$vf.clientHeight;
+  const saveW=Math.round(cssW*saveScale), saveH=Math.round(cssH*saveScale);
+  // Temporarily resize canvas and redraw
+  $gl.width=saveW;$gl.height=saveH;
+  gl.viewport(0,0,saveW,saveH);
+  gl.uniform2f(locs.u_res,saveW,saveH);
+  gl.uniform1f(locs.u_resScale,saveScale);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  const filename='risocam_'+(names||'empty')+'_'+saveW+'x'+saveH+'_'+Date.now()+'.png';
+  const blob=await new Promise(r=>$gl.toBlob(b=>r(b),'image/png'));
+  // Restore
+  needsRedraw=true;needsAspectUpdate=true;
+  await doSaveBlob(blob,filename,saveW,saveH);
 }
 
 async function doSaveBlob(blob,filename,w,h){
