@@ -1469,11 +1469,10 @@ const cached={
 let needsAspectUpdate=true;
 let videoFrameReady=false;
 let needsRedraw=true; // dirty flag — skip GPU work when nothing changed
-let uniformsDirty=true; // only upload non-per-frame uniforms when settings change
 let _rafId=0;
 
 function scheduleRender(){if(!_rafId) _rafId=requestAnimationFrame(render);}
-function markDirty(){needsRedraw=true;uniformsDirty=true;scheduleRender();}
+function markDirty(){needsRedraw=true;scheduleRender();}
 
 const inkLocs=new Array(4), offLocs=new Array(4), angLocs=new Array(4), chanLocs=new Array(4), densLocs=new Array(4);
 // Pre-built uniform location arrays (populated in init, avoids per-frame allocation)
@@ -1934,91 +1933,76 @@ function render(){
   if($gl.width!==dw||$gl.height!==dh){$gl.width=dw;$gl.height=dh;}
   gl.viewport(0,0,dw,dh);
 
-  // ─── Per-frame uniforms (always uploaded) ───
+  // ─── Uniforms — all from cached values, zero DOM access ───
   const layers=activeLayers();
   const nLayers=layers.length;
   gl.uniform2f(locs.u_res,dw,dh);
   gl.uniform1f(locs.u_time,frame);
   gl.uniform1f(locs.u_frameSeed,frameSeed);
   gl.uniform1f(locs.u_resScale,resScale);
+  gl.uniform1i(locs.u_layers,hasSrc?nLayers:0);
+  gl.uniform1i(locs.u_mode,mode==='grain'?0:1);
+  gl.uniform1i(locs.u_sepMode,0);
+  gl.uniform1f(locs.u_grainSize,cached.grainSize);
+  gl.uniform1f(locs.u_dotGain,cached.dotGain);
+  gl.uniform1f(locs.u_inkNoise,cached.inkNoise);
+  gl.uniform1f(locs.u_paperTex,cached.paperTex);
+  gl.uniform1f(locs.u_static,cached.grainStatic);
+  gl.uniform1f(locs.u_bright,cached.imgBright);
+  gl.uniform1f(locs.u_contrast,cached.imgContrast);
+  gl.uniform1f(locs.u_sat,cached.imgSat);
+  gl.uniform1f(locs.u_screenCell,cached.screenCell);
+  gl.uniform3fv(locs.u_paperColor,cached.paperColor);
+  gl.uniform3f(locs.u_paper, 0.910, 0.912, 0.908);
+  gl.uniform1f(locs.u_showCropMarks, cached.showCropMarks ? 1.0 : 0.0);
+  const effectiveGhosting = cached.grainStatic > 0 ? Math.max(cached.ghosting, cached.grainStatic * 1.0) : cached.ghosting;
+  gl.uniform1f(locs.u_ghosting, effectiveGhosting * 0.01);
+  gl.uniform1f(locs.u_bleed, cached.bleed * 0.01);
 
-  // ─── On-change uniforms (only when settings change) ───
-  if(uniformsDirty){
-    gl.uniform1i(locs.u_layers,hasSrc?nLayers:0);
-    gl.uniform1i(locs.u_mode,mode==='grain'?0:1);
-    gl.uniform1i(locs.u_sepMode,0);
-    gl.uniform1f(locs.u_grainSize,cached.grainSize);
-    gl.uniform1f(locs.u_dotGain,cached.dotGain);
-    gl.uniform1f(locs.u_inkNoise,cached.inkNoise);
-    gl.uniform1f(locs.u_paperTex,cached.paperTex);
-    gl.uniform1f(locs.u_static,cached.grainStatic);
-    gl.uniform1f(locs.u_bright,cached.imgBright);
-    gl.uniform1f(locs.u_contrast,cached.imgContrast);
-    gl.uniform1f(locs.u_sat,cached.imgSat);
-    gl.uniform1f(locs.u_screenCell,cached.screenCell);
-    gl.uniform3fv(locs.u_paperColor,cached.paperColor);
-    gl.uniform3f(locs.u_paper, 0.910, 0.912, 0.908);
-    gl.uniform1f(locs.u_showCropMarks, cached.showCropMarks ? 1.0 : 0.0);
-    const effectiveGhosting = cached.grainStatic > 0 ? Math.max(cached.ghosting, cached.grainStatic * 1.0) : cached.ghosting;
-    gl.uniform1f(locs.u_ghosting, effectiveGhosting * 0.01);
-    gl.uniform1f(locs.u_bleed, cached.bleed * 0.01);
-
-    // Ink layer data
-    for(let i=0;i<4;i++){
-      if(i<nLayers){
-        const L=layers[i];
-        const cal=RISO_CAL[L.color];
-        if(cal){
-          const lt=cal.lut;
-          gl.uniform1f(opaqueLocs[i], cal.opaque ? 1.0 : 0.0);
-          gl.uniform3f(inkLocs[i],lt[4][0],lt[4][1],lt[4][2]);
-          gl.uniform3f(lutALocs[i],lt[0][0],lt[0][1],lt[0][2]);
-          gl.uniform3f(lutBLocs[i],lt[1][0],lt[1][1],lt[1][2]);
-          gl.uniform3f(lutCLocs[i],lt[2][0],lt[2][1],lt[2][2]);
-          gl.uniform3f(lutDLocs[i],lt[3][0],lt[3][1],lt[3][2]);
-          gl.uniform1f(gammaLocs[i],cal.gamma);
-          gl.uniform1f(grainMulLocs[i],cal.grainMul);
-          gl.uniform1f(hasCalLocs[i],1.0);
-        } else {
-          const rgb=cached.inkRGB[i];
-          gl.uniform3f(inkLocs[i],rgb[0],rgb[1],rgb[2]);
-          gl.uniform3f(lutALocs[i],0,0,0);
-          gl.uniform3f(lutBLocs[i],0,0,0);
-          gl.uniform3f(lutCLocs[i],0,0,0);
-          gl.uniform3f(lutDLocs[i],0,0,0);
-          gl.uniform1f(gammaLocs[i],1.0);
-          gl.uniform1f(grainMulLocs[i],1.0);
-          gl.uniform1f(hasCalLocs[i],0.0);
-          gl.uniform1f(opaqueLocs[i],0.0);
-        }
-        gl.uniform1f(angLocs[i],(layerAngles[L.ch]||0)*0.01745329);
-        gl.uniform1i(chanLocs[i],L.ch);
-        gl.uniform1f(densLocs[i],cached.layerDens[L.ch]);
-      }else{
-        gl.uniform3f(inkLocs[i],0,0,0);
-        gl.uniform1f(angLocs[i],0);
-        gl.uniform1i(chanLocs[i],0);
-        gl.uniform1f(densLocs[i],0);
-        gl.uniform1f(hasCalLocs[i],0.0);
-        gl.uniform1f(opaqueLocs[i],0.0);
+  // Per-layer ink data + misreg/skew
+  for(let i=0;i<4;i++){
+    if(i<nLayers){
+      const L=layers[i];
+      const cal=RISO_CAL[L.color];
+      if(cal){
+        const lt=cal.lut;
+        gl.uniform1f(opaqueLocs[i], cal.opaque ? 1.0 : 0.0);
+        gl.uniform3f(inkLocs[i],lt[4][0],lt[4][1],lt[4][2]);
+        gl.uniform3f(lutALocs[i],lt[0][0],lt[0][1],lt[0][2]);
+        gl.uniform3f(lutBLocs[i],lt[1][0],lt[1][1],lt[1][2]);
+        gl.uniform3f(lutCLocs[i],lt[2][0],lt[2][1],lt[2][2]);
+        gl.uniform3f(lutDLocs[i],lt[3][0],lt[3][1],lt[3][2]);
+        gl.uniform1f(gammaLocs[i],cal.gamma);
+        gl.uniform1f(grainMulLocs[i],cal.grainMul);
+        gl.uniform1f(hasCalLocs[i],1.0);
+      } else {
+        const rgb=cached.inkRGB[i];
+        gl.uniform3f(inkLocs[i],rgb[0],rgb[1],rgb[2]);
+        gl.uniform3f(lutALocs[i],0,0,0);
+        gl.uniform3f(lutBLocs[i],0,0,0);
+        gl.uniform3f(lutCLocs[i],0,0,0);
+        gl.uniform3f(lutDLocs[i],0,0,0);
         gl.uniform1f(gammaLocs[i],1.0);
         gl.uniform1f(grainMulLocs[i],1.0);
+        gl.uniform1f(hasCalLocs[i],0.0);
+        gl.uniform1f(opaqueLocs[i],0.0);
       }
-    }
-    uniformsDirty=false;
-  }
-
-  // ─── Per-frame: misreg offsets and skew (change every frame in animation) ───
-  {
-    const ls=activeLayers();
-    for(let i=0;i<4;i++){
-      if(i<ls.length){
-        gl.uniform2f(offLocs[i],misreg[ls[i].ch][0],misreg[ls[i].ch][1]);
-        gl.uniform1f(skewLocs[i],layerSkews[ls[i].ch]||0);
-      }else{
-        gl.uniform2f(offLocs[i],0,0);
-        gl.uniform1f(skewLocs[i],0);
-      }
+      gl.uniform2f(offLocs[i],misreg[L.ch][0],misreg[L.ch][1]);
+      gl.uniform1f(skewLocs[i],layerSkews[L.ch]||0);
+      gl.uniform1f(angLocs[i],(layerAngles[L.ch]||0)*0.01745329);
+      gl.uniform1i(chanLocs[i],L.ch);
+      gl.uniform1f(densLocs[i],cached.layerDens[L.ch]);
+    }else{
+      gl.uniform3f(inkLocs[i],0,0,0);
+      gl.uniform2f(offLocs[i],0,0);
+      gl.uniform1f(skewLocs[i],0);
+      gl.uniform1f(angLocs[i],0);
+      gl.uniform1i(chanLocs[i],0);
+      gl.uniform1f(densLocs[i],0);
+      gl.uniform1f(hasCalLocs[i],0.0);
+      gl.uniform1f(opaqueLocs[i],0.0);
+      gl.uniform1f(gammaLocs[i],1.0);
+      gl.uniform1f(grainMulLocs[i],1.0);
     }
   }
 
@@ -2079,9 +2063,6 @@ function render(){
       gl.uniform4f(locs.u_printArea, marginL, marginT, marginL, marginT);
     }
   }
-
-  // Also need layers count for per-frame path
-  gl.uniform1i(locs.u_layers,hasSrc?nLayers:0);
 
   gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
 
