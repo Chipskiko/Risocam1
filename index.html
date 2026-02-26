@@ -427,13 +427,12 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
   <!-- Top bar — floats over viewfinder -->
   <div class="ph-top">
     <div class="ph-top-left">
-      <button class="ph-icon-btn ph-mode-pill" id="phModeToggle" onclick="phTogglePhotoVideo()" title="Photo/Video">PHOTO</button>
+      <button class="ph-icon-btn" id="phSwitchCam" onclick="phFlipCam()" title="Switch camera">🔄</button>
     </div>
     <div class="ph-top-center">
       <button class="ph-icon-btn ph-zoom-btn" id="phResBtn" onclick="phCycleRes()">2×</button>
     </div>
     <div class="ph-top-right">
-      <button class="ph-icon-btn" id="phSwitchCam" onclick="phFlipCam()" title="Switch camera">🔄</button>
       <button class="ph-icon-btn" onclick="pickFile()" title="Upload">↑</button>
       <button class="ph-icon-btn ph-exit-btn" onclick="togglePhoneMode()" title="Exit">✕</button>
     </div>
@@ -463,7 +462,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
         <span class="ph-action-label">LOOK</span>
         <span class="ph-action-icon">◐</span>
       </div>
-      <button class="ph-shutter" id="phShutter" onclick="phShutter()">
+      <button class="ph-shutter" id="phShutter">
         <div class="ph-shutter-inner"></div>
       </button>
       <div class="ph-action-circle" onclick="phToggleOverlay('settings')">
@@ -3122,30 +3121,66 @@ function phBindBcs(){
 async function phFlipCam(){
   const newFacing=facingMode==='environment'?'user':'environment';
   if(!camOn)return;
+  if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}
+  $vid.srcObject=null;
+  camOn=false;
+  // Try exact constraint first, then ideal as fallback
+  const constraints=[
+    {video:{facingMode:{exact:newFacing},width:{ideal:isPhone()?640:1280}}},
+    {video:{facingMode:newFacing,width:{ideal:isPhone()?640:1280}}}
+  ];
+  for(const c of constraints){
+    try{
+      const s=await navigator.mediaDevices.getUserMedia(c);
+      facingMode=newFacing;
+      camStream=s;
+      $vid.srcObject=s;
+      await $vid.play();
+      camOn=true;needsAspectUpdate=true;computeCrop();
+      if($vid.requestVideoFrameCallback) $vid.requestVideoFrameCallback(onVideoFrame);
+      else{const fb=()=>{if(camOn&&$vid.readyState>=2)videoFrameReady=true;requestAnimationFrame(fb);};fb();}
+      return;
+    }catch(e){/* try next constraint */}
+  }
+  // All failed — try to restore previous camera
   try{
-    if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}
-    $vid.srcObject=null;
-    camOn=false;
-    const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:{exact:newFacing},width:{ideal:isPhone()?640:1280}}});
-    facingMode=newFacing;
-    camStream=s;
-    $vid.srcObject=s;
-    await $vid.play();
+    const s=await navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:isPhone()?640:1280}}});
+    camStream=s;$vid.srcObject=s;await $vid.play();
     camOn=true;needsAspectUpdate=true;computeCrop();
     if($vid.requestVideoFrameCallback) $vid.requestVideoFrameCallback(onVideoFrame);
     else{const fb=()=>{if(camOn&&$vid.readyState>=2)videoFrameReady=true;requestAnimationFrame(fb);};fb();}
-  }catch(e){
-    toast('Camera error: '+e.message);
-  }
+    toast('Only one camera available');
+  }catch(e){toast('Camera error');}
 }
 
-function phShutter(){
-  if(phoneMode==='photo'){
-    saveHiRes();
-  } else {
-    if(isRecording) phStopRec();
-    else phStartRec();
-  }
+// Shutter: tap = save photo, long-press (hold) = record video until release
+let _shutterTimer=0, _shutterIsLong=false;
+function initShutter(){
+  const btn=el('phShutter');
+  if(!btn)return;
+  const startHold=(e)=>{
+    e.preventDefault();
+    _shutterIsLong=false;
+    _shutterTimer=setTimeout(()=>{
+      _shutterIsLong=true;
+      phStartRec();
+    },400);
+  };
+  const endHold=(e)=>{
+    e.preventDefault();
+    clearTimeout(_shutterTimer);
+    if(_shutterIsLong){
+      phStopRec();
+    } else {
+      saveHiRes();
+    }
+  };
+  btn.addEventListener('touchstart',startHold,{passive:false});
+  btn.addEventListener('touchend',endHold,{passive:false});
+  btn.addEventListener('touchcancel',endHold,{passive:false});
+  // Mouse fallback for desktop testing
+  btn.addEventListener('mousedown',startHold);
+  btn.addEventListener('mouseup',endHold);
 }
 
 function phStartRec(){
@@ -3355,7 +3390,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   $gl=el('gl'); $vf=el('viewfinder'); $vid=el('vid');
   $fps=el('fps'); $res=el('resBadge'); $status=el('statusBadge');
 
-  renderColors();renderProfiles();renderPaperUI();bindSliders();bindChannelDensSliders();
+  renderColors();renderProfiles();renderPaperUI();bindSliders();bindChannelDensSliders();initShutter();
   initGL();
 
   inkLocs[0]=locs.u_ink0;inkLocs[1]=locs.u_ink1;inkLocs[2]=locs.u_ink2;inkLocs[3]=locs.u_ink3;
