@@ -545,6 +545,7 @@ precision mediump float;
 varying vec2 v_uv;
 
 uniform sampler2D u_src;
+uniform sampler2D u_prevSrc;  // previous frame source for inter-frame ghosting
 uniform sampler2D u_noise;
 uniform vec2 u_res;
 uniform float u_resScale; // 1x, 2x, 4x — scales grain detail
@@ -1252,44 +1253,24 @@ void main(){
   // a directional smudge — not a clean copy. The streak fades and blurs
   // progressively along the feed direction with noise/irregularity.
   if(u_ghosting > 0.01){
-    float ghostStr = u_ghosting; // already normalized 0-0.3 from JS
-    // Base offset: how far above the ghost starts (shifted in feed direction)
-    float baseOff = 0.06 + hash(vec2(u_frameSeed * 3.3, 77.0)) * 0.03;
-    // Streak length: how far the smudge extends vertically
-    float streakLen = 0.12 + hash(vec2(u_frameSeed * 4.1, 88.0)) * 0.06;
-    // Accumulate smeared ink color along the streak direction
-    vec3 ghostColor = vec3(0.0);
-    float ghostInk = 0.0;
-    float totalWeight = 0.0;
-    // Sample along vertical streak direction (8 taps for smooth smear)
-    for(int i = 0; i < 8; i++){
-      float t = float(i) / 7.0; // 0 to 1 along streak
-      float yOff = baseOff + t * streakLen;
-      // Fade out along streak: strongest at start, fading to nothing
-      float fade = (1.0 - t) * (1.0 - t);
-      // Add horizontal wobble for smudgy look (irregular transfer)
-      float wobble = (hash(vec2(float(i) * 13.7, u_frameSeed * 5.5)) - 0.5) * 0.008;
-      // Add noise-driven breakup (not all areas transfer equally)
-      float breakup = hash(vec2(rpx.x * 0.01 + float(i) * 3.3, rpx.y * 0.01 + yOff * 7.0));
-      breakup = smoothstep(0.2, 0.8, breakup); // some areas get more ghost
-      vec2 sampleUV = uv + vec2(wobble, yOff);
-      vec3 ghostSrc = texture2D(u_src, srcUV(sampleUV)).rgb;
-      float ink = 1.0 - dot(ghostSrc, vec3(0.299, 0.587, 0.114));
-      float w = fade * breakup;
-      ghostColor += (vec3(1.0) - ghostSrc) * w; // accumulate ink color (inverted RGB)
-      ghostInk += ink * w;
-      totalWeight += fade;
-    }
-    ghostInk /= max(totalWeight, 1.0);
-    ghostColor /= max(totalWeight, 1.0);
-    // Normalize ghost color to unit ink direction
-    float colorLen = length(ghostColor);
-    vec3 ghostTint = colorLen > 0.001 ? ghostColor / colorLen : vec3(0.3);
-    // Edge mask: ghost should fade near print edges (not extend outside print area)
+    // Inter-frame ghosting: faint residual ink from previous frame's content
+    // In real riso, ink left on the drum from the previous print transfers
+    // to the next sheet. Ghosting slider controls the strength/visibility.
+    float ghostStr = u_ghosting; // 0-0.3 from JS
+    vec2 ghostUV = srcUV(uv);
+    vec3 prevSrc = texture2D(u_prevSrc, ghostUV).rgb;
+    // Ink density of previous frame at this position
+    vec3 prevInk = vec3(1.0) - prevSrc; // inverted: white=no ink, dark=ink
+    float inkAmount = dot(prevInk, vec3(0.333));
+    // Edge mask: ghost should fade near print edges
     float ghostMask = printMask(uv, vec2(0.0), rpx);
-    ghostInk *= ghostMask;
-    // Apply as faint colored smudge — ghost is lighter version of the ink color
-    float ghostAmount = clamp(ghostInk * ghostStr * 1.2, 0.0, 0.18);
+    // Noise breakup: not all areas transfer equally
+    float breakup = hash(vec2(rpx.x * 0.007 + u_frameSeed * 3.3, rpx.y * 0.007));
+    breakup = smoothstep(0.15, 0.85, breakup);
+    // Ghost amount: strength × ink density × mask × breakup
+    float ghostAmount = clamp(inkAmount * ghostStr * breakup * ghostMask * 1.5, 0.0, 0.25);
+    // Tint direction: ghost carries the color of the previous frame's ink
+    vec3 ghostTint = length(prevInk) > 0.001 ? normalize(prevInk) : vec3(0.333);
     result = result - ghostTint * ghostAmount;
   }
 
@@ -1772,6 +1753,7 @@ function initGL(){
    'u_grainMul0','u_grainMul1','u_grainMul2','u_grainMul3',
    'u_hasCal0','u_hasCal1','u_hasCal2','u_hasCal3',
    'u_opaque0','u_opaque1','u_opaque2','u_opaque3',
+   'u_prevSrc',
    'u_showCropMarks','u_printArea','u_ghosting','u_bleed',
    'u_skew0','u_skew1','u_skew2','u_skew3'
   ].forEach(n=>{locs[n]=gl.getUniformLocation(prog,n);});
@@ -1803,15 +1785,25 @@ function initGL(){
   // Load default paper texture
   loadPaperTexture('procedural');
 
-  // Source texture (tex unit 0)
-  const sTex=gl.createTexture();
-  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,sTex);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
-  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([200,190,180,255]));
+  // Double-buffered source textures: A = current frame (unit 0), B = previous frame (unit 3)
+  // Swapped each video/camera frame for inter-frame ghosting
+  function makeSrcTex(){
+    const t=gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D,t);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([200,190,180,255]));
+    return t;
+  }
+  window._srcTexA=makeSrcTex(); // current frame
+  window._srcTexB=makeSrcTex(); // previous frame
+  window._srcFlip=false;
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
+  gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
   gl.uniform1i(locs.u_src,0);
+  gl.uniform1i(locs.u_prevSrc,3);
 }
 
 function genBlueNoise(sz){
@@ -1863,18 +1855,35 @@ function render(){
   }
 
   // Upload video frame only when new frame available (camera or uploaded video)
+  // Double-buffer: swap src textures so previous frame is preserved in u_prevSrc
   let newCamFrame=false;
   if((camOn||(videoOn&&!gifImg))&&$vid.readyState>=2){
     if(videoFrameReady||!$vid.requestVideoFrameCallback){
-      gl.activeTexture(gl.TEXTURE0);
+      // Swap: current source becomes previous, upload new frame to the other texture
+      const tmp=window._srcTexA; window._srcTexA=window._srcTexB; window._srcTexB=tmp;
+      window._srcFlip=!window._srcFlip;
+      // Upload new frame to the active source texture
+      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
       gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,$vid);
+      // Bind previous frame texture
+      gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
+      gl.uniform1i(locs.u_src,0);
+      gl.uniform1i(locs.u_prevSrc,3);
       hasSrc=true;
       videoFrameReady=false;
       newCamFrame=true;
     }
   }
-  // GIF mode: gifLoop already uploads texture, just mark as new frame
+  // GIF mode: gifLoop already uploads texture via gifCanvas, just swap and mark
   if(videoOn&&gifImg&&videoFrameReady){
+    const tmp=window._srcTexA; window._srcTexA=window._srcTexB; window._srcTexB=tmp;
+    window._srcFlip=!window._srcFlip;
+    gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
+    // gifLoop already called texImage2D on the previously active texture — re-upload to new active
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifCanvas);
+    gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
+    gl.uniform1i(locs.u_src,0);
+    gl.uniform1i(locs.u_prevSrc,3);
     videoFrameReady=false;
     newCamFrame=true;
   }
@@ -2148,7 +2157,7 @@ function startGifLoop(){
   // Animated GIF: draw <img> to offscreen canvas each frame → upload as texture
   if(!gifImg||!videoOn)return;
   gifCtx.drawImage(gifImg,0,0,gifCanvas.width,gifCanvas.height);
-  gl.activeTexture(gl.TEXTURE0);
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
   gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifCanvas);
   videoFrameReady=true;
   needsRedraw=true;
@@ -2204,7 +2213,10 @@ function handleFile(e){
       const img=new Image();
       img.onload=()=>{
         srcImg=img;
-        gl.activeTexture(gl.TEXTURE0);
+        // Upload to both source textures (no previous frame for static images)
+        gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
+        gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);
+        gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
         gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);
         camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();
         $status.textContent='◉ IMAGE';
@@ -2257,7 +2269,9 @@ function loadSampleImage(){
   const img=new Image();
   img.onload=()=>{
     srcImg=img;
-    gl.activeTexture(gl.TEXTURE0);
+    gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);
+    gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
     gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);
     hasSrc=true;needsAspectUpdate=true;computeCrop();
     $status.textContent='● SAMPLE';
@@ -2280,7 +2294,9 @@ async function toggleCam(){
     if(camStream)camStream.getTracks().forEach(t=>t.stop());
     camOn=false;el('camBtn').textContent='CAMERA';
     if(srcImg){
-      gl.activeTexture(gl.TEXTURE0);
+      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,srcImg);
+      gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
       gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,srcImg);
     }
     needsAspectUpdate=true;
