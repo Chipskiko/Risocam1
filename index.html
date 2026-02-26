@@ -1568,9 +1568,19 @@ function setPaperOrient(orient){
 let phoneActive=false;
 function isPhone(){return phoneActive;}
 
+let _desktopMargin=4;
 function togglePhoneMode(){
   phoneActive=!phoneActive;
+  if(phoneActive){
+    _desktopMargin=cached.margin;
+    cached.margin=10;
+    el('margin').value=10;el('marginVal').textContent=10;
+  } else {
+    cached.margin=_desktopMargin;
+    el('margin').value=_desktopMargin;el('marginVal').textContent=_desktopMargin;
+  }
   document.body.classList.toggle('phone-mode',phoneActive);
+  needsRedraw=true;needsAspectUpdate=true;
   layoutSwitch();
 }
 
@@ -1969,7 +1979,7 @@ function render(){
       cssW=Math.round(cssH*ar);
     }
   }
-  const dpr=Math.min(window.devicePixelRatio||1, 2);
+  const dpr=isPhone()?1:Math.min(window.devicePixelRatio||1, 2);
   const baseScale=Math.max(resScale, dpr);
   const dw=Math.round(cssW*baseScale), dh=Math.round(cssH*baseScale);
   if($gl.width!==dw||$gl.height!==dh){$gl.width=dw;$gl.height=dh;}
@@ -3276,7 +3286,7 @@ function phPopulateOverlay(name){
         <div class="slider-row"><span class="slider-label">Dot Gain</span><input type="range" id="phDotGain" min="0" max="25" value="${cached.dotGain}" step="1"><span class="slider-value" id="phDotGainVal">${cached.dotGain}</span></div>
         <div class="slider-row"><span class="slider-label">Misregister</span><input type="range" id="phMisreg" min="0" max="10" value="${el('misreg').value}" step="1"><span class="slider-value" id="phMisregVal">${el('misreg').value}</span></div>
         <div class="slider-row" style="padding-left:12px"><span class="slider-label" style="opacity:0.7;font-size:9px">Skew</span><input type="range" id="phSkew" min="-1" max="1" value="${el('skew').value}" step="0.1"><span class="slider-value" id="phSkewVal">${el('skew').value}°</span></div>
-        <div class="slider-row"><span class="slider-label">Margin</span><input type="range" id="phMargin" min="0" max="12" value="${el('margin').value}" step="1"><span class="slider-value" id="phMarginVal">${el('margin').value}</span></div>
+        <div class="slider-row"><span class="slider-label">Margin</span><input type="range" id="phMargin" min="10" max="20" value="${cached.margin}" step="1"><span class="slider-value" id="phMarginVal">${cached.margin}</span></div>
         <div class="slider-row"><span class="slider-label">Ink Noise</span><input type="range" id="phInkNoise" min="0" max="30" value="${cached.inkNoise}" step="2"><span class="slider-value" id="phInkNoiseVal">${cached.inkNoise}</span></div>
         <div class="slider-row"><span class="slider-label">Paper Tex</span><input type="range" id="phPaperTex" min="0" max="25" value="${el('paperTex').value}" step="1"><span class="slider-value" id="phPaperTexVal">${el('paperTex').value}</span></div>
         <div class="slider-row"><span class="slider-label">Static</span><input type="range" id="phGrainStatic" min="0" max="20" value="${cached.grainStatic}" step="1"><span class="slider-value" id="phGrainStaticVal">${cached.grainStatic}</span></div>
