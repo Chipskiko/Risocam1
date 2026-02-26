@@ -1605,7 +1605,8 @@ function cacheInkColors(){
     }
   }
 }
-function cacheSlider(id,val){cached[id]=parseFloat(val);needsRedraw=true;pushUndo();}
+let _undoTimer=0;
+function cacheSlider(id,val){cached[id]=parseFloat(val);needsRedraw=true;clearTimeout(_undoTimer);_undoTimer=setTimeout(pushUndo,300);}
 
 // ======================== UNDO / REDO ========================
 const undoStack=[], redoStack=[];
