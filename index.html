@@ -1257,10 +1257,20 @@ void main(){
     // In real riso, ink left on the drum from the previous print transfers
     // to the next sheet. Ghosting slider controls the strength/visibility.
     float ghostStr = u_ghosting; // 0-0.3 from JS
-    vec2 ghostUV = srcUV(uv);
-    vec3 prevSrc = texture2D(u_prevSrc, ghostUV).rgb;
-    // Ink density of previous frame at this position
-    vec3 prevInk = vec3(1.0) - prevSrc; // inverted: white=no ink, dark=ink
+    // Sample previous frame with slight horizontal smudge (feed direction streak)
+    // Paper feeds horizontally through the drum, so ghost streaks sideways
+    vec3 prevInk = vec3(0.0);
+    float totalW = 0.0;
+    for(int i = 0; i < 4; i++){
+      float t = float(i) / 3.0; // 0 to 1
+      float xOff = t * 0.015; // small horizontal smear range
+      float w = 1.0 - t * 0.6; // fade along streak
+      vec2 smearUV = srcUV(uv + vec2(xOff, 0.0));
+      vec3 s = texture2D(u_prevSrc, smearUV).rgb;
+      prevInk += (vec3(1.0) - s) * w;
+      totalW += w;
+    }
+    prevInk /= totalW;
     float inkAmount = dot(prevInk, vec3(0.333));
     // Edge mask: ghost should fade near print edges
     float ghostMask = printMask(uv, vec2(0.0), rpx);
