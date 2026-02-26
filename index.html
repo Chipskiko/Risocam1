@@ -319,7 +319,8 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
     </div>
     <div class="header-sep"></div>
     <div class="header-actions">
-      <button class="header-btn primary" onclick="saveHiRes()">↓ SAVE</button>
+      <button class="header-btn primary" onclick="saveHiRes()">↓ PNG</button>
+      <button class="header-btn primary" onclick="saveGif()">↓ GIF</button>
       <button class="header-btn" onclick="exportSeparations()">SEPS</button>
       <button class="header-btn" onclick="newMisreg()">RE-REG</button>
       <button class="header-btn" id="compareBtn" onclick="toggleCompare()">COMPARE</button>
@@ -446,10 +447,11 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
       <div class="ph-bcs-row"><span class="ph-bcs-label">S</span><input type="range" class="ph-bcs-slider" id="phBcs2" min="-30" max="30" value="0" step="2"><span class="ph-bcs-val" id="phBcs2Val">0</span></div>
     </div>
     <!-- Tool strip -->
-    <div class="ph-tools">
+    <div class="ph-tools" id="phTools">
       <button class="ph-tool-btn" id="phModeBtn" onclick="phCycleMode()">GRAIN</button>
       <button class="ph-tool-btn" id="phAspectBtn" onclick="phCycleAspect()">4:3</button>
       <button class="ph-tool-btn" id="phFpsBtn" onclick="phCycleFps()">4FPS</button>
+      <button class="ph-tool-btn" onclick="newMisreg();try{navigator.vibrate(8);}catch(e){}">RE-REG</button>
       <button class="ph-tool-btn" id="phBcsBtn" onclick="phToggleBcs()">☀</button>
     </div>
     <!-- Main action row -->
@@ -1856,13 +1858,18 @@ function render(){
       return;
     }
     lastRisoFrame=now;
-    frame += Math.floor(Math.random()*40)+15;
-    frameSeed = Math.random();
-    if(!isMono()){
-      const m=cached.misreg/500;
-      for(let i=0;i<4;i++){
-        misreg[i]=[(Math.random()-.5)*m*2,(Math.random()-.5)*m*2];
+    // Only vary grain/misreg when static > 0 (animation mode)
+    if(cached.grainStatic > 0){
+      frame += Math.floor(Math.random()*40)+15;
+      frameSeed = Math.random();
+      if(!isMono()){
+        const m=cached.misreg/500;
+        for(let i=0;i<4;i++){
+          misreg[i]=[(Math.random()-.5)*m*2,(Math.random()-.5)*m*2];
+        }
       }
+    } else {
+      frame++;
     }
   } else {
     const animating = cached.grainStatic > 0 || videoOn;
@@ -2314,6 +2321,180 @@ async function saveHiRes(){
   // Restore
   needsRedraw=true;needsAspectUpdate=true;
   await doSaveBlob(blob,filename,saveW,saveH);
+}
+
+// ─── Minimal GIF89a encoder (no external deps) ───
+function GIFEncoder(w,h,delay){
+  this.w=w;this.h=h;this.delay=delay;this.frames=[];this.out=[];
+}
+GIFEncoder.prototype.addFrame=function(ctx){
+  const d=ctx.getImageData(0,0,this.w,this.h).data;
+  // Quantize to 256-color palette using median-cut simplification
+  const palette=[],pMap=new Map();
+  const pixels=[];
+  for(let i=0;i<d.length;i+=4){
+    const r=d[i]&0xF8,g=d[i+1]&0xFC,b=d[i+2]&0xF8; // reduce color space
+    const k=(r<<8)|(g<<2)|((b>>3));
+    if(!pMap.has(k)&&palette.length<256){pMap.set(k,palette.length);palette.push([r,g,b]);}
+    pixels.push(k);
+  }
+  // Pad palette to power of 2
+  let palBits=1;while((1<<palBits)<palette.length)palBits++;
+  const palSize=1<<palBits;
+  while(palette.length<palSize)palette.push([0,0,0]);
+  // Map pixels to indices
+  const idx=new Uint8Array(pixels.length);
+  for(let i=0;i<pixels.length;i++){
+    const k=pixels[i];
+    if(pMap.has(k))idx[i]=pMap.get(k);
+    else{
+      // Find nearest
+      const r=(k>>8)&0xF8,g=(k>>2)&0xFC,b=(k<<3)&0xF8;
+      let best=0,bestD=Infinity;
+      for(let j=0;j<palette.length;j++){
+        const dr=r-palette[j][0],dg=g-palette[j][1],db=b-palette[j][2];
+        const dist=dr*dr+dg*dg+db*db;
+        if(dist<bestD){bestD=dist;best=j;}
+      }
+      idx[i]=best;
+    }
+  }
+  this.frames.push({palette,palBits,idx});
+};
+GIFEncoder.prototype.finish=function(){
+  const o=this.out;
+  // Header
+  _ws(o,'GIF89a');
+  _wLE16(o,this.w);_wLE16(o,this.h);
+  o.push(0x70,0,0); // no GCT, 8-bit color depth
+  // Netscape extension for looping
+  o.push(0x21,0xFF,0x0B);
+  _ws(o,'NETSCAPE2.0');
+  o.push(3,1);_wLE16(o,0);o.push(0);
+  for(const f of this.frames){
+    // GCE
+    o.push(0x21,0xF9,4,0);
+    _wLE16(o,Math.round(this.delay/10));
+    o.push(0,0);
+    // Image descriptor with local color table
+    o.push(0x2C);
+    _wLE16(o,0);_wLE16(o,0);
+    _wLE16(o,this.w);_wLE16(o,this.h);
+    o.push(0x80|(f.palBits-1)); // local color table flag + size
+    // Local color table
+    for(const c of f.palette){o.push(c[0],c[1],c[2]);}
+    // LZW compress
+    const minCode=Math.max(2,f.palBits);
+    const lzw=_lzwCompress(f.idx,minCode);
+    o.push(minCode);
+    // Sub-blocks
+    for(let i=0;i<lzw.length;){
+      const chunk=Math.min(255,lzw.length-i);
+      o.push(chunk);
+      for(let j=0;j<chunk;j++)o.push(lzw[i++]);
+    }
+    o.push(0);
+  }
+  o.push(0x3B); // trailer
+  return new Uint8Array(o);
+};
+function _ws(o,s){for(let i=0;i<s.length;i++)o.push(s.charCodeAt(i));}
+function _wLE16(o,v){o.push(v&0xFF,(v>>8)&0xFF);}
+function _lzwCompress(idx,minCode){
+  const clearCode=1<<minCode;
+  const eoiCode=clearCode+1;
+  let codeSize=minCode+1;
+  let nextCode=eoiCode+1;
+  const table=new Map();
+  const bits=[];
+  const addBits=(val,n)=>{for(let i=0;i<n;i++)bits.push((val>>i)&1);};
+  addBits(clearCode,codeSize);
+  // Init table
+  for(let i=0;i<clearCode;i++)table.set(String(i),i);
+  let cur=String(idx[0]);
+  for(let i=1;i<idx.length;i++){
+    const s=cur+','+idx[i];
+    if(table.has(s)){cur=s;}
+    else{
+      addBits(table.get(cur),codeSize);
+      if(nextCode<4096){table.set(s,nextCode++);}
+      if(nextCode>(1<<codeSize)&&codeSize<12)codeSize++;
+      if(nextCode>=4095){
+        addBits(clearCode,codeSize);
+        table.clear();
+        for(let j=0;j<clearCode;j++)table.set(String(j),j);
+        codeSize=minCode+1;nextCode=eoiCode+1;
+      }
+      cur=String(idx[i]);
+    }
+  }
+  addBits(table.get(cur),codeSize);
+  addBits(eoiCode,codeSize);
+  // Pack bits to bytes
+  const bytes=[];
+  for(let i=0;i<bits.length;i+=8){
+    let b=0;
+    for(let j=0;j<8&&i+j<bits.length;j++)b|=bits[i+j]<<j;
+    bytes.push(b);
+  }
+  return bytes;
+}
+
+async function saveGif(){
+  if(!hasSrc){toast('No image loaded');return;}
+  toast('Rendering GIF…');
+  const unique=[...new Set(channels.filter(c=>c))];
+  const names=unique.join('-').replace(/[\s.]/g,'');
+  const gifFps=risoFps||4;
+  const duration=10; // seconds
+  const totalFrames=gifFps*duration;
+  const delay=Math.round(1000/gifFps);
+  // Use current canvas size (not hi-res)
+  const gw=$gl.width, gh=$gl.height;
+  const tmpCanvas=document.createElement('canvas');
+  tmpCanvas.width=gw;tmpCanvas.height=gh;
+  const tmpCtx=tmpCanvas.getContext('2d');
+  const enc=new GIFEncoder(gw,gh,delay);
+  // Save current state
+  const origSeed=frameSeed;
+  const origMisreg=misreg.map(m=>[...m]);
+  const origSkews=[...layerSkews];
+  const origFrame=frame;
+  for(let i=0;i<totalFrames;i++){
+    // Vary grain/misreg per frame
+    frameSeed=Math.random();
+    frame=origFrame+i;
+    newMisreg();
+    // Re-set uniforms and draw
+    gl.viewport(0,0,gw,gh);
+    gl.uniform2f(locs.u_res,gw,gh);
+    gl.uniform1f(locs.u_frameSeed,frameSeed);
+    gl.uniform1f(locs.u_time,frame);
+    // Update misreg/skew uniforms
+    const layers=activeLayers();
+    for(let j=0;j<Math.min(layers.length,4);j++){
+      const L=layers[j];
+      gl.uniform2f(offLocs[j],misreg[L.ch][0],misreg[L.ch][1]);
+      gl.uniform1f([locs.u_skew0,locs.u_skew1,locs.u_skew2,locs.u_skew3][j],layerSkews[L.ch]||0);
+    }
+    gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+    // Read pixels to temp canvas
+    tmpCtx.drawImage($gl,0,0);
+    enc.addFrame(tmpCtx);
+    // Yield to UI every 10 frames
+    if(i%10===9) await new Promise(r=>setTimeout(r,0));
+  }
+  // Restore
+  frameSeed=origSeed;
+  misreg=origMisreg;
+  layerSkews=origSkews;
+  frame=origFrame;
+  needsRedraw=true;
+  const data=enc.finish();
+  const blob=new Blob([data],{type:'image/gif'});
+  const filename='risocam_'+(names||'empty')+'_'+gw+'x'+gh+'_'+Date.now()+'.gif';
+  await doSaveBlob(blob,filename,gw,gh);
+  toast('GIF saved');
 }
 
 async function doSaveBlob(blob,filename,w,h){
@@ -3029,8 +3210,16 @@ function phToggleBcs(){
   phBcsOpen=!phBcsOpen;
   const strip=el('phBcsStrip');
   const btn=el('phBcsBtn');
+  const tools=el('phTools');
+  const actions=document.querySelector('.ph-actions');
   if(strip) strip.classList.toggle('visible',phBcsOpen);
   if(btn) btn.classList.toggle('highlight',phBcsOpen);
+  // BCS full-takeover: hide tool strip and action circles
+  if(tools) tools.style.display=phBcsOpen?'none':'';
+  if(actions){
+    actions.querySelectorAll('.ph-action-circle').forEach(c=>c.style.display=phBcsOpen?'none':'');
+    // Keep shutter visible but compact
+  }
   // Sync values
   if(phBcsOpen){
     el('phBcs0').value=cached.imgBright;el('phBcs0Val').textContent=cached.imgBright;
@@ -3103,11 +3292,14 @@ let _shutterTimer=0, _shutterIsLong=false;
 function initShutter(){
   const btn=el('phShutter');
   if(!btn)return;
+  const haptic=(ms)=>{try{navigator.vibrate(ms);}catch(e){}};
   const startHold=(e)=>{
     e.preventDefault();
+    haptic(10);
     _shutterIsLong=false;
     _shutterTimer=setTimeout(()=>{
       _shutterIsLong=true;
+      haptic(30);
       phStartRec();
     },400);
   };
@@ -3115,6 +3307,7 @@ function initShutter(){
     e.preventDefault();
     clearTimeout(_shutterTimer);
     if(_shutterIsLong){
+      haptic(15);
       phStopRec();
     } else {
       saveHiRes();
@@ -3126,6 +3319,19 @@ function initShutter(){
   // Mouse fallback for desktop testing
   btn.addEventListener('mousedown',startHold);
   btn.addEventListener('mouseup',endHold);
+
+  // Double-tap viewfinder to re-reg
+  let _lastTap=0;
+  const vf=el('phViewfinder');
+  if(vf) vf.addEventListener('touchend',(e)=>{
+    const now=Date.now();
+    if(now-_lastTap<300){
+      e.preventDefault();
+      newMisreg();
+      try{navigator.vibrate(8);}catch(e){}
+    }
+    _lastTap=now;
+  },{passive:false});
 }
 
 function phStartRec(){
@@ -3192,10 +3398,37 @@ function phToggleOverlay(name){
 }
 
 function phCloseOverlay(){
-  document.querySelectorAll('.ph-overlay').forEach(o=>o.classList.remove('open'));
+  document.querySelectorAll('.ph-overlay').forEach(o=>{o.classList.remove('open');o.style.transform='';});
   el('phBackdrop').classList.remove('show');
   document.querySelectorAll('.ph-action-circle').forEach(c=>c.classList.remove('open'));
   currentOverlay=null;
+}
+
+// Swipe down to dismiss overlays
+function initOverlaySwipe(){
+  document.querySelectorAll('.ph-overlay').forEach(ov=>{
+    let startY=0,curY=0,dragging=false;
+    ov.addEventListener('touchstart',e=>{
+      if(ov.scrollTop>0)return; // only swipe when at top
+      startY=e.touches[0].clientY;curY=startY;dragging=true;
+    },{passive:true});
+    ov.addEventListener('touchmove',e=>{
+      if(!dragging)return;
+      curY=e.touches[0].clientY;
+      const dy=curY-startY;
+      if(dy>0){
+        ov.style.transform='translateY('+dy+'px)';
+        e.preventDefault();
+      }
+    },{passive:false});
+    ov.addEventListener('touchend',()=>{
+      if(!dragging)return;
+      dragging=false;
+      const dy=curY-startY;
+      if(dy>60){phCloseOverlay();}
+      else{ov.style.transform='';}
+    },{passive:true});
+  });
 }
 
 function phPopulateOverlay(name){
@@ -3331,7 +3564,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   $gl=el('gl'); $vf=el('viewfinder'); $vid=el('vid');
   $fps=el('fps'); $res=el('resBadge'); $status=el('statusBadge');
 
-  renderColors();renderProfiles();renderPaperUI();bindSliders();bindChannelDensSliders();initShutter();
+  renderColors();renderProfiles();renderPaperUI();bindSliders();bindChannelDensSliders();initShutter();initOverlaySwipe();
   initGL();
 
   inkLocs[0]=locs.u_ink0;inkLocs[1]=locs.u_ink1;inkLocs[2]=locs.u_ink2;inkLocs[3]=locs.u_ink3;
