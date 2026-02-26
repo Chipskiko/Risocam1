@@ -2474,9 +2474,11 @@ function onChannelsChanged(){
 
 function updateUI(){
   // Profiles
+  const all=allProfiles();
   document.querySelectorAll('.profile-pill').forEach(p=>{
-    const pr=PROFILES[parseInt(p.dataset.i)];
-    p.classList.toggle('active',activeProf&&pr.name===activeProf.name);
+    const idx=parseInt(p.dataset.ai);
+    const pr=all[idx];
+    if(pr) p.classList.toggle('active',activeProf&&pr.name===activeProf.name);
   });
 
   // Rebuild channel rows with dropdowns + density
