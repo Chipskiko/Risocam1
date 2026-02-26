@@ -1264,9 +1264,9 @@ void main(){
     float inkAmount = dot(prevInk, vec3(0.333));
     // Edge mask: ghost should fade near print edges
     float ghostMask = printMask(uv, vec2(0.0), rpx);
-    // Noise breakup: not all areas transfer equally
-    float breakup = hash(vec2(rpx.x * 0.007 + u_frameSeed * 3.3, rpx.y * 0.007));
-    breakup = smoothstep(0.15, 0.85, breakup);
+    // Subtle noise breakup via noise texture (avoids hash moiré)
+    float breakup = texture2D(u_noise, fract(uv * 3.0 + u_frameSeed)).r;
+    breakup = 0.7 + breakup * 0.3; // range 0.7-1.0: subtle variation, no moiré
     // Ghost amount: strength × ink density × mask × breakup
     float ghostAmount = clamp(inkAmount * ghostStr * breakup * ghostMask * 1.5, 0.0, 0.25);
     // Tint direction: ghost carries the color of the previous frame's ink
