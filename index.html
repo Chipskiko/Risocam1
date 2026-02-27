@@ -173,7 +173,7 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 .ch-mono-row{display:flex;align-items:center;gap:6px;padding:2px 0}
 .ch-mono-label{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--text-muted);flex-shrink:0}
 .ch-badge{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;color:white;flex-shrink:0}
-.ch-badge-c{background:#00bcd4}.ch-badge-m{background:#e91e63}.ch-badge-y{background:#fdd835;color:#333}.ch-badge-k{background:#333}
+.ch-badge-c{background:#00bcd4}.ch-badge-m{background:#e91e63}.ch-badge-y{background:#fdd835;color:#333}.ch-badge-k{background:#333}.ch-badge-spot{background:#888}
 .ch-color-btn{width:26px;height:26px;border-radius:6px;border:1.5px solid var(--border);cursor:pointer;flex-shrink:0;transition:all .12s}
 .ch-color-btn:hover{border-color:var(--text-muted)}
 .ch-color-btn.open{border-color:#5b8fd4;box-shadow:0 0 0 2px rgba(91,143,212,.15)}
@@ -388,11 +388,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
   <div class="controls-panel">
     <!-- Channels -->
     <div class="control-section">
-      <div class="section-header">CHANNELS <span class="count" id="layerCount">4</span></div>
-      <div style="display:flex;gap:4px;margin:4px 0 6px 0" id="sepTypeRow">
-        <button class="header-mode-btn active" id="sepCmyk" onclick="setSepType(0)" style="font-size:8px;padding:2px 8px;letter-spacing:0.5px">CMYK</button>
-        <button class="header-mode-btn" id="sepApprox" onclick="setSepType(1)" style="font-size:8px;padding:2px 8px;letter-spacing:0.5px">APPROX</button>
-      </div>
+      <div class="section-header">PLATES <span class="count" id="layerCount">4</span><span style="margin-left:auto;display:flex;gap:0"><button class="header-mode-btn active" id="sepCmyk" onclick="setSepType(0)">CMYK</button><button class="header-mode-btn" id="sepApprox" onclick="setSepType(1)">SPOT</button></span></div>
       <div class="channel-list" id="channelList"></div>
     </div>
     <!-- Settings -->
@@ -413,7 +409,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
         <div class="slider-row"><span class="slider-label">Static</span><input type="range" id="grainStatic" min="0" max="20" value="0" step="1"><span class="slider-value" id="grainStaticVal">0</span></div>
         <div class="slider-row"><span class="slider-label">Ghosting</span><input type="range" id="ghosting" min="0" max="30" value="0" step="2"><span class="slider-value" id="ghostingVal">0</span></div>
         <div class="slider-row"><span class="slider-label">Margin</span><input type="range" id="margin" min="0" max="12" value="4" step="1"><span class="slider-value" id="marginVal">4</span></div>
-        <div class="slider-row"><span class="slider-label">Bleed</span><input type="range" id="bleed" min="0" max="10" value="0" step="1"><span class="slider-value" id="bleedVal">0</span></div>
+
         <div class="slider-row" style="margin-top:4px"><span class="slider-label">Crop Marks</span><label class="toggle-switch"><input type="checkbox" id="cropMarksToggle" checked onchange="cached.showCropMarks=this.checked;markDirty()"><span class="toggle-slider"></span></label></div>
         <div id="debugPanel" style="display:none;margin-top:8px;border-top:1px solid #ccc;padding-top:8px">
           <div style="font-size:9px;letter-spacing:2px;opacity:0.4;margin-bottom:6px">DEBUG</div>
@@ -509,7 +505,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
 </div>
 <div class="ph-overlay" id="phOvChannels">
   <div class="ph-overlay-handle"></div>
-  <div class="ph-overlay-head">CHANNELS <button class="ph-overlay-close" onclick="phCloseOverlay()">✕</button></div>
+  <div class="ph-overlay-head">PLATES <button class="ph-overlay-close" onclick="phCloseOverlay()">✕</button></div>
   <div id="phChannelsBody"></div>
 </div>
 <div class="ph-overlay" id="phOvLook">
@@ -1807,7 +1803,6 @@ const cached={
   showCropMarks:true,
   ghosting:0,
   margin:4,
-  bleed:0,
   skew:0,
 };
 let needsAspectUpdate=true;
@@ -1920,7 +1915,16 @@ function activeCount(){return channels.filter(c=>c!==null).length;}
 // Get ordered active layers for shader (follows layerOrder for print sequence)
 function activeLayers(){
   const out=[];
-  for(const i of layerOrder) if(channels[i]!==null) out.push({ch:i, color:channels[i]});
+  if(cached.sepType===1){
+    // Spot mode: only unique inks (NNLS decomposes into unique spot colors)
+    const seen=new Set();
+    for(const i of layerOrder){
+      const c=channels[i];
+      if(c!==null && !seen.has(c)){ seen.add(c); out.push({ch:i, color:c}); }
+    }
+  } else {
+    for(const i of layerOrder) if(channels[i]!==null) out.push({ch:i, color:channels[i]});
+  }
   return out;
 }
 
@@ -2393,7 +2397,7 @@ function render(){
   gl.uniform1f(locs.u_showCropMarks, cached.showCropMarks ? 1.0 : 0.0);
   const effectiveGhosting = cached.grainStatic > 0 ? Math.max(cached.ghosting, cached.grainStatic * 1.0) : cached.ghosting;
   gl.uniform1f(locs.u_ghosting, effectiveGhosting * 0.01);
-  gl.uniform1f(locs.u_bleed, cached.bleed * 0.01);
+  gl.uniform1f(locs.u_bleed, 0.0);
   gl.uniform1f(locs.u_ucrStr, cached.ucrStr * 0.01);
   gl.uniform4f(locs.u_cmykBal, cached.balC*0.01, cached.balM*0.01, cached.balY*0.01, cached.balK*0.01);
   gl.uniform1f(locs.u_tac, cached.tac * 0.01);
@@ -2962,7 +2966,7 @@ async function exportSeparations(){
   gl.uniform1f(locs.u_paperTex,cached.paperTex);
   gl.uniform1f(locs.u_static,cached.grainStatic);
   gl.uniform1f(locs.u_ghosting,cached.ghosting*0.01);
-  gl.uniform1f(locs.u_bleed,cached.bleed*0.01);
+  gl.uniform1f(locs.u_bleed,0.0);
   gl.uniform1f(locs.u_resScale,resScale);
   gl.uniform1f(locs.u_frameSeed,frameSeed);
   gl.uniform1f(locs.u_bright,cached.imgBright);
@@ -3202,13 +3206,23 @@ function buildChannelUI(targetId){
   }
 
   // ─── Multi-layer mode: individual rows with drag handles ───
+  const isSpot=cached.sepType===1;
+  const seenSpot=new Set();
+  let spotNum=0;
   for(let pos=0;pos<4;pos++){
     const i=layerOrder[pos]; // actual CMYK channel index
     const name=channels[i];
+    if(isSpot){
+      if(name===null || seenSpot.has(name)) continue; // show only unique inks in spot mode
+      seenSpot.add(name);
+    }
+    spotNum++;
     const rc=name?RISO_COLORS.find(r=>r.name===name):null;
     const hex=rc?rc.hex:'#ccc';
     const isOpen=openPicker===i;
     const m=CH_META[i];
+    const badgeLabel=isSpot?spotNum:m.badge;
+    const badgeCls=isSpot?'ch-badge-spot':m.cls;
     const isWhite=name==='White';
     const dens=Math.round(cached.layerDens[i]);
     const trackBg=rc?`linear-gradient(90deg,${hex}15,${hex})`:`linear-gradient(90deg,#eee,#aaa)`;
@@ -3219,7 +3233,7 @@ function buildChannelUI(targetId){
     // Compact row: [drag] [badge] [color-btn] [density slider] [angle buttons]
     html+=`<div class="ch-row">
       <span class="ch-drag" data-drag="${pos}">⡇</span>
-      <span class="ch-badge ${m.cls}">${m.badge}</span>
+      <span class="ch-badge ${badgeCls}">${badgeLabel}</span>
       <div class="ch-color-btn${isWhite?' white-border':''}${isOpen?' open':''}" style="background:${hex}" onclick="togglePicker(${i})"></div>
       <input type="range" class="ch-dens" min="0" max="100" value="${dens}" step="2"
         oninput="setChannelDens(${i},this.value)"
@@ -3509,7 +3523,7 @@ function setAngle(ch,deg){
   markDirty();
 }
 function bindSliders(){
-  ['grainSize','dotGain','misreg','inkNoise','paperTex','lpi','grainStatic','ghosting','margin','bleed','skew','imgBright','imgContrast','imgSat','ucrStr','balC','balM','balY','balK','tac'].forEach(id=>{
+  ['grainSize','dotGain','misreg','inkNoise','paperTex','lpi','grainStatic','ghosting','margin','skew','imgBright','imgContrast','imgSat','ucrStr','balC','balM','balY','balK','tac'].forEach(id=>{
     const s=el(id),v=el(id+'Val');
     if(!s||!v)return;
     s.oninput=()=>{
@@ -3538,7 +3552,7 @@ function copyDebugValues(){
     dens:cached.layerDens.slice(0,layers.length),
     grainSize:cached.grainSize, dotGain:cached.dotGain,
     inkNoise:cached.inkNoise, paperTex:cached.paperTex,
-    ghosting:cached.ghosting, bleed:cached.bleed,
+    ghosting:cached.ghosting,
     margin:cached.margin, bcs:[cached.imgBright,cached.imgContrast,cached.imgSat],
     cmyk:{ucr:cached.ucrStr, balC:cached.balC, balM:cached.balM, balY:cached.balY, balK:cached.balK, tac:cached.tac}
   };
@@ -3995,7 +4009,7 @@ function phPopulateOverlay(name){
   if(name==='channels'){
     const body=el('phChannelsBody');
     if(!body.dataset.built){
-      body.innerHTML='<div style="display:flex;gap:4px;margin:4px 12px 6px"><button class="header-mode-btn '+(cached.sepType===0?'active':'')+'" id="phSepCmyk" onclick="setSepType(0)" style="font-size:8px;padding:2px 8px;letter-spacing:0.5px">CMYK</button><button class="header-mode-btn '+(cached.sepType===1?'active':'')+'" id="phSepApprox" onclick="setSepType(1)" style="font-size:8px;padding:2px 8px;letter-spacing:0.5px">APPROX</button></div><div class="channel-list" id="phChannelList"></div>';
+      body.innerHTML='<div style="display:flex;gap:0;margin:4px 12px 6px"><button class="header-mode-btn '+(cached.sepType===0?'active':'')+'" id="phSepCmyk" onclick="setSepType(0)">CMYK</button><button class="header-mode-btn '+(cached.sepType===1?'active':'')+'" id="phSepApprox" onclick="setSepType(1)">SPOT</button></div><div class="channel-list" id="phChannelList"></div>';
       body.dataset.built='1';
     }
     buildChannelUI('phChannelList');
@@ -4036,7 +4050,6 @@ function phPopulateOverlay(name){
         <div class="slider-row"><span class="slider-label">Paper Tex</span><input type="range" id="phPaperTex" min="0" max="25" value="${el('paperTex').value}" step="1"><span class="slider-value" id="phPaperTexVal">${el('paperTex').value}</span></div>
         <div class="slider-row"><span class="slider-label">Static</span><input type="range" id="phGrainStatic" min="0" max="20" value="${cached.grainStatic}" step="1"><span class="slider-value" id="phGrainStaticVal">${cached.grainStatic}</span></div>
         <div class="slider-row"><span class="slider-label">Ghosting</span><input type="range" id="phGhosting" min="0" max="30" value="${cached.ghosting}" step="2"><span class="slider-value" id="phGhostingVal">${cached.ghosting}</span></div>
-        <div class="slider-row"><span class="slider-label">Bleed</span><input type="range" id="phBleed" min="0" max="10" value="${cached.bleed}" step="1"><span class="slider-value" id="phBleedVal">${cached.bleed}</span></div>
       </div>`;
     phBindSliders();
   }
@@ -4054,7 +4067,6 @@ function phBindSliders(){
     ['phPaperTex','paperTex',null],
     ['phGrainStatic','grainStatic','grainStatic'],
     ['phGhosting','ghosting','ghosting'],
-    ['phBleed','bleed','bleed'],
   ];
   map.forEach(([phId,deskId,cacheKey])=>{
     const phEl=el(phId);
