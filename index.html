@@ -3806,17 +3806,21 @@ function phBindBcs(){
     const initPt=path.getPointAtLength(initT*len);
     thumb.setAttribute('cx',initPt.x);
     thumb.setAttribute('cy',initPt.y);
+    function ptrToNorm(e){
+      const r=svg.getBoundingClientRect();
+      // Arc spans x=4..296 in viewBox 0..300, map pointer to arc range
+      const svgX=((e.clientX-r.left)/r.width)*300;
+      return (svgX-4)/(296-4);
+    }
     svg.addEventListener('pointerdown',e=>{
       e.preventDefault();
       svg.setPointerCapture(e.pointerId);
       svg.classList.add('dragging');
-      const r=svg.getBoundingClientRect();
-      setNorm((e.clientX-r.left)/r.width);
+      setNorm(ptrToNorm(e));
     });
     svg.addEventListener('pointermove',e=>{
       if(!svg.classList.contains('dragging'))return;
-      const r=svg.getBoundingClientRect();
-      setNorm((e.clientX-r.left)/r.width);
+      setNorm(ptrToNorm(e));
     });
     svg.addEventListener('pointerup',()=>svg.classList.remove('dragging'));
     svg.addEventListener('pointercancel',()=>svg.classList.remove('dragging'));
