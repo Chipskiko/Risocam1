@@ -27,29 +27,34 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 .header-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .header-row-right{justify-content:flex-end}
 .header-mode{display:flex;background:white;border:1px solid var(--border);border-radius:4px;overflow:hidden;flex-shrink:0}
-.header-mode-btn{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:6px 12px;border:none;background:none;cursor:pointer;transition:all .15s;color:var(--text-muted)}
+.header-mode-btn{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:6px 10px;border:none;background:none;cursor:pointer;transition:all .15s;color:var(--text-muted)}
 .header-mode-btn.active{background:var(--text);color:white}
-.header-dl{display:flex;align-items:center;background:var(--text);border-radius:4px;overflow:hidden;flex-shrink:0}
-.header-dl-arrow{display:flex;align-items:center;padding:0 0 0 8px;border-right:1px solid rgba(255,255,255,.15)}
-.header-dl-arrow svg{width:10px;height:10px;stroke:rgba(255,255,255,.5)}
-.header-dl-btn{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:6px 10px;border:none;border-right:1px solid rgba(255,255,255,.15);background:none;cursor:pointer;transition:all .15s;color:white}
+.header-dl{display:flex;align-items:center;background:white;border:1px solid var(--border);border-radius:4px;overflow:hidden;flex-shrink:0}
+.header-dl-arrow{display:flex;align-items:center;padding:0 0 0 8px;border-right:1px solid var(--border)}
+.header-dl-arrow svg{width:10px;height:10px;stroke:var(--text-muted)}
+.header-dl-btn{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:6px 10px;border:none;border-right:1px solid var(--border);background:none;cursor:pointer;transition:all .15s;color:var(--text-muted)}
 .header-dl-btn:last-child{border-right:none}
-.header-dl-btn:hover{background:rgba(255,255,255,.12)}
+.header-dl-btn:hover{background:var(--text);color:var(--bg)}
+.header-dl-btn.active{background:var(--text);color:white}
 .header-src{display:flex;background:white;border:1px solid var(--border);border-radius:4px;overflow:hidden;flex-shrink:0}
-.header-src-btn{font-family:'Space Mono',monospace;font-size:11px;padding:5px 10px;border:none;border-right:1px solid var(--border);background:none;cursor:pointer;transition:all .15s;color:var(--text-muted);display:flex;align-items:center;justify-content:center}
+.header-src-btn{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:6px 10px;border:none;border-right:1px solid var(--border);background:none;cursor:pointer;transition:all .15s;color:var(--text-muted);display:flex;align-items:center;justify-content:center}
 .header-src-btn:last-child{border-right:none}
 .header-src-btn:hover{background:var(--text);color:var(--bg)}
-.header-src-btn svg{width:14px;height:14px}
+.header-src-btn svg{width:12px;height:12px}
 .header-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
 .header-actions{display:flex;align-items:center;gap:6px}
 /* FPS selector group next to CAM */
 .fps-group{display:inline-flex;align-items:center;gap:0;border:1px solid var(--border);border-radius:4px;overflow:hidden;margin-left:0}
-.fps-group .fps-btn{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:6px 8px;border:none;border-right:1px solid var(--border);background:white;cursor:pointer;color:var(--text-muted);transition:all .12s;line-height:1}
+.fps-group .fps-btn{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:6px 10px;border:none;border-right:1px solid var(--border);background:white;cursor:pointer;color:var(--text-muted);transition:all .12s;line-height:1}
 .fps-group .fps-btn:last-of-type{border-right:none}
 .fps-group .fps-btn.active{background:var(--text);color:white}
 .fps-group .fps-btn:hover:not(.active){background:#f0f0f0}
 .fps-group .fps-label{font-family:'Space Mono',monospace;font-size:7px;letter-spacing:1px;color:var(--text-muted);padding:0 5px 0 3px}
-.header-btn{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:5px 10px;border:1px solid var(--border);background:white;cursor:pointer;transition:all .2s;border-radius:3px;color:var(--text-muted);display:inline-flex;align-items:center;justify-content:center}
+.header-cycle{display:flex;border:1px solid var(--border);border-radius:4px;overflow:hidden;cursor:pointer;flex-shrink:0;transition:all .15s}
+.header-cycle:hover .header-cycle-val{background:var(--text);color:var(--bg)}
+.header-cycle-label{font-family:'Space Mono',monospace;font-size:7px;letter-spacing:1px;padding:6px 6px;color:var(--text-muted);display:flex;align-items:center;border-right:1px solid var(--border);background:white}
+.header-cycle-val{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:6px 8px;color:var(--text);display:flex;align-items:center;background:white;transition:all .15s}
+.header-btn{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:6px 10px;border:1px solid var(--border);background:white;cursor:pointer;transition:all .15s;border-radius:4px;color:var(--text-muted);display:inline-flex;align-items:center;justify-content:center}
 .header-btn:hover{background:var(--text);color:var(--bg);border-color:var(--text)}
 .header-btn.primary{background:var(--text);color:white;border-color:var(--text)}
 .header-btn.primary:hover{background:#333}
@@ -253,7 +258,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
 .ph-rec-badge{position:absolute;top:60px;right:12px;font-family:'Space Mono',monospace;font-size:11px;color:var(--accent);letter-spacing:1px;display:none;z-index:11}
 .ph-rec-badge.show{display:block}
 /* Viewfinder — centers the canvas box on black */
-.ph-viewfinder{flex:1;position:relative;overflow:hidden;min-height:0;background:var(--ph-paper-bg,#111);display:flex;align-items:center;justify-content:center;padding:calc(env(safe-area-inset-top,8px) + 48px) 8px 8px}
+.ph-viewfinder{flex:1;position:relative;overflow:hidden;min-height:0;background:var(--ph-paper-bg,#111);display:flex;align-items:center;justify-content:center;padding:calc(env(safe-area-inset-top,0px) + 44px) 4px 4px}
 .ph-viewfinder canvas{max-width:100%;max-height:100%;display:block;object-fit:contain}
 .ph-viewfinder video{display:none}
 /* Crop guide overlay — shows save area when aspect is set */
@@ -344,13 +349,9 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
       <button class="header-src-btn" id="camBtn" onclick="toggleCam()" title="Camera"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></button>
     </div>
     <button class="header-btn" onclick="togglePhoneMode()">📱</button>
-    <div class="fps-group" id="fpsGroup">
-      <button class="fps-btn active" data-fps="4" onclick="setRisoFps(4)">4</button>
-      <button class="fps-btn" data-fps="8" onclick="setRisoFps(8)">8</button>
-      <button class="fps-btn" data-fps="12" onclick="setRisoFps(12)">12</button>
-      <button class="fps-btn" data-fps="24" onclick="setRisoFps(24)">24</button>
-      <span class="fps-label">FPS</span>
-    </div>
+    <div class="header-cycle" onclick="cycleAspect()"><span class="header-cycle-val" id="aspectBtn">4:3</span></div>
+    <div class="header-cycle" onclick="cycleFps()"><span class="header-cycle-label">FPS</span><span class="header-cycle-val" id="fpsBtn">4</span></div>
+    <div class="header-cycle" onclick="cycleRes()"><span class="header-cycle-label">RES</span><span class="header-cycle-val" id="resBtn">2×</span></div>
   </div>
   </div>
 </header>
@@ -373,23 +374,6 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
     <div class="img-slider"><span class="img-label">B</span><input type="range" id="imgBright" min="-30" max="30" value="0" step="2"><span class="img-val" id="imgBrightVal">0</span></div>
     <div class="img-slider"><span class="img-label">C</span><input type="range" id="imgContrast" min="-30" max="30" value="0" step="2"><span class="img-val" id="imgContrastVal">0</span></div>
     <div class="img-slider"><span class="img-label">S</span><input type="range" id="imgSat" min="-30" max="30" value="0" step="2"><span class="img-val" id="imgSatVal">0</span></div>
-    <div class="controls-sep"></div>
-    <div class="aspect-row">
-      <button class="aspect-btn" data-ar="fill" onclick="setAspect('fill')">FILL</button>
-      <button class="aspect-btn" data-ar="fit" onclick="setAspect('fit')">FIT</button>
-      <button class="aspect-btn active" data-ar="4:3" onclick="setAspect([4,3])">4:3</button>
-      <button class="aspect-btn" data-ar="1:1" onclick="setAspect([1,1])">1:1</button>
-      <button class="aspect-btn" data-ar="5:4" onclick="setAspect([5,4])">5:4</button>
-      <button class="aspect-btn" data-ar="16:9" onclick="setAspect([16,9])">16:9</button>
-    </div>
-    <div class="controls-sep"></div>
-    <div class="aspect-row">
-      <span style="font-family:'Space Mono',monospace;font-size:8px;color:var(--text-muted);letter-spacing:.5px">RES</span>
-      <button class="scale-btn active" onclick="setScale(2)">2×</button>
-      <button class="scale-btn" onclick="setScale(4)">4×</button>
-      <button class="scale-btn" onclick="setScale(5)">5×</button>
-      <button class="scale-btn" onclick="setScale(6)">6×</button>
-    </div>
   </div>
   </div> <!-- end viewfinder-wrap -->
   <!-- Paper Color (compact) -->
@@ -1881,9 +1865,18 @@ function setAspect(ratio){
   computeCrop();
   needsAspectUpdate=true;scheduleRender();
   const ar = (typeof cropAspect === 'string') ? cropAspect : cropAspect.join(':');
+  const abtn=el('aspectBtn');
+  if(abtn) abtn.textContent=ar.toUpperCase();
   document.querySelectorAll('.aspect-btn').forEach(b=>{
     b.classList.toggle('active',b.dataset.ar===ar);
   });
+}
+const aspectSteps=['fill','fit',[4,3],[1,1],[5,4],[16,9],[9,16]];
+function cycleAspect(){
+  const cur=(typeof cropAspect==='string')?cropAspect:cropAspect.join(':');
+  const labels=['fill','fit','4:3','1:1','5:4','16:9','9:16'];
+  const i=labels.indexOf(cur);
+  setAspect(aspectSteps[(i+1)%aspectSteps.length]);
 }
 
 let paperOrient='landscape'; // 'landscape' or 'portrait'
@@ -2930,6 +2923,14 @@ async function saveGif(){
 }
 
 async function doSaveBlob(blob,filename,w,h){
+  // iOS: use Web Share API to offer "Save to Photos"
+  if(navigator.share && /iPhone|iPad|iPod/.test(navigator.userAgent)){
+    try{
+      const file=new File([blob],filename,{type:blob.type});
+      await navigator.share({files:[file]});
+      return;
+    }catch(e){/* user cancelled or share failed — fall through to download */}
+  }
   const link=document.createElement('a');
   link.download=filename;
   link.href=URL.createObjectURL(blob);
@@ -3471,22 +3472,28 @@ function setSepType(t){
 }
 function setScale(s){
   resScale=s;
-  document.querySelectorAll('.scale-btn').forEach((b,i)=>{
-    b.classList.toggle('active',[2,4,5,6][i]===s);
-  });
+  const btn=el('resBtn');
+  if(btn) btn.textContent=s+'×';
   markDirty();
 }
 
+const fpsSteps=[4,8,12,24];
 function setRisoFps(fps){
   risoFps=fps;
-  // Desktop FPS group
-  document.querySelectorAll('.fps-group .fps-btn').forEach(b=>{
-    b.classList.toggle('active',parseInt(b.dataset.fps)===fps);
-  });
-  // Phone FPS button
+  const btn=el('fpsBtn');
+  if(btn) btn.textContent=fps;
   const phBtn=el('phFpsBtn');
   if(phBtn) phBtn.textContent=fps+'FPS';
   markDirty();
+}
+function cycleFps(){
+  const i=fpsSteps.indexOf(risoFps);
+  setRisoFps(fpsSteps[(i+1)%fpsSteps.length]);
+}
+const resSteps=[2,4,5,6];
+function cycleRes(){
+  const i=resSteps.indexOf(resScale);
+  setScale(resSteps[(i+1)%resSteps.length]);
 }
 function setAngle(ch,deg){
   layerAngles[ch]=deg;
