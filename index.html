@@ -83,6 +83,7 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 }
 .viewfinder-panel{position:relative;background:transparent;overflow:hidden;display:flex;align-items:center;justify-content:center}
 .viewfinder-panel>#gl{width:100%;display:block;aspect-ratio:1.414/1}
+#gl.mirrored{transform:scaleX(-1)}
 .status-bar{position:absolute;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;pointer-events:none}
 .status-badge{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:4px 8px;background:rgba(0,0,0,.6);color:rgba(255,255,255,.8);border-radius:2px;backdrop-filter:blur(4px)}
 .capture-info{position:absolute;bottom:12px;left:12px;font-family:'Space Mono',monospace;font-size:10px;color:rgba(255,255,255,.4);letter-spacing:1px}
@@ -214,6 +215,13 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 .slider-row input[type="range"]{flex:1;-webkit-appearance:none;height:2px;background:var(--border);border-radius:2px;outline:none}
 .slider-row input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--text);cursor:pointer;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,.2)}
 .slider-value{font-family:'Space Mono',monospace;font-size:9px;width:22px;text-align:right;color:var(--text-muted)}
+/* Stepped picker — row of discrete value buttons replacing sliders */
+.step-row{display:flex;align-items:center;gap:8px}
+.step-label{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.5px;width:72px;color:var(--text-muted);flex-shrink:0}
+.step-group{display:flex;gap:2px;flex:1;flex-wrap:nowrap}
+.step-btn{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.3px;padding:4px 6px;border:1px solid var(--border);background:white;cursor:pointer;border-radius:2px;color:var(--text-muted);transition:all .12s;flex:1;text-align:center;white-space:nowrap;min-width:0}
+.step-btn:hover{border-color:var(--text-muted)}
+.step-btn.active{background:var(--text);color:white;border-color:var(--text)}
 .toggle-switch{position:relative;display:inline-block;width:28px;height:16px}
 .toggle-switch input{opacity:0;width:0;height:0}
 .toggle-slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#ccc;border-radius:16px;transition:.2s}
@@ -318,6 +326,9 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
 .ph-overlay .settings-body{padding:10px 14px}
 .ph-overlay .slider-row .slider-label{color:var(--text-muted)}
 .ph-overlay .slider-row .slider-value{color:var(--text-muted)}
+.ph-overlay .step-row .step-label{color:var(--text-muted)}
+.ph-overlay .step-btn{background:white;color:var(--text-muted);border-color:var(--border)}
+.ph-overlay .step-btn.active{background:var(--text);color:white;border-color:var(--text)}
 .ph-overlay .mode-btn{background:white;color:var(--text-muted);border-color:var(--border)}
 .ph-overlay .mode-btn.active{background:var(--text);color:white;border-color:var(--text)}
 .ph-overlay .scale-btn{background:white;color:var(--text-muted);border-color:var(--border)}
@@ -374,45 +385,47 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
     <div class="img-slider"><span class="img-label">C</span><input type="range" id="imgContrast" min="-30" max="30" value="0" step="2"><span class="img-val" id="imgContrastVal">0</span></div>
     <div class="img-slider"><span class="img-label">S</span><input type="range" id="imgSat" min="-30" max="30" value="0" step="2"><span class="img-val" id="imgSatVal">0</span></div>
     <div class="header-cycle" onclick="cycleAspect()"><span class="header-cycle-val" id="aspectBtn" style="min-width:42px">4:3</span></div>
-    <div class="header-cycle" onclick="cycleFps()"><span class="header-cycle-label">FPS</span><span class="header-cycle-val" id="fpsBtn" style="min-width:29px">4</span></div>
+    <div class="header-cycle" onclick="cycleFps()"><span class="header-cycle-label">FPS</span><span class="header-cycle-val" id="fpsBtn" style="min-width:50px">4</span></div>
     <div class="header-cycle" onclick="cycleRes()"><span class="header-cycle-label">RES</span><span class="header-cycle-val" id="resBtn">2×</span></div>
   </div>
   </div> <!-- end viewfinder-wrap -->
-  <!-- Paper Color (compact) -->
-  <div class="paper-compact">
+  <!-- Paper (compact) — color dots + cycling type + cycling tex -->
+  <div class="paper-compact ctrl-group" data-ctrl="paper">
     <span class="paper-compact-label">PAPER</span>
     <div id="paperColorGrid" style="display:flex;gap:4px;flex-wrap:wrap"></div>
-    <div id="paperTexGrid" style="display:flex;gap:3px;flex-wrap:wrap;margin-top:4px"></div>
+    <div class="header-cycle" onclick="cyclePaperTex()"><span class="header-cycle-label">TYPE</span><span class="header-cycle-val" id="paperTypeBtn" style="min-width:58px">Standard</span></div>
+    <div class="header-cycle" onclick="cyclePaperTexIntensity()"><span class="header-cycle-label">TEX</span><span class="header-cycle-val" id="paperTexBtn" style="min-width:42px">Med</span></div>
+    <div id="paperTexGrid" style="display:none"></div>
+    <input type="range" id="paperTex" min="0" max="25" value="10" step="1" style="display:none"><span class="slider-value" id="paperTexVal" style="display:none">10</span>
   </div>
   <!-- Profiles -->
-  <div class="control-section"><div class="section-header no-border">PROFILES</div><div class="profile-list" id="profileList"></div></div>
+  <div class="control-section ctrl-group" data-ctrl="profiles"><div class="section-header no-border ctrl-group__title">PROFILES</div><div class="profile-list" id="profileList"></div></div>
   </div> <!-- end left-col -->
   <div class="controls-panel">
     <!-- Channels -->
-    <div class="control-section">
-      <div class="section-header">PLATES <span class="count" id="layerCount">4</span><span style="margin-left:auto;display:flex;gap:0"><button class="header-mode-btn active" id="sepCmyk" onclick="setSepType(0)">CMYK</button><button class="header-mode-btn" id="sepApprox" onclick="setSepType(1)">SPOT</button></span></div>
+    <div class="control-section ctrl-group" data-ctrl="channels">
+      <div class="section-header ctrl-group__title">PLATES <span class="count" id="layerCount">4</span><span style="margin-left:auto;display:flex;gap:0"><button class="header-mode-btn ctrl-toggle" id="sepCmyk" onclick="setSepType(0)">CMYK</button><button class="header-mode-btn ctrl-toggle" id="sepApprox" onclick="setSepType(1)">SPOT</button></span></div>
       <div class="channel-list" id="channelList"></div>
     </div>
     <!-- Settings -->
-    <div class="control-section">
-      <div class="section-header section-toggle open" onclick="toggleSection('settingsBody',this)">SETTINGS <span style="font-size:8px;opacity:.4;margin-left:4px;cursor:pointer" onclick="event.stopPropagation();toggleDebug()" title="Debug">v1.3</span><span class="toggle-arrow">▸</span></div>
+    <div class="control-section ctrl-group" data-ctrl="settings">
+      <div class="section-header section-toggle open ctrl-group__title" onclick="toggleSection('settingsBody',this)">SETTINGS <span style="font-size:8px;opacity:.4;margin-left:4px;cursor:pointer" onclick="event.stopPropagation();toggleDebug()" title="Debug">v1.3</span><span class="toggle-arrow">▸</span></div>
       <div class="settings-body collapsible" id="settingsBody">
         <div id="grainSettings">
-          <div class="slider-row"><span class="slider-label">Grain Size</span><input type="range" id="grainSize" min="0.5" max="4" value="1.5" step="0.25"><span class="slider-value" id="grainSizeVal">1.5</span></div>
+          <div class="step-row ctrl-stepped"><span class="step-label">Grain Size</span><div class="step-group" id="grainSizeSteps" data-target="grainSize"></div><input type="range" id="grainSize" min="0.5" max="4" value="1.5" step="0.25" style="display:none"><span class="slider-value" id="grainSizeVal" style="display:none">1.5</span></div>
         </div>
         <div id="screenSettings" style="display:none">
-          <div class="slider-row"><span class="slider-label">LPI</span><input type="range" id="lpi" min="10" max="60" value="35" step="5"><span class="slider-value" id="lpiVal">35</span></div>
+          <div class="step-row ctrl-stepped"><span class="step-label">LPI</span><div class="step-group" id="lpiSteps" data-target="lpi"></div><input type="range" id="lpi" min="10" max="60" value="35" step="5" style="display:none"><span class="slider-value" id="lpiVal" style="display:none">35</span></div>
         </div>
-        <div class="slider-row"><span class="slider-label">Dot Gain</span><input type="range" id="dotGain" min="0" max="40" value="12" step="2"><span class="slider-value" id="dotGainVal">12</span></div>
-        <div class="slider-row"><span class="slider-label">Misregister</span><input type="range" id="misreg" min="0" max="10" value="2" step="1"><span class="slider-value" id="misregVal">2</span></div>
-        <div class="slider-row" style="padding-left:12px"><span class="slider-label" style="opacity:0.7;font-size:9px">Skew</span><input type="range" id="skew" min="-1" max="1" value="0" step="0.1"><span class="slider-value" id="skewVal">0°</span></div>
-        <div class="slider-row"><span class="slider-label">Ink Noise</span><input type="range" id="inkNoise" min="0" max="30" value="8" step="2"><span class="slider-value" id="inkNoiseVal">8</span></div>
-        <div class="slider-row"><span class="slider-label">Paper Tex</span><input type="range" id="paperTex" min="0" max="25" value="10" step="1"><span class="slider-value" id="paperTexVal">10</span></div>
-        <div class="slider-row"><span class="slider-label">Static</span><input type="range" id="grainStatic" min="0" max="20" value="0" step="1"><span class="slider-value" id="grainStaticVal">0</span></div>
-        <div class="slider-row"><span class="slider-label">Ghosting</span><input type="range" id="ghosting" min="0" max="30" value="0" step="2"><span class="slider-value" id="ghostingVal">0</span></div>
-        <div class="slider-row"><span class="slider-label">Margin</span><input type="range" id="margin" min="0" max="12" value="4" step="1"><span class="slider-value" id="marginVal">4</span></div>
+        <div class="slider-row ctrl-slider"><span class="slider-label">Dot Gain</span><input type="range" id="dotGain" min="0" max="40" value="12" step="2"><span class="slider-value" id="dotGainVal">12</span></div>
+        <div class="step-row ctrl-stepped"><span class="step-label">Misregister</span><div class="step-group" id="misregSteps" data-target="misreg"></div><input type="range" id="misreg" min="0" max="10" value="2" step="1" style="display:none"><span class="slider-value" id="misregVal" style="display:none">2</span></div>
+        <div class="slider-row ctrl-slider" style="padding-left:12px"><span class="slider-label" style="opacity:0.7;font-size:9px">Skew</span><input type="range" id="skew" min="-1" max="1" value="0" step="0.1"><span class="slider-value" id="skewVal">0°</span></div>
+        <div class="slider-row ctrl-slider"><span class="slider-label">Ink Noise</span><input type="range" id="inkNoise" min="0" max="30" value="8" step="2"><span class="slider-value" id="inkNoiseVal">8</span></div>
+        <input type="range" id="grainStatic" min="0" max="20" value="0" step="1" style="display:none"><span class="slider-value" id="grainStaticVal" style="display:none">0</span>
+        <div class="step-row ctrl-stepped"><span class="step-label">Ghosting</span><div class="step-group" id="ghostingSteps" data-target="ghosting"></div><input type="range" id="ghosting" min="0" max="100" value="0" step="2" style="display:none"><span class="slider-value" id="ghostingVal" style="display:none">0</span></div>
+        <div class="step-row ctrl-stepped"><span class="step-label">Margin</span><div class="step-group" id="marginSteps" data-target="margin"></div><input type="range" id="margin" min="0" max="12" value="4" step="1" style="display:none"><span class="slider-value" id="marginVal" style="display:none">4</span></div>
 
-        <div class="slider-row" style="margin-top:4px"><span class="slider-label">Crop Marks</span><label class="toggle-switch"><input type="checkbox" id="cropMarksToggle" checked onchange="cached.showCropMarks=this.checked;markDirty()"><span class="toggle-slider"></span></label></div>
+        <div class="slider-row ctrl-toggle" style="margin-top:4px"><span class="slider-label">Crop Marks</span><label class="toggle-switch"><input type="checkbox" id="cropMarksToggle" checked onchange="cached.showCropMarks=this.checked;markDirty()"><span class="toggle-slider"></span></label></div>
         <div id="debugPanel" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px">
           <div style="font-size:9px;letter-spacing:2px;opacity:0.4;margin-bottom:6px">DEBUG</div>
           <div id="cmykTuning">
@@ -424,12 +437,17 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
             <div class="slider-row"><span class="slider-label">Bal K</span><input type="range" id="balK" min="20" max="200" value="165" step="5"><span class="slider-value" id="balKVal">165</span></div>
             <div class="slider-row"><span class="slider-label">TAC</span><input type="range" id="tac" min="0" max="400" value="280" step="10"><span class="slider-value" id="tacVal">280</span></div>
           </div>
+          <div id="imageTuning" style="margin-top:8px">
+            <div style="font-size:8px;letter-spacing:1px;opacity:0.5;margin-bottom:2px">IMAGE</div>
+            <div class="slider-row"><span class="slider-label">Shadows</span><input type="range" id="imgShadows" min="-30" max="30" value="0" step="2"><span class="slider-value" id="imgShadowsVal">0</span></div>
+          </div>
           <div id="physicsTuning" style="margin-top:8px">
             <div style="font-size:8px;letter-spacing:1px;opacity:0.5;margin-bottom:2px">INK PHYSICS</div>
-            <div class="slider-row"><span class="slider-label">Opacity</span><input type="range" id="inkOpacity" min="0" max="100" value="88" step="2"><span class="slider-value" id="inkOpacityVal">88</span></div>
+            <div class="slider-row"><span class="slider-label">Opacity</span><input type="range" id="inkOpacity" min="0" max="150" value="88" step="2"><span class="slider-value" id="inkOpacityVal">88</span></div>
             <div class="slider-row"><span class="slider-label">Deplete</span><input type="range" id="layerDeplete" min="0" max="15" value="3" step="1"><span class="slider-value" id="layerDepleteVal">3</span></div>
             <div class="slider-row"><span class="slider-label">Pressure</span><input type="range" id="pressVar" min="0" max="200" value="100" step="5"><span class="slider-value" id="pressVarVal">100</span></div>
             <div class="slider-row"><span class="slider-label">Flicker</span><input type="range" id="densFlicker" min="0" max="20" value="7" step="1"><span class="slider-value" id="densFlickerVal">7</span></div>
+            <div class="slider-row"><span class="slider-label">Ghost Mul</span><input type="range" id="ghostMul" min="0" max="500" value="100" step="10"><span class="slider-value" id="ghostMulVal">100</span></div>
           </div>
           <div style="margin-top:6px;font-size:8px;letter-spacing:1px;opacity:0.5;margin-bottom:2px">INFO</div>
           <div id="debugInfo" style="font-size:9px;font-family:monospace;opacity:0.6;line-height:1.5"></div>
@@ -596,6 +614,7 @@ uniform float u_static;     // grain animation intensity 0-20
 uniform float u_bright;     // brightness -30..30
 uniform float u_contrast;   // contrast -30..30
 uniform float u_sat;        // saturation -30..30
+uniform float u_shadows;    // shadow lift/crush -30..30
 uniform int u_mode;
 uniform int u_chan0, u_chan1, u_chan2, u_chan3;
 uniform int u_sepMode; // 0=normal, 1=output grayscale separation (black=ink)
@@ -663,6 +682,15 @@ vec3 adjustRGB(vec3 rgb, vec2 pix){
   float lum = dot(rgb, vec3(0.299, 0.587, 0.114));
   float s = 1.0 + u_sat * 0.03;
   rgb = mix(vec3(lum), rgb, s);
+  // Shadows: lift or crush dark values, leaving highlights untouched
+  if(abs(u_shadows) > 0.5){
+    float sh = u_shadows * 0.01; // -0.30 .. +0.30
+    // Curve that affects darks strongly, fades to zero at highlights
+    // Using (1-x)^2 as shadow mask: 1.0 at black, 0.0 at white
+    vec3 mask = (vec3(1.0) - rgb);
+    mask *= mask; // squared falloff — more targeted to deep shadows
+    rgb += sh * mask;
+  }
   // Anti-banding: triangular-PDF dither breaks 8-bit posterization
   float d1 = hash(pix + 0.07);
   float d2 = hash2(pix + 0.13);
@@ -1217,6 +1245,9 @@ vec3 calBlend(vec3 result, vec3 paper, float coverage, float grain, vec3 p10, ve
   // The grain value IS the printed texture (chunky dither pattern).
   float d = grain;
 
+  // Ink opacity: scale effective coverage (normalized so default 0.88 ≈ 1.0)
+  d = clamp(d * u_inkOpacity * 1.136, 0.0, 1.0);
+
   // Beer-Lambert with Yule-Nielsen n=2 (same physics as yuBlend)
   vec3 ink = p100; // calibrated 100% ink color from LUT
   vec3 safeInk = max(ink, vec3(0.05));
@@ -1231,7 +1262,7 @@ vec3 calBlend(vec3 result, vec3 paper, float coverage, float grain, vec3 p10, ve
 
   // Crossfade: low coverage = transparent dots, high = opaque solid
   float opacity = smoothstep(0.3, 0.85, d);
-  vec3 blended = mix(transparent, opaque, opacity * u_inkOpacity);
+  vec3 blended = mix(transparent, opaque, opacity);
 
   // Ink contamination
   vec3 contam = blended * 0.02 * d;
@@ -1268,6 +1299,9 @@ vec3 calBlendOpaque(vec3 result, vec3 paper, float coverage, float grain, vec3 p
 // At high coverage, ink sits ON the surface (opaque overlay, not multiplicative).
 // This prevents dark-on-dark from going to black — stays saturated like real prints.
 vec3 yuBlend(vec3 paper, vec3 ink, float d){
+  // Ink opacity: scale effective coverage (normalized so default 0.88 ≈ 1.0)
+  d = clamp(d * u_inkOpacity * 1.136, 0.0, 1.0);
+
   // White ink: opaque overlay (visible on colored paper, invisible on white)
   float isWhite = step(0.95, ink.r) * step(0.95, ink.g) * step(0.95, ink.b);
   vec3 whiteResult = mix(paper, ink, d * 0.75);
@@ -1287,7 +1321,7 @@ vec3 yuBlend(vec3 paper, vec3 ink, float d){
   // Blend: low coverage → transparent (dots), high coverage → opaque (solid)
   // Crossover at ~60% coverage mimics real soy ink behavior
   float opacity = smoothstep(0.3, 0.85, d);
-  vec3 normalResult = mix(transparent, opaque, opacity * u_inkOpacity);
+  vec3 normalResult = mix(transparent, opaque, opacity);
 
   // Ink contamination: multi-pass re-wetting causes subtle cross-ink mixing
   // Later ink layers slightly dissolve previous, preventing perfectly clean overlaps
@@ -1816,7 +1850,7 @@ let cropAspect=[4,3]; // default 4:3
 let cropRect=[0,0,1,1]; // UV crop: x,y,w,h
 
 const cached={
-  grainSize:1.5, dotGain:12, inkNoise:8, paperTex:10, lpi:35, grainStatic:0, imgBright:0, imgContrast:0, imgSat:0,
+  grainSize:1.5, dotGain:12, inkNoise:8, paperTex:10, lpi:35, grainStatic:0, imgBright:0, imgContrast:0, imgSat:0, imgShadows:0,
   sepType:0, // 0=CMYK, 1=Approx (NNLS spot color)
   ucrStr:15, balC:150, balM:155, balY:105, balK:165, tac:280,
   inkOpacity:88, layerDeplete:3, pressVar:100, densFlicker:7,
@@ -1825,6 +1859,7 @@ const cached={
   layerDens:[88,88,88,88],
   showCropMarks:true,
   ghosting:0,
+  ghostMul:100,
   margin:4,
   skew:0,
 };
@@ -1888,6 +1923,7 @@ function setAspect(ratio){
   document.querySelectorAll('.aspect-btn').forEach(b=>{
     b.classList.toggle('active',b.dataset.ar===ar);
   });
+  setTimeout(()=>updateDebugInfo(),50);
 }
 const aspectSteps=['fill','fit',[4,3],[1,1],[5,4],[16,9],[9,16]];
 function cycleAspect(){
@@ -2199,7 +2235,7 @@ function initGL(){
    'u_off0','u_off1','u_off2','u_off3',
    'u_angle0','u_angle1','u_angle2','u_angle3','u_screenCell',
    'u_chan0','u_chan1','u_chan2','u_chan3',
-   'u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_mode','u_sepMode','u_sepType',
+   'u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_mode','u_sepMode','u_sepType',
    'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_crop','u_paper',
    'u_lutA0','u_lutA1','u_lutA2','u_lutA3',
    'u_lutB0','u_lutB1','u_lutB2','u_lutB3',
@@ -2287,9 +2323,146 @@ function genBlueNoise(sz){
 }
 
 
+// ======================== SHARED UNIFORM SETUP ========================
+function setRenderUniforms(dw, dh, scale, isPhone){
+  const layers=activeLayers();
+  const nLayers=layers.length;
+  gl.uniform2f(locs.u_res,dw,dh);
+  gl.uniform1f(locs.u_time,frame);
+  gl.uniform1f(locs.u_frameSeed,frameSeed);
+  gl.uniform1f(locs.u_resScale,scale);
+  gl.uniform1i(locs.u_layers,hasSrc?nLayers:0);
+  gl.uniform1i(locs.u_mode,mode==='grain'?0:1);
+  gl.uniform1i(locs.u_sepMode,0);
+  gl.uniform1i(locs.u_sepType,cached.sepType||0);
+  gl.uniform1f(locs.u_grainSize,cached.grainSize);
+  gl.uniform1f(locs.u_dotGain,cached.dotGain);
+  gl.uniform1f(locs.u_inkNoise,cached.inkNoise);
+  gl.uniform1f(locs.u_paperTex,cached.paperTex);
+  gl.uniform1f(locs.u_static,cached.grainStatic);
+  gl.uniform1f(locs.u_bright,cached.imgBright);
+  gl.uniform1f(locs.u_contrast,cached.imgContrast);
+  gl.uniform1f(locs.u_sat,cached.imgSat);
+  gl.uniform1f(locs.u_shadows,cached.imgShadows);
+  gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(dw,dh)/(8.267*cached.lpi)));
+  gl.uniform3fv(locs.u_paperColor,cached.paperColor);
+  gl.uniform3f(locs.u_paper, 0.910, 0.912, 0.908);
+  gl.uniform1f(locs.u_showCropMarks, cached.showCropMarks ? 1.0 : 0.0);
+  gl.uniform1f(locs.u_ghosting, cached.ghosting * 0.01 * (cached.ghostMul * 0.01));
+  gl.uniform1f(locs.u_bleed, 0.0);
+  gl.uniform1f(locs.u_ucrStr, cached.ucrStr * 0.01);
+  gl.uniform4f(locs.u_cmykBal, cached.balC*0.01, cached.balM*0.01, cached.balY*0.01, cached.balK*0.01);
+  gl.uniform1f(locs.u_tac, cached.tac * 0.01);
+  gl.uniform1f(locs.u_inkOpacity, cached.inkOpacity * 0.01);
+  gl.uniform1f(locs.u_layerDeplete, cached.layerDeplete * 0.01);
+  gl.uniform1f(locs.u_pressVar, cached.pressVar * 0.01);
+  gl.uniform1f(locs.u_densFlicker, cached.densFlicker * 0.01);
+  // Per-layer ink data + misreg/skew
+  for(let i=0;i<4;i++){
+    if(i<nLayers){
+      const L=layers[i];
+      const cal=RISO_CAL[L.color];
+      if(cal){
+        const lt=cal.lut;
+        gl.uniform1f(opaqueLocs[i], cal.opaque ? 1.0 : 0.0);
+        gl.uniform3f(inkLocs[i],lt[4][0],lt[4][1],lt[4][2]);
+        gl.uniform3f(lutALocs[i],lt[0][0],lt[0][1],lt[0][2]);
+        gl.uniform3f(lutBLocs[i],lt[1][0],lt[1][1],lt[1][2]);
+        gl.uniform3f(lutCLocs[i],lt[2][0],lt[2][1],lt[2][2]);
+        gl.uniform3f(lutDLocs[i],lt[3][0],lt[3][1],lt[3][2]);
+        gl.uniform1f(gammaLocs[i],cal.gamma);
+        gl.uniform1f(grainMulLocs[i],cal.grainMul);
+        gl.uniform1f(hasCalLocs[i],1.0);
+      } else {
+        const rgb=cached.inkRGB[i];
+        gl.uniform3f(inkLocs[i],rgb[0],rgb[1],rgb[2]);
+        gl.uniform3f(lutALocs[i],0,0,0);
+        gl.uniform3f(lutBLocs[i],0,0,0);
+        gl.uniform3f(lutCLocs[i],0,0,0);
+        gl.uniform3f(lutDLocs[i],0,0,0);
+        gl.uniform1f(gammaLocs[i],1.0);
+        gl.uniform1f(grainMulLocs[i],1.0);
+        gl.uniform1f(hasCalLocs[i],0.0);
+        gl.uniform1f(opaqueLocs[i],0.0);
+      }
+      gl.uniform2f(offLocs[i],misreg[L.ch][0],misreg[L.ch][1]);
+      gl.uniform1f(skewLocs[i],layerSkews[L.ch]||0);
+      gl.uniform1f(angLocs[i],(layerAngles[L.ch]||0)*0.01745329);
+      gl.uniform1i(chanLocs[i],L.ch);
+      gl.uniform1f(densLocs[i],cached.layerDens[L.ch]);
+    }else{
+      gl.uniform3f(inkLocs[i],0,0,0);
+      gl.uniform2f(offLocs[i],0,0);
+      gl.uniform1f(skewLocs[i],0);
+      gl.uniform1f(angLocs[i],0);
+      gl.uniform1i(chanLocs[i],0);
+      gl.uniform1f(densLocs[i],0);
+      gl.uniform1f(hasCalLocs[i],0.0);
+      gl.uniform1f(opaqueLocs[i],0.0);
+      gl.uniform1f(gammaLocs[i],1.0);
+      gl.uniform1f(grainMulLocs[i],1.0);
+    }
+  }
+  // Cover crop
+  const isGif=videoOn&&(gifImg||gifFrames);
+  let renderCrop=[0,0,1,1];
+  if(hasSrc){
+    const srcW=(camOn||(videoOn&&!isGif))?($vid.videoWidth||1):(isGif?(gifCanvas.width||1):(srcImg?srcImg.width:1));
+    const srcH=(camOn||(videoOn&&!isGif))?($vid.videoHeight||1):(isGif?(gifCanvas.height||1):(srcImg?srcImg.height:1));
+    let targetAR;
+    if(cropAspect === 'fill') targetAR = dw/dh;
+    else if(cropAspect === 'fit') targetAR = srcW/srcH;
+    else if(cropAspect) targetAR = cropAspect[0]/cropAspect[1];
+    else targetAR = dw/dh;
+    const srcAR=srcW/srcH;
+    if(targetAR>srcAR){
+      const h=srcAR/targetAR;
+      renderCrop=[0,(1-h)/2,1,h];
+    } else {
+      const w=targetAR/srcAR;
+      renderCrop=[(1-w)/2,0,w,1];
+    }
+  }
+  gl.uniform4f(locs.u_crop,renderCrop[0],renderCrop[1],renderCrop[2],renderCrop[3]);
+  // Print area
+  const paperAR = dw / dh;
+  const minMargin = cached.margin * 0.01;
+  if (isPhone) {
+    const pm = Math.max(minMargin, 0.005);
+    gl.uniform4f(locs.u_printArea, pm, pm, pm, pm);
+  } else if (cropAspect === 'fill') {
+    const m = Math.max(minMargin, 0.005);
+    gl.uniform4f(locs.u_printArea, m, m, m, m);
+  } else {
+    let imgAR;
+    if (cropAspect === 'fit') {
+      const srcW2 = (camOn||(videoOn&&!isGif)) ? ($vid.videoWidth||1) : (isGif ? (gifCanvas.width||1) : (srcImg ? srcImg.width : 1));
+      const srcH2 = (camOn||(videoOn&&!isGif)) ? ($vid.videoHeight||1) : (isGif ? (gifCanvas.height||1) : (srcImg ? srcImg.height : 1));
+      imgAR = srcW2 / srcH2;
+    } else {
+      imgAR = cropAspect[0] / cropAspect[1];
+    }
+    const availW = 1.0 - 2.0 * minMargin;
+    const availH = 1.0 - 2.0 * minMargin;
+    let printW, printH;
+    if (imgAR > (availW * paperAR) / availH) {
+      printW = availW;
+      printH = availW * paperAR / imgAR;
+      if (printH > availH) { printH = availH; printW = availH * imgAR / paperAR; }
+    } else {
+      printH = availH;
+      printW = availH * imgAR / paperAR;
+      if (printW > availW) { printW = availW; printH = availW * paperAR / imgAR; }
+    }
+    gl.uniform4f(locs.u_printArea, (1-printW)/2, (1-printH)/2, (1-printW)/2, (1-printH)/2);
+  }
+}
+
 // ======================== RENDER LOOP ========================
+let _saving=false;
 function render(){
   _rafId=0;
+  if(_saving){return;} // block render during save
   const isPhoneNow=phoneActive;
 
   // Aspect ratio — canvas shape
@@ -2315,8 +2488,9 @@ function render(){
   // ─── Riso-FPS throttle: choppy print-animation feel ───
   const now=performance.now();
   let newCamFrame=false;
-  const hasCamData=(camOn||(videoOn&&!gifImg))&&$vid.readyState>=2&&(videoFrameReady||!$vid.requestVideoFrameCallback);
-  const hasGifData=videoOn&&gifImg&&videoFrameReady;
+  const isGifPlaying=videoOn&&(gifImg||gifFrames);
+  const hasCamData=(camOn||(videoOn&&!isGifPlaying))&&$vid.readyState>=2&&(videoFrameReady||!$vid.requestVideoFrameCallback);
+  const hasGifData=isGifPlaying&&videoFrameReady;
 
   if((camOn||videoOn) && risoFps > 0){
     const interval=1000/risoFps;
@@ -2397,143 +2571,7 @@ function render(){
   gl.viewport(0,0,dw,dh);
 
   // ─── Uniforms — all from cached values, zero DOM access ───
-  const layers=activeLayers();
-  const nLayers=layers.length;
-  gl.uniform2f(locs.u_res,dw,dh);
-  gl.uniform1f(locs.u_time,frame);
-  gl.uniform1f(locs.u_frameSeed,frameSeed);
-  gl.uniform1f(locs.u_resScale,resScale);
-  gl.uniform1i(locs.u_layers,hasSrc?nLayers:0);
-  gl.uniform1i(locs.u_mode,mode==='grain'?0:1);
-  gl.uniform1i(locs.u_sepMode,0);
-  gl.uniform1i(locs.u_sepType,cached.sepType||0);
-  gl.uniform1f(locs.u_grainSize,cached.grainSize);
-  gl.uniform1f(locs.u_dotGain,cached.dotGain);
-  gl.uniform1f(locs.u_inkNoise,cached.inkNoise);
-  gl.uniform1f(locs.u_paperTex,cached.paperTex);
-  gl.uniform1f(locs.u_static,cached.grainStatic);
-  gl.uniform1f(locs.u_bright,cached.imgBright);
-  gl.uniform1f(locs.u_contrast,cached.imgContrast);
-  gl.uniform1f(locs.u_sat,cached.imgSat);
-  gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(dw,dh)/(8.267*cached.lpi)));
-  gl.uniform3fv(locs.u_paperColor,cached.paperColor);
-  gl.uniform3f(locs.u_paper, 0.910, 0.912, 0.908);
-  gl.uniform1f(locs.u_showCropMarks, cached.showCropMarks ? 1.0 : 0.0);
-  const effectiveGhosting = cached.grainStatic > 0 ? Math.max(cached.ghosting, cached.grainStatic * 1.0) : cached.ghosting;
-  gl.uniform1f(locs.u_ghosting, effectiveGhosting * 0.01);
-  gl.uniform1f(locs.u_bleed, 0.0);
-  gl.uniform1f(locs.u_ucrStr, cached.ucrStr * 0.01);
-  gl.uniform4f(locs.u_cmykBal, cached.balC*0.01, cached.balM*0.01, cached.balY*0.01, cached.balK*0.01);
-  gl.uniform1f(locs.u_tac, cached.tac * 0.01);
-  gl.uniform1f(locs.u_inkOpacity, cached.inkOpacity * 0.01);
-  gl.uniform1f(locs.u_layerDeplete, cached.layerDeplete * 0.01);
-  gl.uniform1f(locs.u_pressVar, cached.pressVar * 0.01);
-  gl.uniform1f(locs.u_densFlicker, cached.densFlicker * 0.01);
-
-  // Per-layer ink data + misreg/skew
-  for(let i=0;i<4;i++){
-    if(i<nLayers){
-      const L=layers[i];
-      const cal=RISO_CAL[L.color];
-      if(cal){
-        const lt=cal.lut;
-        gl.uniform1f(opaqueLocs[i], cal.opaque ? 1.0 : 0.0);
-        gl.uniform3f(inkLocs[i],lt[4][0],lt[4][1],lt[4][2]);
-        gl.uniform3f(lutALocs[i],lt[0][0],lt[0][1],lt[0][2]);
-        gl.uniform3f(lutBLocs[i],lt[1][0],lt[1][1],lt[1][2]);
-        gl.uniform3f(lutCLocs[i],lt[2][0],lt[2][1],lt[2][2]);
-        gl.uniform3f(lutDLocs[i],lt[3][0],lt[3][1],lt[3][2]);
-        gl.uniform1f(gammaLocs[i],cal.gamma);
-        gl.uniform1f(grainMulLocs[i],cal.grainMul);
-        gl.uniform1f(hasCalLocs[i],1.0);
-      } else {
-        const rgb=cached.inkRGB[i];
-        gl.uniform3f(inkLocs[i],rgb[0],rgb[1],rgb[2]);
-        gl.uniform3f(lutALocs[i],0,0,0);
-        gl.uniform3f(lutBLocs[i],0,0,0);
-        gl.uniform3f(lutCLocs[i],0,0,0);
-        gl.uniform3f(lutDLocs[i],0,0,0);
-        gl.uniform1f(gammaLocs[i],1.0);
-        gl.uniform1f(grainMulLocs[i],1.0);
-        gl.uniform1f(hasCalLocs[i],0.0);
-        gl.uniform1f(opaqueLocs[i],0.0);
-      }
-      gl.uniform2f(offLocs[i],misreg[L.ch][0],misreg[L.ch][1]);
-      gl.uniform1f(skewLocs[i],layerSkews[L.ch]||0);
-      gl.uniform1f(angLocs[i],(layerAngles[L.ch]||0)*0.01745329);
-      gl.uniform1i(chanLocs[i],L.ch);
-      gl.uniform1f(densLocs[i],cached.layerDens[L.ch]);
-    }else{
-      gl.uniform3f(inkLocs[i],0,0,0);
-      gl.uniform2f(offLocs[i],0,0);
-      gl.uniform1f(skewLocs[i],0);
-      gl.uniform1f(angLocs[i],0);
-      gl.uniform1i(chanLocs[i],0);
-      gl.uniform1f(densLocs[i],0);
-      gl.uniform1f(hasCalLocs[i],0.0);
-      gl.uniform1f(opaqueLocs[i],0.0);
-      gl.uniform1f(gammaLocs[i],1.0);
-      gl.uniform1f(grainMulLocs[i],1.0);
-    }
-  }
-
-  // Cover crop
-  let renderCrop=[0,0,1,1];
-  if(hasSrc){
-    const srcW=(camOn||(videoOn&&!gifImg))?($vid.videoWidth||1):(gifImg?(gifCanvas.width||1):(srcImg?srcImg.width:1));
-    const srcH=(camOn||(videoOn&&!gifImg))?($vid.videoHeight||1):(gifImg?(gifCanvas.height||1):(srcImg?srcImg.height:1));
-    let targetAR;
-    if(cropAspect === 'fill') targetAR = dw/dh;
-    else if(cropAspect === 'fit') targetAR = srcW/srcH;
-    else if(cropAspect) targetAR = cropAspect[0]/cropAspect[1];
-    else targetAR = dw/dh;
-    const srcAR=srcW/srcH;
-    if(targetAR>srcAR){
-      const h=srcAR/targetAR;
-      renderCrop=[0,(1-h)/2,1,h];
-    } else {
-      const w=targetAR/srcAR;
-      renderCrop=[(1-w)/2,0,w,1];
-    }
-  }
-  gl.uniform4f(locs.u_crop,renderCrop[0],renderCrop[1],renderCrop[2],renderCrop[3]);
-
-  // Print area
-  {
-    const paperAR = dw / dh;
-    const minMargin = cached.margin * 0.01;
-    if (isPhoneNow) {
-      const pm = Math.max(minMargin, 0.005);
-      gl.uniform4f(locs.u_printArea, pm, pm, pm, pm);
-    } else if (cropAspect === 'fill') {
-      const m = Math.max(minMargin, 0.005);
-      gl.uniform4f(locs.u_printArea, m, m, m, m);
-    } else {
-      let imgAR;
-      if (cropAspect === 'fit') {
-        const srcW = (camOn||(videoOn&&!gifImg)) ? ($vid.videoWidth||1) : (gifImg ? (gifCanvas.width||1) : (srcImg ? srcImg.width : 1));
-        const srcH = (camOn||(videoOn&&!gifImg)) ? ($vid.videoHeight||1) : (gifImg ? (gifCanvas.height||1) : (srcImg ? srcImg.height : 1));
-        imgAR = srcW / srcH;
-      } else {
-        imgAR = cropAspect[0] / cropAspect[1];
-      }
-      const availW = 1.0 - 2.0 * minMargin;
-      const availH = 1.0 - 2.0 * minMargin;
-      let printW, printH;
-      if (imgAR > (availW * paperAR) / availH) {
-        printW = availW;
-        printH = availW * paperAR / imgAR;
-        if (printH > availH) { printH = availH; printW = availH * imgAR / paperAR; }
-      } else {
-        printH = availH;
-        printW = availH * imgAR / paperAR;
-        if (printW > availW) { printW = availW; printH = availW * paperAR / imgAR; }
-      }
-      const marginL = (1.0 - printW) / 2.0;
-      const marginT = (1.0 - printH) / 2.0;
-      gl.uniform4f(locs.u_printArea, marginL, marginT, marginL, marginT);
-    }
-  }
+  setRenderUniforms(dw, dh, resScale, isPhoneNow);
 
   gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
 
@@ -2569,6 +2607,7 @@ function onVideoFrame(){
 // ======================== SOURCE MANAGEMENT ========================
 function pickFile(){el('fileInput').click();}
 let gifImg=null, gifCanvas=null, gifCtx=null, gifRafId=0;
+let gifFrames=null, gifFrameIdx=0, gifLastTime=0;
 function stopVideo(){
   if(videoOn){
     $vid.pause();$vid.removeAttribute('src');$vid.load();
@@ -2577,17 +2616,56 @@ function stopVideo(){
   if(window._vidFallback){clearInterval(window._vidFallback);window._vidFallback=null;}
   if(window._camFallback){clearInterval(window._camFallback);window._camFallback=null;}
   if(gifRafId){cancelAnimationFrame(gifRafId);gifRafId=0;}
+  if(gifImg&&gifImg.parentNode)gifImg.parentNode.removeChild(gifImg);
   gifImg=null;
+  if(gifFrames){gifFrames.forEach(f=>{f.canvas=null;});gifFrames=null;}
+  gifFrameIdx=0;
 }
-function startGifLoop(){
-  // Animated GIF: draw <img> to offscreen canvas each frame → upload as texture
-  if(!gifImg||!videoOn)return;
-  gifCtx.drawImage(gifImg,0,0,gifCanvas.width,gifCanvas.height);
-  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
-  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifCanvas);
-  videoFrameReady=true;
-  markDirty();
+function startGifLoop(now){
+  if(!videoOn){gifRafId=0;return;}
+  if(!now)now=performance.now();
+  if(gifFrames&&gifFrames.length>0){
+    // ImageDecoder path: advance based on per-frame timing
+    const elapsed=now-gifLastTime;
+    const dur=gifFrames[gifFrameIdx].duration||100;
+    if(elapsed>=dur){
+      gifFrameIdx=(gifFrameIdx+1)%gifFrames.length;
+      gifLastTime=now;
+      gifCtx.drawImage(gifFrames[gifFrameIdx].canvas,0,0);
+      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifCanvas);
+      videoFrameReady=true;
+      markDirty();
+    }
+  }else if(gifImg){
+    // Fallback: <img> DOM approach (simple GIFs only)
+    gifCtx.drawImage(gifImg,0,0,gifCanvas.width,gifCanvas.height);
+    gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifCanvas);
+    videoFrameReady=true;
+    markDirty();
+  }
   gifRafId=requestAnimationFrame(startGifLoop);
+}
+function loadGifFallback(f){
+  // Fallback for browsers without ImageDecoder: use <img> DOM approach
+  const url=URL.createObjectURL(f);
+  const img=new Image();
+  img.onload=()=>{
+    gifImg=img;
+    img.style.cssText='position:fixed;left:-9999px;top:-9999px;pointer-events:none;';
+    document.body.appendChild(img);
+    if(!gifCanvas)gifCanvas=document.createElement('canvas');
+    gifCanvas.width=img.naturalWidth;gifCanvas.height=img.naturalHeight;
+    gifCtx=gifCanvas.getContext('2d');
+    srcImg=gifCanvas;
+    videoOn=true;camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();scheduleRender();
+    $status.textContent='▶ GIF';
+    $res.textContent=img.naturalWidth+'×'+img.naturalHeight;
+    gifFrameIdx=0;gifLastTime=performance.now();
+    startGifLoop();
+  };
+  img.src=url;
 }
 function handleFile(e){
   const f=e.target.files[0];if(!f)return;
@@ -2613,24 +2691,88 @@ function handleFile(e){
       markDirty();
     };
   }else if(isGif){
-    // Animated GIF: load into <img>, draw to canvas each frame
+    // Animated GIF: use ImageDecoder API (reliable frame-by-frame) with <img> fallback
     stopVideo();
     if(camOn){if(camStream)camStream.getTracks().forEach(t=>t.stop());camOn=false;}
-    const url=URL.createObjectURL(f);
-    const img=new Image();
-    img.onload=()=>{
-      gifImg=img;
+
+    function initGifPlayback(w,h){
       if(!gifCanvas)gifCanvas=document.createElement('canvas');
-      gifCanvas.width=img.naturalWidth;gifCanvas.height=img.naturalHeight;
+      gifCanvas.width=w;gifCanvas.height=h;
       gifCtx=gifCanvas.getContext('2d');
-      // Set srcImg dimensions for aspect ratio calculations
       srcImg=gifCanvas;
       videoOn=true;camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();scheduleRender();
       $status.textContent='▶ GIF';
-      $res.textContent=img.naturalWidth+'×'+img.naturalHeight;
+      $res.textContent=w+'×'+h;
+      gifFrameIdx=0;gifLastTime=0; // force immediate first-frame draw
+      // Draw first frame immediately into texture
+      if(gifFrames&&gifFrames.length>0){
+        gifCtx.drawImage(gifFrames[0].canvas,0,0);
+        gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
+        gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifCanvas);
+        // Also set texture B for static reference
+        gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
+        gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifCanvas);
+        videoFrameReady=true;markDirty();
+      }
       startGifLoop();
-    };
-    img.src=url;
+    }
+
+    if(typeof ImageDecoder!=='undefined'){
+      // ImageDecoder path: decode every frame with proper timing & disposal
+      f.arrayBuffer().then(ab=>{
+        const decoder=new ImageDecoder({data:ab,type:'image/gif'});
+        // Wait for tracks to be ready, then for all frames to be parsed
+        decoder.tracks.ready.then(()=>decoder.completed).then(()=>{
+          const track=decoder.tracks.selectedTrack;
+          if(!track){console.warn('No selected track');loadGifFallback(f);return;}
+          const count=track.frameCount;
+          if(!count){toast('GIF has no frames');return;}
+          const frames=[];
+          const compCanvas=document.createElement('canvas');
+          let compCtx=null;
+          function decodeNext(idx){
+            if(idx>=count){
+              gifFrames=frames;
+              initGifPlayback(compCanvas.width,compCanvas.height);
+              decoder.close();
+              return;
+            }
+            decoder.decode({frameIndex:idx}).then(result=>{
+              const vf=result.image;
+              // Capture duration before closing (microseconds → milliseconds)
+              const frameDur=Math.max((vf.duration||100000)/1000, 20);
+              if(!compCtx){
+                compCanvas.width=vf.displayWidth;compCanvas.height=vf.displayHeight;
+                compCtx=compCanvas.getContext('2d');
+              }
+              // For disposal: clear if needed (simple approach: always composite)
+              if(idx===0) compCtx.clearRect(0,0,compCanvas.width,compCanvas.height);
+              // Draw decoded frame onto composite
+              const tmpC=document.createElement('canvas');
+              tmpC.width=vf.displayWidth;tmpC.height=vf.displayHeight;
+              tmpC.getContext('2d').drawImage(vf,0,0);
+              vf.close();
+              compCtx.drawImage(tmpC,0,0);
+              // Snapshot composited result
+              const snapC=document.createElement('canvas');
+              snapC.width=compCanvas.width;snapC.height=compCanvas.height;
+              snapC.getContext('2d').drawImage(compCanvas,0,0);
+              frames.push({canvas:snapC, duration:frameDur});
+              decodeNext(idx+1);
+            }).catch(()=>decodeNext(idx+1));
+          }
+          decodeNext(0);
+        }).catch(err=>{
+          console.warn('ImageDecoder failed, falling back to <img>',err);
+          loadGifFallback(f);
+        });
+      }).catch(err=>{
+        console.warn('GIF read failed, falling back to <img>',err);
+        loadGifFallback(f);
+      });
+    }else{
+      loadGifFallback(f);
+    }
   }else{
     // Image: load as before
     stopVideo();
@@ -2719,6 +2861,7 @@ async function toggleCam(){
   if(camOn){
     if(camStream)camStream.getTracks().forEach(t=>t.stop());
     camOn=false;
+    $gl.classList.remove('mirrored');
     if(window._camFallback){clearInterval(window._camFallback);window._camFallback=null;}
     el('camBtn').textContent='CAMERA';
     if(srcImg){
@@ -2738,6 +2881,7 @@ async function toggleCam(){
     // Wait for video to actually start playing
     await $vid.play();
     camOn=true;needsAspectUpdate=true;computeCrop();scheduleRender();
+    $gl.classList.toggle('mirrored',facingMode==='user');
     el('camBtn').textContent='STOP CAM';
     $status.textContent='● LIVE';
     hideOnboarding();
@@ -2753,24 +2897,47 @@ async function toggleCam(){
 }
 
 // ======================== SAVE ========================
+function getSaveAspect(){
+  // Determine output aspect ratio from cropAspect
+  if(cropAspect==='fill') return $gl.width/$gl.height;
+  if(cropAspect==='fit'){
+    const sw=srcImg?srcImg.width:(gifCanvas?gifCanvas.width:$gl.width);
+    const sh=srcImg?srcImg.height:(gifCanvas?gifCanvas.height:$gl.height);
+    return sw/sh;
+  }
+  if(Array.isArray(cropAspect)) return cropAspect[0]/cropAspect[1];
+  return 4/3; // fallback
+}
 async function saveHiRes(){
+  _saving=true;
+  try{
   const unique=[...new Set(channels.filter(c=>c))];
   const names=unique.join('-').replace(/[\s.]/g,'');
-  // Save the full paper view (with margins, crop marks, paper color) at high resolution
   const saveScale=Math.max(resScale,3);
-  const cssW=$gl.clientWidth, cssH=$gl.clientHeight;
-  const saveW=Math.round(cssW*saveScale), saveH=Math.round(cssH*saveScale);
-  // Temporarily resize canvas and redraw
+  const ar=getSaveAspect();
+  const baseSize=1200;
+  let saveW,saveH;
+  if(ar>=1){saveW=Math.round(baseSize*ar*saveScale/3);saveH=Math.round(baseSize*saveScale/3);}
+  else{saveW=Math.round(baseSize*saveScale/3);saveH=Math.round(baseSize/ar*saveScale/3);}
+  saveW=saveW&~1;saveH=saveH&~1;
+  const origW=$gl.width,origH=$gl.height;
+  // Lock CSS size so canvas doesn't flash during save
+  const origCssW=$gl.style.width, origCssH=$gl.style.height;
+  $gl.style.width=$gl.clientWidth+'px';
+  $gl.style.height=$gl.clientHeight+'px';
   $gl.width=saveW;$gl.height=saveH;
   gl.viewport(0,0,saveW,saveH);
-  gl.uniform2f(locs.u_res,saveW,saveH);
-  gl.uniform1f(locs.u_resScale,saveScale);
+  setRenderUniforms(saveW,saveH,saveScale,false);
   gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
   const filename='risocam_'+(names||'empty')+'_'+saveW+'x'+saveH+'_'+Date.now()+'.png';
   const blob=await new Promise(r=>$gl.toBlob(b=>r(b),'image/png'));
-  // Restore
+  $gl.width=origW;$gl.height=origH;
+  $gl.style.width=origCssW;$gl.style.height=origCssH;
   markDirty();needsAspectUpdate=true;
+  _saving=false;
   await doSaveBlob(blob,filename,saveW,saveH);
+  }catch(e){console.error('PNG save error:',e);toast('Save failed');}
+  finally{_saving=false;}
 }
 
 // ─── Minimal GIF89a encoder (no external deps) ───
@@ -2899,59 +3066,110 @@ function _lzwCompress(idx,minCode){
 
 async function saveGif(){
   if(!hasSrc){toast('No image loaded');return;}
-  toast('Rendering GIF…');
+  _saving=true;
+  try{
   const unique=[...new Set(channels.filter(c=>c))];
   const names=unique.join('-').replace(/[\s.]/g,'');
   const gifFps=risoFps||4;
-  const duration=10; // seconds
-  const totalFrames=gifFps*duration;
+  // Detect source type
+  const hasAnimGif=gifFrames&&gifFrames.length>1;
+  const hasVideo=videoOn&&!gifImg&&!gifFrames&&$vid.readyState>=2;
+  // Frame count & timing — output at riso FPS, subsample source
   const delay=Math.round(1000/gifFps);
-  // Use current canvas size (not hi-res)
-  const gw=$gl.width, gh=$gl.height;
+  let totalFrames, srcDuration=0;
+  if(hasAnimGif){
+    // Calculate source GIF total duration
+    for(let k=0;k<gifFrames.length;k++) srcDuration+=gifFrames[k].duration||100;
+    srcDuration=Math.min(srcDuration/1000, 5); // ms→s, cap 5s
+    totalFrames=Math.max(Math.round(srcDuration*gifFps), 4);
+  }else if(hasVideo){
+    srcDuration=Math.min($vid.duration||2, 5); // cap at 5s
+    totalFrames=Math.max(Math.round(srcDuration*gifFps), 4);
+  }else{
+    totalFrames=Math.max(gifFps*2, 4); // 2s riso grain loop
+  }
+  // Output size at crop aspect ratio, max 800px
+  const maxGif=800;
+  const ar=getSaveAspect();
+  let gw,gh;
+  if(ar>=1){gw=maxGif;gh=Math.round(maxGif/ar);}
+  else{gh=maxGif;gw=Math.round(maxGif*ar);}
+  gw=gw&~1;gh=gh&~1;
+  toast('Rendering GIF ('+totalFrames+' frames)…');
   const tmpCanvas=document.createElement('canvas');
   tmpCanvas.width=gw;tmpCanvas.height=gh;
   const tmpCtx=tmpCanvas.getContext('2d');
   const enc=new GIFEncoder(gw,gh,delay);
-  // Save current state
+  // Save state
+  const origW=$gl.width,origH=$gl.height;
   const origSeed=frameSeed;
   const origMisreg=misreg.map(m=>[...m]);
   const origSkews=[...layerSkews];
   const origFrame=frame;
+  const origVidTime=hasVideo?$vid.currentTime:0;
+  const origVidPaused=hasVideo?$vid.paused:false;
+  if(hasVideo)$vid.pause();
+  // Lock CSS size so canvas doesn't visually shrink during render
+  const origCssW=$gl.style.width, origCssH=$gl.style.height;
+  $gl.style.width=$gl.clientWidth+'px';
+  $gl.style.height=$gl.clientHeight+'px';
+  // Resize GL buffer (hidden by CSS lock)
+  $gl.width=gw;$gl.height=gh;
   for(let i=0;i<totalFrames;i++){
-    // Vary grain/misreg per frame
+    // Upload animated source frame (time-based subsampling)
+    if(hasAnimGif){
+      // Find which source frame corresponds to this output time
+      const outTimeMs=(i/gifFps)*1000;
+      let accMs=0, srcIdx=0;
+      for(let k=0;k<gifFrames.length;k++){
+        accMs+=gifFrames[k].duration||100;
+        if(accMs>outTimeMs){srcIdx=k;break;}
+        srcIdx=k;
+      }
+      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifFrames[srcIdx].canvas);
+    }else if(hasVideo){
+      // Seek video to this frame's timestamp and upload
+      const t=(i/gifFps)%($vid.duration||1);
+      $vid.currentTime=t;
+      await new Promise(r=>{$vid.onseeked=r;setTimeout(r,200);});
+      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,$vid);
+    }
+    // Vary riso grain/misreg per frame
     frameSeed=Math.random();
     frame=origFrame+i;
     newMisreg();
-    // Re-set uniforms and draw
     gl.viewport(0,0,gw,gh);
-    gl.uniform2f(locs.u_res,gw,gh);
-    gl.uniform1f(locs.u_frameSeed,frameSeed);
-    gl.uniform1f(locs.u_time,frame);
-    // Update misreg/skew uniforms
-    const layers=activeLayers();
-    for(let j=0;j<Math.min(layers.length,4);j++){
-      const L=layers[j];
-      gl.uniform2f(offLocs[j],misreg[L.ch][0],misreg[L.ch][1]);
-      gl.uniform1f([locs.u_skew0,locs.u_skew1,locs.u_skew2,locs.u_skew3][j],layerSkews[L.ch]||0);
-    }
+    setRenderUniforms(gw,gh,resScale,false);
     gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
-    // Read pixels to temp canvas
-    tmpCtx.drawImage($gl,0,0);
+    tmpCtx.drawImage($gl,0,0,gw,gh);
     enc.addFrame(tmpCtx);
-    // Yield to UI every 10 frames
-    if(i%10===9) await new Promise(r=>setTimeout(r,0));
+    // Yield every frame so browser stays responsive
+    toast('Rendering GIF ('+((i+1))+'/'+totalFrames+')…');
+    await new Promise(r=>requestAnimationFrame(r));
   }
-  // Restore
+  // Restore buffer and unlock CSS
+  $gl.width=origW;$gl.height=origH;
+  $gl.style.width=origCssW;$gl.style.height=origCssH;
+  gl.viewport(0,0,origW,origH);
   frameSeed=origSeed;
   misreg=origMisreg;
   layerSkews=origSkews;
   frame=origFrame;
-  markDirty();
+  if(hasVideo){
+    $vid.currentTime=origVidTime;
+    if(!origVidPaused)$vid.play();
+  }
+  markDirty();needsAspectUpdate=true;
+  _saving=false;
   const data=enc.finish();
   const blob=new Blob([data],{type:'image/gif'});
   const filename='risocam_'+(names||'empty')+'_'+gw+'x'+gh+'_'+Date.now()+'.gif';
   await doSaveBlob(blob,filename,gw,gh);
   toast('GIF saved');
+  }catch(e){console.error('GIF save error:',e);toast('GIF save failed');}
+  finally{_saving=false;}
 }
 
 async function doSaveBlob(blob,filename,w,h){
@@ -2993,13 +3211,14 @@ async function exportSeparations(){
   gl.uniform1f(locs.u_inkNoise,cached.inkNoise);
   gl.uniform1f(locs.u_paperTex,cached.paperTex);
   gl.uniform1f(locs.u_static,cached.grainStatic);
-  gl.uniform1f(locs.u_ghosting,cached.ghosting*0.01);
+  gl.uniform1f(locs.u_ghosting,cached.ghosting*0.01*(cached.ghostMul*0.01));
   gl.uniform1f(locs.u_bleed,0.0);
   gl.uniform1f(locs.u_resScale,resScale);
   gl.uniform1f(locs.u_frameSeed,frameSeed);
   gl.uniform1f(locs.u_bright,cached.imgBright);
   gl.uniform1f(locs.u_contrast,cached.imgContrast);
   gl.uniform1f(locs.u_sat,cached.imgSat);
+  gl.uniform1f(locs.u_shadows,cached.imgShadows);
   gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(dw,dh)/(8.267*cached.lpi)));
   gl.uniform1f(locs.u_ucrStr, cached.ucrStr * 0.01);
   gl.uniform4f(locs.u_cmykBal, cached.balC*0.01, cached.balM*0.01, cached.balY*0.01, cached.balK*0.01);
@@ -3494,6 +3713,10 @@ function setMode(m){
   const scr=el('screenSettings'),grn=el('grainSettings');
   if(scr)scr.style.display=m==='screen'?'block':'none';
   if(grn)grn.style.display=m==='grain'?'block':'none';
+  // Phone settings wrappers
+  const phScr=el('phScreenSettings'),phGrn=el('phGrainSettings');
+  if(phScr)phScr.style.display=m==='screen'?'block':'none';
+  if(phGrn)phGrn.style.display=m==='grain'?'block':'none';
   // Phone overlay mode buttons
   document.querySelectorAll('.ph-overlay .mode-btn').forEach(b=>{
     b.classList.toggle('active',b.textContent.trim().toLowerCase()===m);
@@ -3521,15 +3744,22 @@ function setScale(s){
   const btn=el('resBtn');
   if(btn) btn.textContent=s+'×';
   markDirty();
+  // Defer debug info update so canvas size reflects the new scale (after render)
+  setTimeout(()=>updateDebugInfo(),50);
 }
 
-const fpsSteps=[4,8,12,24];
+const fpsSteps=[0,4,8,12,24];
+const FPS_STATIC_MAP={0:0, 4:5, 8:5, 12:5, 24:5};
 function setRisoFps(fps){
   risoFps=fps;
+  // Auto-derive grain static from FPS
+  cached.grainStatic = FPS_STATIC_MAP[fps] ?? 0;
+  const s=el('grainStatic'); if(s) s.value=cached.grainStatic;
+  const sv=el('grainStaticVal'); if(sv) sv.textContent=cached.grainStatic;
   const btn=el('fpsBtn');
-  if(btn) btn.textContent=fps;
+  if(btn) btn.textContent=fps===0?'STILL':fps;
   const phBtn=el('phFpsBtn');
-  if(phBtn) phBtn.textContent=fps+'FPS';
+  if(phBtn) phBtn.textContent=fps===0?'STILL':fps+'FPS';
   markDirty();
 }
 function cycleFps(){
@@ -3555,7 +3785,7 @@ function setAngle(ch,deg){
   markDirty();
 }
 function bindSliders(){
-  ['grainSize','dotGain','misreg','inkNoise','paperTex','lpi','grainStatic','ghosting','margin','skew','imgBright','imgContrast','imgSat','ucrStr','balC','balM','balY','balK','tac','inkOpacity','layerDeplete','pressVar','densFlicker'].forEach(id=>{
+  ['grainSize','dotGain','misreg','inkNoise','paperTex','lpi','grainStatic','ghosting','margin','skew','imgBright','imgContrast','imgSat','imgShadows','ucrStr','balC','balM','balY','balK','tac','inkOpacity','layerDeplete','pressVar','densFlicker','ghostMul'].forEach(id=>{
     const s=el(id),v=el(id+'Val');
     if(!s||!v)return;
     s.oninput=()=>{
@@ -3565,6 +3795,52 @@ function bindSliders(){
     };
     cacheSlider(id,s.value);
   });
+}
+// ─── Stepped pickers (replaces sliders with discrete buttons) ───
+const STEP_PRESETS={
+  grainSize:[{v:0.5,l:'0.5'},{v:1,l:'1'},{v:1.5,l:'1.5'},{v:2,l:'2'},{v:3,l:'3'}],
+  lpi:[{v:10,l:'10'},{v:20,l:'20'},{v:35,l:'35'},{v:45,l:'45'}],
+  misreg:[{v:0,l:'0'},{v:1,l:'1'},{v:2,l:'2'},{v:4,l:'4'},{v:7,l:'7'},{v:10,l:'10'}],
+  paperTex:[{v:0,l:'OFF'},{v:6,l:'Light'},{v:12,l:'Med'},{v:20,l:'Heavy'}],
+  margin:[{v:0,l:'0'},{v:2,l:'2'},{v:4,l:'4'},{v:6,l:'6'},{v:8,l:'8'},{v:12,l:'12'}],
+  ghosting:[{v:0,l:'OFF'},{v:40,l:'Med'},{v:80,l:'High'}],
+};
+function buildStepGroups(){
+  Object.entries(STEP_PRESETS).forEach(([id,presets])=>{
+    const wrap=el(id+'Steps');
+    if(!wrap)return;
+    const slider=el(id);
+    if(!slider)return;
+    wrap.innerHTML='';
+    const curVal=parseFloat(slider.value);
+    // Find closest preset
+    let bestIdx=0,bestDist=Infinity;
+    presets.forEach((p,i)=>{const d=Math.abs(p.v-curVal);if(d<bestDist){bestDist=d;bestIdx=i;}});
+    presets.forEach((p,i)=>{
+      const btn=document.createElement('button');
+      btn.className='step-btn'+(i===bestIdx?' active':'');
+      btn.textContent=p.l;
+      btn.dataset.value=p.v;
+      btn.onclick=()=>{
+        wrap.querySelectorAll('.step-btn').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        slider.value=p.v;
+        if(slider.oninput)slider.oninput();
+      };
+      wrap.appendChild(btn);
+    });
+  });
+}
+function syncStepGroup(id){
+  const wrap=el(id+'Steps');
+  if(!wrap)return;
+  const slider=el(id);
+  if(!slider)return;
+  const curVal=parseFloat(slider.value);
+  const btns=wrap.querySelectorAll('.step-btn');
+  let bestIdx=0,bestDist=Infinity;
+  btns.forEach((b,i)=>{const d=Math.abs(parseFloat(b.dataset.value)-curVal);if(d<bestDist){bestDist=d;bestIdx=i;}});
+  btns.forEach((b,i)=>b.classList.toggle('active',i===bestIdx));
 }
 function toast(msg){const t=el('toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);}
 
@@ -3585,9 +3861,9 @@ function copyDebugValues(){
     grainSize:cached.grainSize, dotGain:cached.dotGain,
     inkNoise:cached.inkNoise, paperTex:cached.paperTex,
     ghosting:cached.ghosting,
-    margin:cached.margin, bcs:[cached.imgBright,cached.imgContrast,cached.imgSat],
+    margin:cached.margin, bcs:[cached.imgBright,cached.imgContrast,cached.imgSat,cached.imgShadows],
     cmyk:{ucr:cached.ucrStr, balC:cached.balC, balM:cached.balM, balY:cached.balY, balK:cached.balK, tac:cached.tac},
-    physics:{inkOpacity:cached.inkOpacity, layerDeplete:cached.layerDeplete, pressVar:cached.pressVar, densFlicker:cached.densFlicker}
+    physics:{inkOpacity:cached.inkOpacity, layerDeplete:cached.layerDeplete, pressVar:cached.pressVar, densFlicker:cached.densFlicker, ghostMul:cached.ghostMul}
   };
   const txt=JSON.stringify(vals,null,2);
   navigator.clipboard.writeText(txt).then(()=>toast('Copied!')).catch(()=>{
@@ -3605,7 +3881,7 @@ function resetCmykDefaults(){
   markDirty();toast('CMYK reset');
 }
 function resetPhysicsDefaults(){
-  const defs={inkOpacity:88,layerDeplete:3,pressVar:100,densFlicker:7};
+  const defs={inkOpacity:88,layerDeplete:3,pressVar:100,densFlicker:7,ghostMul:100};
   Object.entries(defs).forEach(([k,v])=>{
     cached[k]=v;
     const s=el(k),sv=el(k+'Val');
@@ -3649,7 +3925,7 @@ function renderPaperUI(){
     ch+=`<div class="paper-dot${i===0?' active':''}" onclick="setPaperColor(${i})" style="background:${c.hex};${border}" title="${c.name}"></div>`;
   });
   colorGrid.innerHTML=ch;
-  // Paper texture selector
+  // Paper texture selector (hidden grid kept for setPaperTex compatibility)
   const texGrid=el('paperTexGrid');
   if(texGrid){
     let th='';
@@ -3659,6 +3935,20 @@ function renderPaperUI(){
       th+=`<button class="paper-tex-btn${k===activePaperTex?' active':''}" onclick="setPaperTex('${k}')">${texLabels[k]}</button>`;
     });
     texGrid.innerHTML=th;
+  }
+  // Update cycling button labels
+  const typeBtn=el('paperTypeBtn');
+  if(typeBtn){
+    const labels={procedural:'Standard',riso_standard:'Natural',smooth:'Smooth',kraft:'Kraft',textured:'Textured'};
+    typeBtn.textContent=labels[activePaperTex]||activePaperTex;
+  }
+  const texBtn=el('paperTexBtn');
+  if(texBtn){
+    const cur=parseFloat(el('paperTex').value);
+    const steps=[{v:0,l:'OFF'},{v:6,l:'Light'},{v:12,l:'Med'},{v:20,l:'Heavy'}];
+    let bestIdx=0,bestDist=Infinity;
+    steps.forEach((p,i)=>{const d=Math.abs(p.v-cur);if(d<bestDist){bestDist=d;bestIdx=i;}});
+    texBtn.textContent=steps[bestIdx].l;
   }
 }
 function setPaperTex(key){
@@ -3670,7 +3960,33 @@ function setPaperTex(key){
   if(idx>=0&&btns[idx]) btns[idx].classList.add('active');
   // Also update phone UI
   document.querySelectorAll('.ph-paper-tex-btn').forEach(b=>b.classList.toggle('active',b.dataset.tex===key));
+  // Update cycling button label
+  const TEX_LABELS={procedural:'Standard',riso_standard:'Natural',smooth:'Smooth',kraft:'Kraft',textured:'Textured'};
+  const btn=el('paperTypeBtn');
+  if(btn) btn.textContent=TEX_LABELS[key]||key;
   markDirty();
+}
+// Cycling controls for paper type and texture intensity
+const PAPER_TEX_KEYS=['procedural','riso_standard','smooth','kraft','textured'];
+const PAPER_TEX_LABELS={procedural:'Standard',riso_standard:'Natural',smooth:'Smooth',kraft:'Kraft',textured:'Textured'};
+function cyclePaperTex(){
+  const i=PAPER_TEX_KEYS.indexOf(activePaperTex);
+  const next=PAPER_TEX_KEYS[(i+1)%PAPER_TEX_KEYS.length];
+  setPaperTex(next);
+}
+const PAPER_TEX_INTENSITY=[{v:0,l:'OFF'},{v:6,l:'Light'},{v:12,l:'Med'},{v:20,l:'Heavy'}];
+function cyclePaperTexIntensity(){
+  const cur=parseFloat(el('paperTex').value);
+  // Find closest current step
+  let bestIdx=0,bestDist=Infinity;
+  PAPER_TEX_INTENSITY.forEach((p,i)=>{const d=Math.abs(p.v-cur);if(d<bestDist){bestDist=d;bestIdx=i;}});
+  const next=PAPER_TEX_INTENSITY[(bestIdx+1)%PAPER_TEX_INTENSITY.length];
+  el('paperTex').value=next.v;
+  if(el('paperTex').oninput) el('paperTex').oninput();
+  // Update all tex intensity labels (desktop + phone overlays)
+  ['paperTexBtn','phPaperTexCycleBtn','phLookTexCycleBtn'].forEach(id=>{
+    const b=el(id);if(b)b.textContent=next.l;
+  });
 }
 
 // ======================== BOOT ========================
@@ -3785,8 +4101,8 @@ function phCycleRes(){
   if(btn) btn.textContent=RES_CYCLE[resIdx]+'×';
 }
 
-const FPS_CYCLE=[4,8,12,24];
-let fpsIdx=0; // default 4fps
+const FPS_CYCLE=[0,4,8,12,24];
+let fpsIdx=1; // default 4fps
 function phCycleFps(){
   fpsIdx=(fpsIdx+1)%FPS_CYCLE.length;
   setRisoFps(FPS_CYCLE[fpsIdx]);
@@ -3891,6 +4207,7 @@ async function phFlipCam(){
       $vid.srcObject=s;
       await $vid.play();
       camOn=true;needsAspectUpdate=true;computeCrop();scheduleRender();
+      $gl.classList.toggle('mirrored',facingMode==='user');
       if($vid.requestVideoFrameCallback) $vid.requestVideoFrameCallback(onVideoFrame);
       else{if(window._camFallback)clearInterval(window._camFallback);window._camFallback=setInterval(()=>{if(camOn&&$vid.readyState>=2){videoFrameReady=true;scheduleRender();}else if(!camOn)clearInterval(window._camFallback);},50);}
       return;
@@ -3901,6 +4218,7 @@ async function phFlipCam(){
     const s=await navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:isPhone()?640:1280}}});
     camStream=s;$vid.srcObject=s;await $vid.play();
     camOn=true;needsAspectUpdate=true;computeCrop();scheduleRender();
+    $gl.classList.toggle('mirrored',facingMode==='user');
     if($vid.requestVideoFrameCallback) $vid.requestVideoFrameCallback(onVideoFrame);
     else{if(window._camFallback)clearInterval(window._camFallback);window._camFallback=setInterval(()=>{if(camOn&&$vid.readyState>=2){videoFrameReady=true;scheduleRender();}else if(!camOn)clearInterval(window._camFallback);},50);}
     toast('Only one camera available');
@@ -4079,40 +4397,46 @@ function phPopulateOverlay(name){
     texKeys.forEach(k=>{
       html+=`<button class="paper-tex-btn ph-paper-tex-btn${k===activePaperTex?' active':''}" data-tex="${k}" onclick="setPaperTex('${k}')">${texLabels[k]}</button>`;
     });
-    html+='</div></div>';
+    html+='</div>';
+    // Paper texture intensity (cycling button, matching desktop)
+    html+='<div style="display:flex;align-items:center;gap:6px;padding:4px 0"><span style="font-family:\'Space Mono\',monospace;font-size:8px;letter-spacing:.5px;color:var(--text-muted)">TEX</span><div class="header-cycle" onclick="cyclePaperTexIntensity()" style="flex:1"><span class="header-cycle-val" id="phLookTexCycleBtn" style="width:100%;min-width:0">Med</span></div></div>';
+    html+='</div>';
     body.innerHTML=html;
     renderProfiles('phProfileGrid');
+    // Set initial tex intensity label
+    const phLookTexBtn=el('phLookTexCycleBtn');
+    if(phLookTexBtn){
+      const cur=parseFloat(el('paperTex').value);
+      const steps=PAPER_TEX_INTENSITY;
+      let bestIdx=0,bestDist=Infinity;
+      steps.forEach((p,i)=>{const d=Math.abs(p.v-cur);if(d<bestDist){bestDist=d;bestIdx=i;}});
+      phLookTexBtn.textContent=steps[bestIdx].l;
+    }
   } else if(name==='settings'){
     const body=el('phSettingsBody');
     body.innerHTML=`
       <div class="settings-body" style="padding:10px 14px">
-        <div class="slider-row"><span class="slider-label">Grain Size</span><input type="range" id="phGrainSize" min="0.5" max="3" value="${cached.grainSize}" step="0.1"><span class="slider-value" id="phGrainSizeVal">${cached.grainSize}</span></div>
-        <div class="slider-row"><span class="slider-label">LPI</span><input type="range" id="phLpi" min="10" max="60" value="${cached.lpi}" step="5"><span class="slider-value" id="phLpiVal">${cached.lpi}</span></div>
-        <div class="slider-row"><span class="slider-label">Dot Gain</span><input type="range" id="phDotGain" min="0" max="25" value="${cached.dotGain}" step="1"><span class="slider-value" id="phDotGainVal">${cached.dotGain}</span></div>
-        <div class="slider-row"><span class="slider-label">Misregister</span><input type="range" id="phMisreg" min="0" max="10" value="${el('misreg').value}" step="1"><span class="slider-value" id="phMisregVal">${el('misreg').value}</span></div>
-        <div class="slider-row" style="padding-left:12px"><span class="slider-label" style="opacity:0.7;font-size:9px">Skew</span><input type="range" id="phSkew" min="-1" max="1" value="${el('skew').value}" step="0.1"><span class="slider-value" id="phSkewVal">${el('skew').value}°</span></div>
-        <div class="slider-row"><span class="slider-label">Margin</span><input type="range" id="phMargin" min="10" max="20" value="${cached.margin}" step="1"><span class="slider-value" id="phMarginVal">${cached.margin}</span></div>
-        <div class="slider-row"><span class="slider-label">Ink Noise</span><input type="range" id="phInkNoise" min="0" max="30" value="${cached.inkNoise}" step="2"><span class="slider-value" id="phInkNoiseVal">${cached.inkNoise}</span></div>
-        <div class="slider-row"><span class="slider-label">Paper Tex</span><input type="range" id="phPaperTex" min="0" max="25" value="${el('paperTex').value}" step="1"><span class="slider-value" id="phPaperTexVal">${el('paperTex').value}</span></div>
-        <div class="slider-row"><span class="slider-label">Static</span><input type="range" id="phGrainStatic" min="0" max="20" value="${cached.grainStatic}" step="1"><span class="slider-value" id="phGrainStaticVal">${cached.grainStatic}</span></div>
-        <div class="slider-row"><span class="slider-label">Ghosting</span><input type="range" id="phGhosting" min="0" max="30" value="${cached.ghosting}" step="2"><span class="slider-value" id="phGhostingVal">${cached.ghosting}</span></div>
+        <div id="phGrainSettings" style="display:${mode==='grain'?'block':'none'}"><div class="step-row ctrl-stepped"><span class="step-label">Grain Size</span><div class="step-group" id="phGrainSizeSteps"></div></div></div>
+        <div id="phScreenSettings" style="display:${mode==='screen'?'block':'none'}"><div class="step-row ctrl-stepped"><span class="step-label">LPI</span><div class="step-group" id="phLpiSteps"></div></div></div>
+        <div class="slider-row ctrl-slider"><span class="slider-label">Dot Gain</span><input type="range" id="phDotGain" min="0" max="25" value="${cached.dotGain}" step="1"><span class="slider-value" id="phDotGainVal">${cached.dotGain}</span></div>
+        <div class="step-row ctrl-stepped"><span class="step-label">Misregister</span><div class="step-group" id="phMisregSteps"></div></div>
+        <div class="slider-row ctrl-slider" style="padding-left:12px"><span class="slider-label" style="opacity:0.7;font-size:9px">Skew</span><input type="range" id="phSkew" min="-1" max="1" value="${el('skew').value}" step="0.1"><span class="slider-value" id="phSkewVal">${el('skew').value}°</span></div>
+        <div class="step-row ctrl-stepped"><span class="step-label">Margin</span><div class="step-group" id="phMarginSteps"></div></div>
+        <div class="slider-row ctrl-slider"><span class="slider-label">Ink Noise</span><input type="range" id="phInkNoise" min="0" max="30" value="${cached.inkNoise}" step="2"><span class="slider-value" id="phInkNoiseVal">${cached.inkNoise}</span></div>
+        <div class="step-row ctrl-stepped" style="gap:6px"><span class="step-label">Paper Tex</span><div class="header-cycle" onclick="cyclePaperTexIntensity()" style="flex:1"><span class="header-cycle-val" id="phPaperTexCycleBtn" style="width:100%;min-width:0">Med</span></div></div>
+        <div class="step-row ctrl-stepped"><span class="step-label">Ghosting</span><div class="step-group" id="phGhostingSteps"></div></div>
       </div>`;
     phBindSliders();
+    phBuildStepGroups();
   }
 }
 
 function phBindSliders(){
+  // Only bind controls that remain as sliders in phone mode
   const map=[
-    ['phGrainSize','grainSize','grainSize'],
-    ['phLpi','lpi','lpi'],
     ['phDotGain','dotGain','dotGain'],
-    ['phMisreg','misreg',null],
     ['phSkew','skew',null],
-    ['phMargin','margin','margin'],
     ['phInkNoise','inkNoise','inkNoise'],
-    ['phPaperTex','paperTex',null],
-    ['phGrainStatic','grainStatic','grainStatic'],
-    ['phGhosting','ghosting','ghosting'],
   ];
   map.forEach(([phId,deskId,cacheKey])=>{
     const phEl=el(phId);
@@ -4127,9 +4451,43 @@ function phBindSliders(){
       const deskVal=el(deskId+'Val');
       if(deskVal)deskVal.textContent=vLabel;
       if(deskId==='misreg'||deskId==='skew'){cacheSlider(deskId,v);newMisreg();return;}
-      if(deskId==='margin'){cached.margin=v;markDirty();needsAspectUpdate=true;return;}
-      if(deskId==='paperTex'){cached.paperTex=v;markDirty();return;}
       if(cacheKey){cached[cacheKey]=v;markDirty();}
+    });
+  });
+}
+// Build step groups in phone settings overlay (mirrors desktop step groups)
+function phBuildStepGroups(){
+  const phStepMap={
+    phGrainSizeSteps:'grainSize',
+    phLpiSteps:'lpi',
+    phMisregSteps:'misreg',
+    phMarginSteps:'margin',
+    phGhostingSteps:'ghosting',
+  };
+  Object.entries(phStepMap).forEach(([phWrapId,id])=>{
+    const wrap=el(phWrapId);
+    if(!wrap)return;
+    const presets=STEP_PRESETS[id];
+    const slider=el(id); // reference the desktop hidden slider
+    if(!presets||!slider)return;
+    wrap.innerHTML='';
+    const curVal=parseFloat(slider.value);
+    let bestIdx=0,bestDist=Infinity;
+    presets.forEach((p,i)=>{const d=Math.abs(p.v-curVal);if(d<bestDist){bestDist=d;bestIdx=i;}});
+    presets.forEach((p,i)=>{
+      const btn=document.createElement('button');
+      btn.className='step-btn'+(i===bestIdx?' active':'');
+      btn.textContent=p.l;
+      btn.dataset.value=p.v;
+      btn.onclick=()=>{
+        wrap.querySelectorAll('.step-btn').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        slider.value=p.v;
+        if(slider.oninput)slider.oninput();
+        // Sync desktop step group too
+        syncStepGroup(id);
+      };
+      wrap.appendChild(btn);
     });
   });
 }
@@ -4166,9 +4524,12 @@ setAspect=function(ratio){
   cropAspect=ratio||[4,3];
   computeCrop();
   needsAspectUpdate=true;scheduleRender();
-  const key=cropAspect.join(':');
+  const ar = (typeof cropAspect === 'string') ? cropAspect : cropAspect.join(':');
+  // Sync desktop aspect button
+  const abtn=el('aspectBtn');
+  if(abtn) abtn.textContent=ar.toUpperCase();
   document.querySelectorAll('.aspect-btn').forEach(b=>{
-    b.classList.toggle('active',b.dataset.ar===key);
+    b.classList.toggle('active',b.dataset.ar===ar);
   });
   // Sync phone aspect button text
   const phBtn=el('phAspectBtn');
@@ -4176,13 +4537,14 @@ setAspect=function(ratio){
     const idx=ASPECT_CYCLE.findIndex(a=>a&&cropAspect&&a[0]===cropAspect[0]&&a[1]===cropAspect[1]);
     if(idx>=0){aspectIdx=idx;phBtn.textContent=ASPECT_LABELS[idx];}
   }
+  setTimeout(()=>updateDebugInfo(),50);
 };
 
 document.addEventListener('DOMContentLoaded',()=>{
   $gl=el('gl'); $vf=el('viewfinder'); $vid=el('vid');
   $fps=el('fps'); $res=el('resBadge'); $status=el('statusBadge');
 
-  renderColors();renderProfiles();renderPaperUI();bindSliders();initShutter();initOverlaySwipe();
+  renderColors();renderProfiles();renderPaperUI();bindSliders();buildStepGroups();setRisoFps(risoFps);initShutter();initOverlaySwipe();
   initGL();
 
   // Cache DOM refs used in render loop
