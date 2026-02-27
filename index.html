@@ -272,7 +272,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
 /* Bottom controls — solid black area below viewfinder */
 .ph-controls{display:flex;flex-direction:column;align-items:center;gap:8px;padding:8px 16px calc(env(safe-area-inset-bottom,8px) + 10px);background:var(--bg);flex-shrink:0;z-index:10}
 /* Tool strip — small cycling buttons */
-.ph-tools{display:flex;gap:6px;align-items:center;justify-content:center;width:100%;flex-wrap:nowrap}
+.ph-tools{display:flex;gap:6px;align-items:center;justify-content:space-between;width:100%;max-width:284px;flex-wrap:nowrap}
 .ph-tool-btn{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:.5px;padding:5px 12px;border:1px solid var(--border);background:white;color:var(--text-muted);border-radius:20px;cursor:pointer;transition:all .12s;white-space:nowrap;display:flex;align-items:center;gap:4px;-webkit-tap-highlight-color:transparent}
 .ph-tool-btn:active{background:#e8e2d8}
 .ph-tool-btn.highlight{background:var(--text);border-color:var(--text);color:white}
@@ -293,7 +293,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
 .ph-shutter.recording{border-color:var(--accent)}
 .ph-shutter.recording .ph-shutter-inner{width:26px;height:26px;border-radius:6px;background:var(--accent)}
 /* BCS slider overlay */
-.ph-bcs-strip{display:none;width:100%;padding:0 4px;margin-bottom:4px;box-sizing:border-box}
+.ph-bcs-strip{display:none;width:100%;max-width:284px;padding:0;margin-bottom:4px;box-sizing:border-box}
 .ph-bcs-strip.visible{display:flex;flex-direction:column;gap:6px}
 .ph-bcs-row{display:flex;align-items:center}
 .ph-bcs-arc{flex:1;height:32px;touch-action:none;overflow:visible}
@@ -2732,7 +2732,7 @@ async function saveHiRes(){
   const names=unique.join('-').replace(/[\s.]/g,'');
   // Save the full paper view (with margins, crop marks, paper color) at high resolution
   const saveScale=Math.max(resScale,3);
-  const cssW=$vf.clientWidth, cssH=$vf.clientHeight;
+  const cssW=$gl.clientWidth, cssH=$gl.clientHeight;
   const saveW=Math.round(cssW*saveScale), saveH=Math.round(cssH*saveScale);
   // Temporarily resize canvas and redraw
   $gl.width=saveW;$gl.height=saveH;
