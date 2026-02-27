@@ -50,10 +50,10 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 .fps-group .fps-btn.active{background:var(--text);color:white}
 .fps-group .fps-btn:hover:not(.active){background:#f0f0f0}
 .fps-group .fps-label{font-family:'Space Mono',monospace;font-size:7px;letter-spacing:1px;color:var(--text-muted);padding:0 5px 0 3px}
-.header-cycle{display:flex;border:1px solid var(--border);border-radius:4px;overflow:hidden;cursor:pointer;flex-shrink:0;transition:all .15s}
+.header-cycle{display:inline-flex;border:1px solid var(--border);border-radius:4px;overflow:hidden;cursor:pointer;flex-shrink:0;transition:all .15s}
 .header-cycle:hover .header-cycle-val{background:var(--text);color:var(--bg)}
 .header-cycle-label{font-family:'Space Mono',monospace;font-size:7px;letter-spacing:1px;padding:6px 6px;color:var(--text-muted);display:flex;align-items:center;border-right:1px solid var(--border);background:white}
-.header-cycle-val{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:6px 8px;color:var(--text);display:flex;align-items:center;background:white;transition:all .15s}
+.header-cycle-val{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:6px 8px;color:var(--text);display:flex;align-items:center;justify-content:center;background:white;transition:all .15s;min-width:20px}
 .header-btn{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:6px 10px;border:1px solid var(--border);background:white;cursor:pointer;transition:all .15s;border-radius:4px;color:var(--text-muted);display:inline-flex;align-items:center;justify-content:center}
 .header-btn:hover{background:var(--text);color:var(--bg);border-color:var(--text)}
 .header-btn.primary{background:var(--text);color:white;border-color:var(--text)}
@@ -63,7 +63,7 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 @media(max-width:1000px){.app-container{grid-template-columns:1fr 280px;gap:14px;padding:14px}}
 @media(max-width:900px){.app-container{grid-template-columns:1fr;padding:12px;gap:12px}}
 @media(max-width:600px){.app-container{padding:8px;gap:8px}
-  .image-controls{flex-wrap:wrap}
+  .image-controls{flex-wrap:nowrap}
   .aspect-row{flex-wrap:wrap}
   .controls-panel{gap:8px}
   .profile-list{gap:4px}
@@ -77,8 +77,8 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 .viewfinder-wrap{position:sticky;top:70px;z-index:10}
 @media(max-width:900px){.viewfinder-wrap{position:static}}
 @media(max-width:600px){
-  .image-controls{gap:4px;padding:5px 6px;flex-wrap:wrap}
-  .img-slider{min-width:80px}
+  .image-controls{gap:4px;padding:5px 6px;flex-wrap:nowrap}
+  .img-slider{min-width:30px}
   .controls-sep{display:none}
 }
 .viewfinder-panel{position:relative;background:transparent;overflow:hidden;display:flex;align-items:center;justify-content:center}
@@ -104,8 +104,8 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 .onboard-btn:hover{background:rgba(255,255,255,.25);border-color:rgba(255,255,255,.7)}
 /* viewfinder overlay marks removed for clean presentation */
 /* Image controls bar */
-.image-controls{display:flex;gap:6px;padding:5px 8px;background:white;border:1px solid var(--border);border-radius:4px;align-items:center;flex-wrap:wrap}
-.img-slider{display:flex;align-items:center;gap:3px;flex:1;min-width:60px}
+.image-controls{display:flex;gap:6px;padding:5px 8px;background:white;border:1px solid var(--border);border-radius:4px;align-items:center;flex-wrap:nowrap}
+.img-slider{display:flex;align-items:center;gap:3px;flex:1 1 0;min-width:40px;overflow:hidden}
 .img-label{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.5px;color:var(--text-muted);white-space:nowrap;width:12px;flex-shrink:0;text-transform:uppercase;text-align:center}
 .img-slider input[type="range"]{flex:1;-webkit-appearance:none;height:2px;background:var(--border);border-radius:1px;outline:none;min-width:20px}
 .img-slider input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;background:var(--text);cursor:pointer;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,.2)}
@@ -349,9 +349,6 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
       <button class="header-src-btn" id="camBtn" onclick="toggleCam()" title="Camera"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></button>
     </div>
     <button class="header-btn" onclick="togglePhoneMode()">📱</button>
-    <div class="header-cycle" onclick="cycleAspect()"><span class="header-cycle-val" id="aspectBtn">4:3</span></div>
-    <div class="header-cycle" onclick="cycleFps()"><span class="header-cycle-label">FPS</span><span class="header-cycle-val" id="fpsBtn">4</span></div>
-    <div class="header-cycle" onclick="cycleRes()"><span class="header-cycle-label">RES</span><span class="header-cycle-val" id="resBtn">2×</span></div>
   </div>
   </div>
 </header>
@@ -374,6 +371,9 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
     <div class="img-slider"><span class="img-label">B</span><input type="range" id="imgBright" min="-30" max="30" value="0" step="2"><span class="img-val" id="imgBrightVal">0</span></div>
     <div class="img-slider"><span class="img-label">C</span><input type="range" id="imgContrast" min="-30" max="30" value="0" step="2"><span class="img-val" id="imgContrastVal">0</span></div>
     <div class="img-slider"><span class="img-label">S</span><input type="range" id="imgSat" min="-30" max="30" value="0" step="2"><span class="img-val" id="imgSatVal">0</span></div>
+    <div class="header-cycle" onclick="cycleAspect()"><span class="header-cycle-val" id="aspectBtn" style="min-width:42px">4:3</span></div>
+    <div class="header-cycle" onclick="cycleFps()"><span class="header-cycle-label">FPS</span><span class="header-cycle-val" id="fpsBtn" style="min-width:29px">4</span></div>
+    <div class="header-cycle" onclick="cycleRes()"><span class="header-cycle-label">RES</span><span class="header-cycle-val" id="resBtn">2×</span></div>
   </div>
   </div> <!-- end viewfinder-wrap -->
   <!-- Paper Color (compact) -->
