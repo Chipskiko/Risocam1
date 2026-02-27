@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RISO Test Sheet — A3 — Texture Calibration</title>
+<style>
+body{margin:0;background:#222;display:flex;flex-direction:column;align-items:center;padding:20px;font-family:monospace;color:#ccc}
+canvas{background:#fff;box-shadow:0 4px 24px rgba(0,0,0,.5);max-width:100%;height:auto}
+.controls{margin:16px 0;display:flex;gap:12px;align-items:center}
+button{padding:10px 24px;font-family:monospace;font-size:14px;background:#fff;border:1px solid #666;border-radius:4px;cursor:pointer}
+button:hover{background:#eee}
+.info{font-size:12px;opacity:.6;margin-bottom:12px}
+</style>
+</head>
+<body>
+<div class="info" id="info"></div>
+<div class="controls">
+  <button onclick="download()">↓ Download PNG</button>
+  <button onclick="location.search='?dpi=300'">300 DPI</button>
+  <button onclick="location.search='?dpi=600'">600 DPI</button>
+</div>
+<canvas id="c"></canvas>
+<script>
+const DPI = parseInt(new URLSearchParams(location.search).get('dpi')) || 300;
+const MM = DPI / 25.4;
+const W = Math.round(297 * MM);
+const H = Math.round(420 * MM);
+const c = document.getElementById('c');
+c.width = W; c.height = H;
+const ctx = c.getContext('2d');
+document.getElementById('info').textContent = `RISO/CAM Test Sheet — A3 297×420mm @ ${DPI}DPI (${W}×${H}px) — Black ink`;
+
+function mm(v){ return v * MM; }
+function gray(v){ return `rgb(${v},${v},${v})`; }
+function g(pct){ return Math.round(255*(1-pct/100)); }
+function lbl(text,x,y,sz,al){ ctx.save();ctx.font=`${sz||mm(1.6)}px monospace`;ctx.fillStyle='#000';ctx.textAlign=al||'left';ctx.textBaseline='top';ctx.fillText(text,x,y);ctx.restore(); }
+function sec(text,x,y){ ctx.save();ctx.font=`bold ${mm(2.2)}px monospace`;ctx.fillStyle='#000';ctx.fillText(text,x,y);ctx.restore(); }
+
+ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);
+const P=mm(7), CW=W-P*2; // 7mm margin
+let Y=P;
+
+// TITLE
+ctx.font=`bold ${mm(3.5)}px monospace`;ctx.fillStyle='#000';ctx.fillText('RISO/CAM TEXTURE CALIBRATION',P,Y);
+ctx.font=`${mm(1.8)}px monospace`;ctx.fillStyle='#555';ctx.fillText(`A3 · ${DPI} DPI · BLACK · v1.3 · ${W}×${H}px`,P,Y+mm(4.5));
+Y+=mm(8);
+
+// 1. CONTINUOUS GRADIENT
+sec('1 · GRADIENT 0→100%',P,Y);Y+=mm(3);
+const gr=ctx.createLinearGradient(P,0,P+CW,0);gr.addColorStop(0,'#fff');gr.addColorStop(1,'#000');
+ctx.fillStyle=gr;ctx.fillRect(P,Y,CW,mm(4));
+for(let p=0;p<=100;p+=10){const x=P+(p/100)*CW;lbl(`${p}`,x,Y+mm(4.3),mm(1.2),'center');}
+Y+=mm(7);
+
+// 2. 21-STEP WEDGE
+sec('2 · 21-STEP WEDGE',P,Y);Y+=mm(3);
+const sW=CW/21;
+for(let i=0;i<21;i++){ctx.fillStyle=gray(g(i*5));ctx.fillRect(P+i*sW,Y,sW-1,mm(6));if(i%2===0){ctx.fillStyle=i*5<50?'#000':'#fff';lbl(`${i*5}`,P+i*sW+sW/2,Y+mm(6.3),mm(1.1),'center');}}
+Y+=mm(9.5);
+
+// 3. GAMMA RAMPS
+sec('3 · GAMMA (1, 1.4, 1.8, 2.2)',P,Y);Y+=mm(3);
+[1,1.4,1.8,2.2].forEach((gam,i)=>{lbl(`γ${gam}`,P,Y+i*mm(3.8)+mm(.3),mm(1.3));for(let x=0;x<CW-mm(10);x++){ctx.fillStyle=gray(Math.round(255*(1-Math.pow(x/(CW-mm(10)),gam))));ctx.fillRect(P+mm(10)+x,Y+i*mm(3.8),1,mm(3));}});
+Y+=4*mm(3.8)+mm(1.5);
+
+// 4. RADIAL / ANGULAR / DIAMOND
+sec('4 · RADIAL / ANGULAR / DIAMOND',P,Y);Y+=mm(3);
+const vR=mm(10),vD=vR*2,vGap=mm(4);
+let vx=P;const rg1=ctx.createRadialGradient(vx+vR,Y+vR,0,vx+vR,Y+vR,vR);rg1.addColorStop(0,'#000');rg1.addColorStop(1,'#fff');ctx.fillStyle=rg1;ctx.fillRect(vx,Y,vD,vD);lbl('RADIAL',vx,Y+vD+mm(.3),mm(1.2));
+vx+=vD+vGap;const aS=Math.round(vD),aD=ctx.createImageData(aS,aS);for(let py=0;py<aS;py++)for(let px=0;px<aS;px++){const v=Math.round(255*(1-((Math.atan2(py-aS/2,px-aS/2)+Math.PI)/(2*Math.PI)))),idx=(py*aS+px)*4;aD.data[idx]=v;aD.data[idx+1]=v;aD.data[idx+2]=v;aD.data[idx+3]=255;}ctx.putImageData(aD,Math.round(vx),Math.round(Y));lbl('ANGULAR',vx,Y+vD+mm(.3),mm(1.2));
+vx+=vD+vGap;const dD=ctx.createImageData(aS,aS);for(let py=0;py<aS;py++)for(let px=0;px<aS;px++){const t=Math.min(1,Math.max(Math.abs(px-aS/2),Math.abs(py-aS/2))/(aS/2)),v=Math.round(255*t),idx=(py*aS+px)*4;dD.data[idx]=v;dD.data[idx+1]=v;dD.data[idx+2]=v;dD.data[idx+3]=255;}ctx.putImageData(dD,Math.round(vx),Math.round(Y));lbl('DIAMOND',vx,Y+vD+mm(.3),mm(1.2));
+vx+=vD+vGap;const rg2=ctx.createRadialGradient(vx+vR,Y+vR,0,vx+vR,Y+vR,vR);rg2.addColorStop(0,'#fff');rg2.addColorStop(1,'#000');ctx.fillStyle=rg2;ctx.fillRect(Math.round(vx),Math.round(Y),vD,vD);lbl('INV RAD',vx,Y+vD+mm(.3),mm(1.2));
+Y+=vD+mm(3.5);
+
+// 5. LINE FREQUENCY SWEEP (H/V/45°)
+sec('5 · LINE FREQ (H / V / 45°)',P,Y);Y+=mm(3);
+const fH=mm(8),fW=CW/3-mm(2);
+for(let x=0;x<fW;x++){const f=1+(x/fW)*60,per=mm(10)/f;for(let y=0;y<fH;y++)if(y%per<per*.5){ctx.fillStyle='#000';ctx.fillRect(P+x,Y+y,1,1);}}
+lbl('H 1→60/cm',P,Y+fH+mm(.3),mm(1.2));
+const vO=fW+mm(3);for(let x=0;x<fW;x++){const f=1+(x/fW)*60,per=mm(10)/f;for(let y=0;y<fH;y++)if(x%per<per*.5){ctx.fillStyle='#000';ctx.fillRect(P+vO+x,Y+y,1,1);}}
+lbl('V 1→60/cm',P+vO,Y+fH+mm(.3),mm(1.2));
+const dO=(fW+mm(3))*2;for(let x=0;x<fW;x++){const f=1+(x/fW)*40,per=mm(10)/f;for(let y=0;y<fH;y++)if((x+y)%per<per*.5){ctx.fillStyle='#000';ctx.fillRect(P+dO+x,Y+y,1,1);}}
+lbl('45° 1→40/cm',P+dO,Y+fH+mm(.3),mm(1.2));
+Y+=fH+mm(3.5);
+
+// 6. LINE WEIGHT (1 row — key weights only)
+sec('6 · LINE WEIGHT',P,Y);Y+=mm(3);
+const lwWeights=[0.25,0.5,1,1.5,2,3,4,6,8,10];
+const lwCW=CW/lwWeights.length;
+lwWeights.forEach((w,i)=>{const lx=P+i*lwCW;ctx.fillStyle='#000';const pw=Math.max(1,Math.round(w*MM*.3528));ctx.fillRect(lx,Y,lwCW-mm(2),pw);ctx.fillRect(lx+lwCW-mm(4),Y,pw,mm(4));lbl(`${w}pt`,lx,Y+mm(4.5),mm(1.1));});
+Y+=mm(7.5);
+
+// 7. CHECKERBOARD (1 row — key sizes)
+sec('7 · CHECKERBOARD',P,Y);Y+=mm(3);
+const ckH=mm(8),ckSizes=[1,2,4,8,16,32];
+const ckCW=CW/ckSizes.length;
+ckSizes.forEach((sz,i)=>{const bx=P+i*ckCW;for(let py=0;py<ckH;py++)for(let px=0;px<ckCW-mm(1);px++)if((Math.floor(px/sz)+Math.floor(py/sz))%2===0){ctx.fillStyle='#000';ctx.fillRect(bx+px,Y+py,1,1);}lbl(`${sz}px`,bx,Y+ckH+mm(.3),mm(1.1));});
+Y+=ckH+mm(3);
+
+// 8. RESOLUTION TARGETS
+sec('8 · RESOLUTION TARGETS',P,Y);Y+=mm(3);
+const tR=mm(10),tD=tR*2;
+let tx=P+tR;ctx.save();ctx.beginPath();ctx.arc(tx,Y+tR,tR,0,Math.PI*2);ctx.clip();for(let i=0;i<72;i+=2){ctx.beginPath();ctx.moveTo(tx,Y+tR);ctx.arc(tx,Y+tR,tR,(i/72)*Math.PI*2,((i+1)/72)*Math.PI*2);ctx.closePath();ctx.fillStyle='#000';ctx.fill();}ctx.restore();lbl('SIEMENS 72',P,Y+tD+mm(.3),mm(1.2));
+tx=P+tD+mm(6)+tR;for(let r=tR;r>0;r-=mm(1)){ctx.beginPath();ctx.arc(tx,Y+tR,r,0,Math.PI*2);ctx.strokeStyle='#000';ctx.lineWidth=mm(.5);ctx.stroke();}lbl('CONCENTRIC',P+tD+mm(6),Y+tD+mm(.3),mm(1.2));
+tx=P+(tD+mm(6))*2+tR;for(let r=tR;r>0;r-=mm(1.2)){ctx.beginPath();ctx.arc(tx,Y+tR,r,0,Math.PI*2);ctx.fillStyle=(Math.round(r/mm(1.2))%2===0)?'#000':'#fff';ctx.fill();}lbl('BULLSEYE',P+(tD+mm(6))*2,Y+tD+mm(.3),mm(1.2));
+// Spoke wheel
+tx=P+(tD+mm(6))*3+tR;ctx.save();ctx.beginPath();ctx.arc(tx,Y+tR,tR,0,Math.PI*2);ctx.clip();for(let i=0;i<36;i++){ctx.beginPath();ctx.moveTo(tx,Y+tR);ctx.arc(tx,Y+tR,tR,(i/36)*Math.PI*2,((i+0.5)/36)*Math.PI*2);ctx.closePath();ctx.fillStyle='#000';ctx.fill();}ctx.restore();lbl('SPOKE 36',P+(tD+mm(6))*3,Y+tD+mm(.3),mm(1.2));
+Y+=tD+mm(3.5);
+
+// 9. DOT GAIN PATCHES (1 row — 7 key values)
+sec('9 · DOT GAIN PATCHES',P,Y);Y+=mm(3);
+const dgW=CW/7-mm(1),dgH=mm(8);
+[10,20,30,40,50,70,90].forEach((pct,i)=>{const bx=P+i*(dgW+mm(1));ctx.fillStyle=gray(g(pct));ctx.fillRect(bx,Y,dgW,dgH);ctx.beginPath();ctx.arc(bx+dgW/2,Y+dgH/2,mm(2.5),0,Math.PI*2);ctx.fillStyle=gray(g(Math.min(100,pct+10)));ctx.fill();ctx.fillStyle=pct<50?'#000':'#fff';lbl(`${pct}%`,bx+dgW/2,Y+dgH+mm(.3),mm(1.1),'center');});
+Y+=dgH+mm(3);
+
+// 10. STOCHASTIC NOISE (1 row — 5 key densities)
+sec('10 · STOCHASTIC NOISE',P,Y);Y+=mm(3);
+const nW=CW/5-mm(1),nH=mm(8);
+[10,25,50,75,90].forEach((pct,i)=>{const bx=P+i*(nW+mm(1));const d=ctx.createImageData(Math.round(nW),Math.round(nH));for(let p=0;p<d.data.length;p+=4){const v=Math.random()*100<pct?0:255;d.data[p]=v;d.data[p+1]=v;d.data[p+2]=v;d.data[p+3]=255;}ctx.putImageData(d,Math.round(bx),Math.round(Y));lbl(`${pct}%`,bx,Y+nH+mm(.3),mm(1.1));});
+Y+=nH+mm(3);
+
+// 11. BAYER DITHER (2×2, 4×4, 8×8)
+sec('11 · BAYER DITHER (2×2, 4×4, 8×8)',P,Y);Y+=mm(3);
+const b2=[[0,2],[3,1]],b4=[[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]],b8=[[0,32,8,40,2,34,10,42],[48,16,56,24,50,18,58,26],[12,44,4,36,14,46,6,38],[60,28,52,20,62,30,54,22],[3,35,11,43,1,33,9,41],[51,19,59,27,49,17,57,25],[15,47,7,39,13,45,5,37],[63,31,55,23,61,29,53,21]];
+function bayerGrad(mat,bx,by,w,h,l){const n=mat.length,mx=n*n,d=ctx.createImageData(Math.round(w),Math.round(h));for(let py=0;py<Math.round(h);py++)for(let px=0;px<Math.round(w);px++){const v=(px/w>mat[py%n][px%n]/mx)?0:255,idx=(py*Math.round(w)+px)*4;d.data[idx]=v;d.data[idx+1]=v;d.data[idx+2]=v;d.data[idx+3]=255;}ctx.putImageData(d,Math.round(bx),Math.round(by));lbl(l,bx,by+h+mm(.3),mm(1.2));}
+const bW=CW/3-mm(2),bH=mm(6);
+bayerGrad(b2,P,Y,bW,bH,'BAYER 2×2');bayerGrad(b4,P+bW+mm(3),Y,bW,bH,'BAYER 4×4');bayerGrad(b8,P+(bW+mm(3))*2,Y,bW,bH,'BAYER 8×8');
+Y+=bH+mm(3.5);
+
+// 12. HALFTONE ANGLES (1 row — 4 key angles)
+sec('12 · HALFTONE ANGLES',P,Y);Y+=mm(3);
+const haW=CW/4-mm(1.5),haH=mm(10);
+[0,15,45,75].forEach((ang,i)=>{const bx=P+i*(haW+mm(1.5));const d=ctx.createImageData(Math.round(haW),Math.round(haH));const rad=ang*Math.PI/180;for(let py=0;py<Math.round(haH);py++)for(let px=0;px<Math.round(haW);px++){const tone=px/haW,scr=(Math.sin((px*Math.cos(rad)+py*Math.sin(rad))*.08*Math.PI*2)+1)/2;const v=(tone>scr)?0:255,idx=(py*Math.round(haW)+px)*4;d.data[idx]=v;d.data[idx+1]=v;d.data[idx+2]=v;d.data[idx+3]=255;}ctx.putImageData(d,Math.round(bx),Math.round(Y));lbl(`${ang}°`,bx,Y+haH+mm(.3),mm(1.1));});
+Y+=haH+mm(3);
+
+// 13. TEXT LEGIBILITY
+sec('13 · TEXT LEGIBILITY',P,Y);Y+=mm(3);
+[3,4,5,6,8,10,14].forEach(sz=>{const px=Math.round(sz*MM*.3528);ctx.font=`${px}px monospace`;ctx.fillStyle='#000';ctx.textBaseline='top';ctx.fillText(`${sz}pt RISO/CAM quick brown fox 0123456789`,P,Y);Y+=px+mm(.4);});
+Y+=mm(1.5);
+
+// 14. MOIRÉ GRIDS
+sec('14 · MOIRÉ GRIDS',P,Y);Y+=mm(3);
+const mW=CW/3-mm(2),mH=mm(8);
+function drawM(bx,by,f1,a1,f2,a2,l){const d=ctx.createImageData(Math.round(mW),Math.round(mH));const r1=a1*Math.PI/180,r2=a2*Math.PI/180;for(let py=0;py<Math.round(mH);py++)for(let px=0;px<Math.round(mW);px++){const s1=Math.sin((px*Math.cos(r1)+py*Math.sin(r1))*f1*.1)>0?1:0,s2=Math.sin((px*Math.cos(r2)+py*Math.sin(r2))*f2*.1)>0?1:0;const v=(s1+s2)>0?0:255,idx=(py*Math.round(mW)+px)*4;d.data[idx]=v;d.data[idx+1]=v;d.data[idx+2]=v;d.data[idx+3]=255;}ctx.putImageData(d,Math.round(bx),Math.round(by));lbl(l,bx,by+mH+mm(.3),mm(1.1));}
+drawM(P,Y,3,0,3,5,'0°+5° severe');drawM(P+mW+mm(3),Y,3,0,3,15,'0°+15° mild');drawM(P+(mW+mm(3))*2,Y,3,0,3,45,'0°+45° clean');
+Y+=mH+mm(3);
+
+// 15. CROSSHATCH (1 row — 5 key spacings)
+sec('15 · CROSSHATCH',P,Y);Y+=mm(3);
+const xW=CW/5-mm(1.5),xH=mm(8);
+[3,6,12,24,48].forEach((sp,i)=>{const bx=P+i*(xW+mm(1.5));ctx.save();ctx.beginPath();ctx.rect(bx,Y,xW,xH);ctx.clip();ctx.strokeStyle='#000';ctx.lineWidth=1;for(let d=-Math.round(xW+xH);d<Math.round(xW+xH);d+=sp){ctx.beginPath();ctx.moveTo(bx+d,Y);ctx.lineTo(bx+d+xH,Y+xH);ctx.stroke();ctx.beginPath();ctx.moveTo(bx+d,Y+xH);ctx.lineTo(bx+d+xH,Y);ctx.stroke();}ctx.restore();lbl(`${sp}px`,bx,Y+xH+mm(.3),mm(1.1));});
+Y+=xH+mm(3);
+
+// === NEW SECTIONS — RISO-SPECIFIC CALIBRATION ===
+
+// 16. HIGHLIGHT & SHADOW DETAIL
+sec('16 · HIGHLIGHT / SHADOW DETAIL',P,Y);Y+=mm(3);
+const hsW=CW/12-mm(.8),hsH=mm(7);
+[1,2,3,4,5,10,90,95,96,97,98,99].forEach((pct,i)=>{const bx=P+i*(hsW+mm(.8));ctx.fillStyle=gray(g(pct));ctx.fillRect(bx,Y,hsW,hsH);ctx.strokeStyle=pct<50?'#ddd':'#333';ctx.lineWidth=1;ctx.strokeRect(bx,Y,hsW,hsH);ctx.fillStyle=pct<50?'#000':'#fff';lbl(`${pct}%`,bx+hsW/2,Y+hsH+mm(.3),mm(1),'center');});
+Y+=hsH+mm(3);
+
+// 17. HALFTONE LPI COMPARISON
+sec('17 · HALFTONE LPI (25, 50, 75, 100, 133, 150)',P,Y);Y+=mm(3);
+const lpiW=CW/6-mm(1),lpiH=mm(8);
+[25,50,75,100,133,150].forEach((lpi,i)=>{const bx=P+i*(lpiW+mm(1));const d=ctx.createImageData(Math.round(lpiW),Math.round(lpiH));const freq=lpi/(25.4); // dots per pixel at current DPI
+for(let py=0;py<Math.round(lpiH);py++)for(let px=0;px<Math.round(lpiW);px++){const tone=0.5;const dotX=(px*freq/DPI)*2*Math.PI,dotY=(py*freq/DPI)*2*Math.PI;const scr=(Math.sin(dotX)*Math.sin(dotY)+1)/2;const v=tone>scr?0:255,idx=(py*Math.round(lpiW)+px)*4;d.data[idx]=v;d.data[idx+1]=v;d.data[idx+2]=v;d.data[idx+3]=255;}ctx.putImageData(d,Math.round(bx),Math.round(Y));lbl(`${lpi}lpi`,bx,Y+lpiH+mm(.3),mm(1.1));});
+Y+=lpiH+mm(3);
+
+// 18. GRAIN TEXTURE FREQUENCY (different noise scales at 50%)
+sec('18 · GRAIN SCALE (noise frequency)',P,Y);Y+=mm(3);
+const gsW=CW/6-mm(1),gsH=mm(8);
+function nhash(a,b){let h=a*374761393+b*668265263;h=(h^(h>>13))*1274126177;return(h^(h>>16))&255;}
+[1,2,3,4,6,8].forEach((scale,i)=>{const bx=P+i*(gsW+mm(1));const sw=Math.round(gsW),sh=Math.round(gsH);const d=ctx.createImageData(sw,sh);
+for(let py=0;py<sh;py++)for(let px=0;px<sw;px++){
+const nx=px/scale,ny=py/scale;const ix=Math.floor(nx),iy=Math.floor(ny);const fx=nx-ix,fy=ny-iy;
+const c00=nhash(ix,iy)/255,c10=nhash(ix+1,iy)/255,c01=nhash(ix,iy+1)/255,c11=nhash(ix+1,iy+1)/255;
+const nx0=c00+(c10-c00)*fx,nx1=c01+(c11-c01)*fx,val=nx0+(nx1-nx0)*fy;
+const v=val>0.5?0:255,idx=(py*sw+px)*4;d.data[idx]=v;d.data[idx+1]=v;d.data[idx+2]=v;d.data[idx+3]=255;}
+ctx.putImageData(d,Math.round(bx),Math.round(Y));lbl(`${scale}px`,bx,Y+gsH+mm(.3),mm(1.1));});
+Y+=gsH+mm(3);
+
+// 19. INK SPREAD / ISOLATED MARKS TEST
+sec('19 · INK SPREAD (isolated marks)',P,Y);Y+=mm(3);
+const isH=mm(8);
+// Draw isolated dots of increasing size
+lbl('DOTS:',P,Y+mm(.3),mm(1.2));
+[1,2,3,4,5,6,8,10,12,16,20,24].forEach((sz,i)=>{const cx=P+mm(12)+i*mm(8),cy=Y+mm(4);ctx.beginPath();ctx.arc(cx,cy,sz/2,0,Math.PI*2);ctx.fillStyle='#000';ctx.fill();lbl(`${sz}`,cx,Y+isH-mm(1),mm(.9),'center');});
+// Isolated lines
+lbl('LINES:',P,Y+isH+mm(1),mm(1.2));
+[1,2,3,4,5,6,8,10].forEach((w,i)=>{const lx=P+mm(12)+i*mm(12);ctx.fillStyle='#000';ctx.fillRect(lx,Y+isH+mm(.5),w,mm(5));lbl(`${w}px`,lx,Y+isH+mm(6),mm(.9));});
+Y+=isH+mm(9);
+
+// 20. GRADIENT BANDING TEST (subtle gradients to detect quantization)
+sec('20 · GRADIENT BANDING (subtle ramps)',P,Y);Y+=mm(3);
+const gbH=mm(5),gbW=CW;
+// 0-10% very subtle highlight ramp
+const gbr1=ctx.createLinearGradient(P,0,P+gbW/2-mm(1),0);gbr1.addColorStop(0,'#fff');gbr1.addColorStop(1,gray(g(10)));
+ctx.fillStyle=gbr1;ctx.fillRect(P,Y,gbW/2-mm(1),gbH);
+lbl('0→10%',P,Y+gbH+mm(.3),mm(1.1));
+// 90-100% shadow ramp
+const gbr2=ctx.createLinearGradient(P+gbW/2+mm(1),0,P+gbW,0);gbr2.addColorStop(0,gray(g(90)));gbr2.addColorStop(1,'#000');
+ctx.fillStyle=gbr2;ctx.fillRect(P+gbW/2+mm(1),Y,gbW/2-mm(1),gbH);
+lbl('90→100%',P+gbW/2+mm(1),Y+gbH+mm(.3),mm(1.1));
+Y+=gbH+mm(3);
+
+// 21. TONE REPRODUCTION CURVE PATCHES
+sec('21 · TRC PATCHES (input → measure output)',P,Y);Y+=mm(3);
+const trcW=CW/11-mm(.5),trcH=mm(6);
+[0,5,10,20,30,40,50,60,70,80,100].forEach((pct,i)=>{const bx=P+i*(trcW+mm(.5));
+ctx.fillStyle=gray(g(pct));ctx.fillRect(bx,Y,trcW,trcH);
+// Add a small reference dot at exact 50% inside each patch for comparison
+ctx.beginPath();ctx.arc(bx+trcW/2,Y+trcH/2,mm(1),0,Math.PI*2);ctx.fillStyle=gray(128);ctx.fill();
+ctx.fillStyle=pct<50?'#000':'#fff';lbl(`${pct}`,bx+trcW/2,Y+trcH+mm(.3),mm(1),'center');});
+Y+=trcH+mm(3);
+
+// 22. HALFTONE DOT SHAPES (round, elliptical, square, line)
+sec('22 · DOT SHAPES (round / ellipse / square / line)',P,Y);Y+=mm(3);
+const dsW=CW/4-mm(1.5),dsH=mm(8);
+['round','ellipse','square','line'].forEach((shape,i)=>{const bx=P+i*(dsW+mm(1.5));const sw=Math.round(dsW),sh=Math.round(dsH);const d=ctx.createImageData(sw,sh);
+const freq=0.08;
+for(let py=0;py<sh;py++)for(let px=0;px<sw;px++){const tone=px/sw;let scr;const dx=Math.sin(px*freq*Math.PI*2),dy=Math.sin(py*freq*Math.PI*2);
+if(shape==='round')scr=(dx*dx+dy*dy)/2;
+else if(shape==='ellipse')scr=(dx*dx*0.7+dy*dy*0.3);
+else if(shape==='square')scr=Math.max(Math.abs(dx),Math.abs(dy))/2+0.25;
+else scr=(dy+1)/2;
+const v=tone>scr?0:255,idx=(py*sw+px)*4;d.data[idx]=v;d.data[idx+1]=v;d.data[idx+2]=v;d.data[idx+3]=255;}
+ctx.putImageData(d,Math.round(bx),Math.round(Y));lbl(shape.toUpperCase(),bx,Y+dsH+mm(.3),mm(1.1));});
+Y+=dsH+mm(3);
+
+// 23. SOLID FILL UNIFORMITY
+sec('23 · SOLID FILL UNIFORMITY',P,Y);Y+=mm(3);
+const sfW=CW/3-mm(1),sfH=mm(10);
+// Large solid black
+ctx.fillStyle='#000';ctx.fillRect(P,Y,sfW,sfH);lbl('100% SOLID',P,Y+sfH+mm(.3),mm(1.1));
+// Large 50% — halftone simulation
+const sf2=ctx.createImageData(Math.round(sfW),Math.round(sfH));for(let py=0;py<Math.round(sfH);py++)for(let px=0;px<Math.round(sfW);px++){const v=((px+py)%2===0)?0:255,idx=(py*Math.round(sfW)+px)*4;sf2.data[idx]=v;sf2.data[idx+1]=v;sf2.data[idx+2]=v;sf2.data[idx+3]=255;}
+ctx.putImageData(sf2,Math.round(P+sfW+mm(1)),Math.round(Y));lbl('50% MICRO',P+sfW+mm(1),Y+sfH+mm(.3),mm(1.1));
+// 50% flat fill
+ctx.fillStyle=gray(128);ctx.fillRect(P+(sfW+mm(1))*2,Y,sfW,sfH);lbl('50% FLAT',P+(sfW+mm(1))*2,Y+sfH+mm(.3),mm(1.1));
+Y+=sfH+mm(3);
+
+// 24. DENSITOMETER STRIP
+sec('24 · DENSITOMETER',P,Y);Y+=mm(3);
+const dpW=CW/11-mm(.5),dpH=mm(8);
+[0,5,10,20,30,40,50,60,70,80,100].forEach((pct,i)=>{const bx=P+i*(dpW+mm(.5));ctx.fillStyle=gray(g(pct));ctx.fillRect(bx,Y,dpW,dpH);ctx.fillStyle=pct<50?'#000':'#fff';lbl(`${pct}%`,bx+dpW/2,Y+dpH/2-mm(.6),mm(1.3),'center');});
+Y+=dpH+mm(1);
+
+// CROP MARKS
+const mk=mm(5),mo=mm(3);ctx.strokeStyle='#000';ctx.lineWidth=1;
+ctx.beginPath();ctx.moveTo(mo,0);ctx.lineTo(mo,mk);ctx.stroke();ctx.beginPath();ctx.moveTo(0,mo);ctx.lineTo(mk,mo);ctx.stroke();
+ctx.beginPath();ctx.moveTo(W-mo,0);ctx.lineTo(W-mo,mk);ctx.stroke();ctx.beginPath();ctx.moveTo(W,mo);ctx.lineTo(W-mk,mo);ctx.stroke();
+ctx.beginPath();ctx.moveTo(mo,H);ctx.lineTo(mo,H-mk);ctx.stroke();ctx.beginPath();ctx.moveTo(0,H-mo);ctx.lineTo(mk,H-mo);ctx.stroke();
+ctx.beginPath();ctx.moveTo(W-mo,H);ctx.lineTo(W-mo,H-mk);ctx.stroke();ctx.beginPath();ctx.moveTo(W,H-mo);ctx.lineTo(W-mk,H-mo);ctx.stroke();
+// Reg marks
+function reg(rx,ry){ctx.strokeStyle='#000';ctx.lineWidth=1;ctx.beginPath();ctx.arc(rx,ry,mm(2),0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.moveTo(rx-mm(3),ry);ctx.lineTo(rx+mm(3),ry);ctx.stroke();ctx.beginPath();ctx.moveTo(rx,ry-mm(3));ctx.lineTo(rx,ry+mm(3));ctx.stroke();}
+reg(mm(10),mm(10));reg(W-mm(10),mm(10));reg(mm(10),H-mm(10));reg(W-mm(10),H-mm(10));reg(W/2,mm(5));reg(W/2,H-mm(5));
+// Footer
+ctx.font=`${mm(1.3)}px monospace`;ctx.fillStyle='#999';ctx.textAlign='center';ctx.fillText('RISO/CAM v1.3 — Print on riso, photograph/scan result to calibrate — Y='+Math.round(Y/MM)+'mm / 420mm',W/2,H-mm(2.5));
+
+// Debug: log remaining space
+console.log('Y end:', Math.round(Y/MM), 'mm / 420mm — remaining:', Math.round((H-Y)/MM), 'mm');
+
+function download(){c.toBlob(blob=>{const url=URL.createObjectURL(blob);const a=document.createElement('a');a.download=`riso-test-a3-${DPI}dpi.png`;a.href=url;a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);},'image/png');}
+</script>
+</body>
+</html>

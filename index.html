@@ -23,22 +23,33 @@ html,body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text
   .ph-exit-btn{display:none!important}
 }
 header{border-bottom:1px solid var(--border);background:var(--bg);position:sticky;top:0;z-index:100}
-.header-inner{max-width:1200px;margin:0 auto;padding:8px 20px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap}
-.header-row{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.header-inner{max-width:1200px;margin:0 auto;padding:8px 20px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.header-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .header-row-right{justify-content:flex-end}
 .header-mode{display:flex;background:white;border:1px solid var(--border);border-radius:4px;overflow:hidden;flex-shrink:0}
 .header-mode-btn{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:6px 12px;border:none;background:none;cursor:pointer;transition:all .15s;color:var(--text-muted)}
 .header-mode-btn.active{background:var(--text);color:white}
+.header-dl{display:flex;align-items:center;background:var(--text);border-radius:4px;overflow:hidden;flex-shrink:0}
+.header-dl-arrow{display:flex;align-items:center;padding:0 0 0 8px;border-right:1px solid rgba(255,255,255,.15)}
+.header-dl-arrow svg{width:10px;height:10px;stroke:rgba(255,255,255,.5)}
+.header-dl-btn{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:6px 10px;border:none;border-right:1px solid rgba(255,255,255,.15);background:none;cursor:pointer;transition:all .15s;color:white}
+.header-dl-btn:last-child{border-right:none}
+.header-dl-btn:hover{background:rgba(255,255,255,.12)}
+.header-src{display:flex;background:white;border:1px solid var(--border);border-radius:4px;overflow:hidden;flex-shrink:0}
+.header-src-btn{font-family:'Space Mono',monospace;font-size:11px;padding:5px 10px;border:none;border-right:1px solid var(--border);background:none;cursor:pointer;transition:all .15s;color:var(--text-muted);display:flex;align-items:center;justify-content:center}
+.header-src-btn:last-child{border-right:none}
+.header-src-btn:hover{background:var(--text);color:var(--bg)}
+.header-src-btn svg{width:14px;height:14px}
 .header-sep{width:1px;height:20px;background:var(--border);flex-shrink:0}
 .header-actions{display:flex;align-items:center;gap:6px}
 /* FPS selector group next to CAM */
-.fps-group{display:inline-flex;align-items:center;gap:0;border:1px solid var(--border);border-radius:3px;overflow:hidden;margin-left:0}
-.fps-group .fps-btn{font-family:'Space Mono',monospace;font-size:9px;padding:4px 7px;border:none;border-right:1px solid var(--border);background:white;cursor:pointer;color:var(--text-muted);transition:all .12s;line-height:1.2}
+.fps-group{display:inline-flex;align-items:center;gap:0;border:1px solid var(--border);border-radius:4px;overflow:hidden;margin-left:0}
+.fps-group .fps-btn{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:6px 8px;border:none;border-right:1px solid var(--border);background:white;cursor:pointer;color:var(--text-muted);transition:all .12s;line-height:1}
 .fps-group .fps-btn:last-of-type{border-right:none}
 .fps-group .fps-btn.active{background:var(--text);color:white}
 .fps-group .fps-btn:hover:not(.active){background:#f0f0f0}
 .fps-group .fps-label{font-family:'Space Mono',monospace;font-size:7px;letter-spacing:1px;color:var(--text-muted);padding:0 5px 0 3px}
-.header-btn{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:5px 10px;border:1px solid var(--border);background:white;cursor:pointer;transition:all .2s;border-radius:3px;color:var(--text-muted)}
+.header-btn{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:5px 10px;border:1px solid var(--border);background:white;cursor:pointer;transition:all .2s;border-radius:3px;color:var(--text-muted);display:inline-flex;align-items:center;justify-content:center}
 .header-btn:hover{background:var(--text);color:var(--bg);border-color:var(--text)}
 .header-btn.primary{background:var(--text);color:white;border-color:var(--text)}
 .header-btn.primary:hover{background:#333}
@@ -256,7 +267,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
 /* Bottom controls — solid black area below viewfinder */
 .ph-controls{display:flex;flex-direction:column;align-items:center;gap:10px;padding:12px 16px calc(env(safe-area-inset-bottom,12px) + 14px);background:var(--bg);flex-shrink:0;z-index:10}
 /* Tool strip — small cycling buttons */
-.ph-tools{display:flex;gap:8px;align-items:center;justify-content:center;width:100%;flex-wrap:wrap}
+.ph-tools{display:flex;gap:6px;align-items:center;justify-content:center;width:100%;flex-wrap:nowrap}
 .ph-tool-btn{font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.5px;padding:7px 16px;border:1px solid var(--border);background:white;color:var(--text-muted);border-radius:20px;cursor:pointer;transition:all .12s;white-space:nowrap;display:flex;align-items:center;gap:4px;-webkit-tap-highlight-color:transparent}
 .ph-tool-btn:active{background:#e8e2d8}
 .ph-tool-btn.highlight{background:var(--text);border-color:var(--text);color:white}
@@ -281,8 +292,12 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
 .ph-bcs-strip.visible{display:flex;flex-direction:column;gap:6px}
 .ph-bcs-row{display:flex;align-items:center;gap:6px}
 .ph-bcs-label{font-family:'Space Mono',monospace;font-size:9px;color:var(--text-muted);width:14px;text-align:center;flex-shrink:0}
-.ph-bcs-slider{flex:1;-webkit-appearance:none;height:3px;background:var(--border);border-radius:2px;outline:none}
-.ph-bcs-slider::-webkit-slider-thumb{-webkit-appearance:none;width:28px;height:16px;border-radius:8px;background:var(--text);cursor:pointer;border:none;box-shadow:0 1px 4px rgba(0,0,0,.15)}
+.ph-bcs-arc{flex:1;height:28px;touch-action:none;overflow:visible}
+.ph-bcs-track{fill:none;stroke:var(--border);stroke-width:3;stroke-linecap:round}
+.ph-bcs-thumb{fill:var(--text);filter:drop-shadow(0 1px 3px rgba(0,0,0,.2));transition:r .15s ease}
+.ph-bcs-arc.dragging .ph-bcs-thumb{r:13}
+.phone-mode .ch-dens:active::-webkit-slider-thumb{transform:scale(1.6)}
+.phone-mode .slider-row input[type="range"]:active::-webkit-slider-thumb{transform:scale(1.6)}
 .ph-bcs-val{font-family:'Space Mono',monospace;font-size:9px;color:var(--text-muted);width:18px;text-align:right;flex-shrink:0}
 /* Overlay panels (bottom sheets) */
 .ph-overlay{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-radius:16px 16px 0 0;z-index:300;transform:translateY(100%);transition:transform .3s cubic-bezier(.16,1,.3,1);max-height:75vh;overflow-y:auto;padding:0 0 calc(env(safe-area-inset-bottom,8px) + 16px);color:var(--text)}
@@ -312,24 +327,23 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
 <header>
   <div class="header-inner">
   <div class="header-row">
-    <span style="font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text-muted);opacity:0.6;cursor:pointer" onclick="toggleDebug()" title="Debug menu">v1.3</span>
     <div class="header-mode">
       <button class="header-mode-btn active" id="modeGrain" onclick="setMode('grain')">GRAIN</button>
       <button class="header-mode-btn" id="modeScreen" onclick="setMode('screen')">SCREEN</button>
     </div>
-    <div class="header-sep"></div>
-    <div class="header-actions">
-      <button class="header-btn primary" onclick="saveHiRes()">↓ PNG</button>
-      <button class="header-btn primary" onclick="saveGif()">↓ GIF</button>
-      <button class="header-btn" onclick="exportSeparations()">SEPS</button>
-      <button class="header-btn" onclick="newMisreg()">RE-REG</button>
-      <button class="header-btn" id="compareBtn" onclick="toggleCompare()">COMPARE</button>
+    <div class="header-dl">
+      <span class="header-dl-arrow"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg></span>
+      <button class="header-dl-btn" onclick="saveHiRes()">PNG</button>
+      <button class="header-dl-btn" onclick="saveGif()">GIF</button>
+      <button class="header-dl-btn" onclick="exportSeparations()">SEPS</button>
     </div>
-  </div>
-  <div class="header-row header-row-right">
+    <button class="header-btn" onclick="newMisreg()" title="Re-register"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></button>
+    <button class="header-btn" id="compareBtn" onclick="toggleCompare()" title="Compare"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="18" height="18" rx="2"/><line x1="11" y1="3" x2="11" y2="21"/><polyline points="15 8 19 12 15 16"/></svg></button>
+    <div class="header-src">
+      <button class="header-src-btn" onclick="pickFile()" title="Upload">↑</button>
+      <button class="header-src-btn" id="camBtn" onclick="toggleCam()" title="Camera"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></button>
+    </div>
     <button class="header-btn" onclick="togglePhoneMode()">📱</button>
-    <button class="header-btn" onclick="pickFile()">UPLOAD</button>
-    <button class="header-btn" id="camBtn" onclick="toggleCam()">CAMERA</button>
     <div class="fps-group" id="fpsGroup">
       <button class="fps-btn active" data-fps="4" onclick="setRisoFps(4)">4</button>
       <button class="fps-btn" data-fps="8" onclick="setRisoFps(8)">8</button>
@@ -340,6 +354,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
   </div>
   </div>
 </header>
+<span id="versionTag" style="display:none">v1.3</span>
 <div class="app-container">
   <div class="left-col">
   <div class="viewfinder-wrap">
@@ -398,7 +413,7 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
     </div>
     <!-- Settings -->
     <div class="control-section">
-      <div class="section-header section-toggle open" onclick="toggleSection('settingsBody',this)">SETTINGS <span class="toggle-arrow">▸</span></div>
+      <div class="section-header section-toggle open" onclick="toggleSection('settingsBody',this)">SETTINGS <span style="font-size:8px;opacity:.4;margin-left:4px;cursor:pointer" onclick="event.stopPropagation();toggleDebug()" title="Debug">v1.3</span><span class="toggle-arrow">▸</span></div>
       <div class="settings-body collapsible" id="settingsBody">
         <div id="grainSettings">
           <div class="slider-row"><span class="slider-label">Grain Size</span><input type="range" id="grainSize" min="0.5" max="4" value="1.5" step="0.25"><span class="slider-value" id="grainSizeVal">1.5</span></div>
@@ -462,9 +477,9 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
   <div class="ph-controls">
     <!-- BCS sliders (hidden by default) -->
     <div class="ph-bcs-strip" id="phBcsStrip">
-      <div class="ph-bcs-row"><span class="ph-bcs-label">B</span><input type="range" class="ph-bcs-slider" id="phBcs0" min="-30" max="30" value="0" step="2"><span class="ph-bcs-val" id="phBcs0Val">0</span></div>
-      <div class="ph-bcs-row"><span class="ph-bcs-label">C</span><input type="range" class="ph-bcs-slider" id="phBcs1" min="-30" max="30" value="0" step="2"><span class="ph-bcs-val" id="phBcs1Val">0</span></div>
-      <div class="ph-bcs-row"><span class="ph-bcs-label">S</span><input type="range" class="ph-bcs-slider" id="phBcs2" min="-30" max="30" value="0" step="2"><span class="ph-bcs-val" id="phBcs2Val">0</span></div>
+      <div class="ph-bcs-row"><span class="ph-bcs-label">B</span><svg class="ph-bcs-arc" data-key="imgBright" viewBox="0 0 300 28"><path class="ph-bcs-track" d="M 4,26 Q 150,2 296,26"/><circle class="ph-bcs-thumb" r="9"/></svg><span class="ph-bcs-val" id="phBcs0Val">0</span></div>
+      <div class="ph-bcs-row"><span class="ph-bcs-label">C</span><svg class="ph-bcs-arc" data-key="imgContrast" viewBox="0 0 300 28"><path class="ph-bcs-track" d="M 4,26 Q 150,2 296,26"/><circle class="ph-bcs-thumb" r="9"/></svg><span class="ph-bcs-val" id="phBcs1Val">0</span></div>
+      <div class="ph-bcs-row"><span class="ph-bcs-label">S</span><svg class="ph-bcs-arc" data-key="imgSat" viewBox="0 0 300 28"><path class="ph-bcs-track" d="M 4,26 Q 150,2 296,26"/><circle class="ph-bcs-thumb" r="9"/></svg><span class="ph-bcs-val" id="phBcs2Val">0</span></div>
     </div>
     <!-- Tool strip -->
     <div class="ph-tools" id="phTools">
@@ -1815,9 +1830,13 @@ let needsAspectUpdate=true;
 let videoFrameReady=false;
 let needsRedraw=true; // dirty flag — skip GPU work when nothing changed
 let _rafId=0;
+let _pendingDirty=false; // coalesce multiple markDirty calls per frame
 
 function scheduleRender(){if(!_rafId) _rafId=requestAnimationFrame(render);}
-function markDirty(){needsRedraw=true;scheduleRender();}
+function markDirty(){
+  needsRedraw=true;
+  if(!_pendingDirty){_pendingDirty=true;requestAnimationFrame(()=>{_pendingDirty=false;scheduleRender();});}
+}
 
 const inkLocs=new Array(4), offLocs=new Array(4), angLocs=new Array(4), chanLocs=new Array(4), densLocs=new Array(4);
 // Pre-built uniform location arrays (populated in init, avoids per-frame allocation)
@@ -2282,7 +2301,8 @@ function render(){
     const interval=1000/risoFps;
     if(now - lastRisoFrame < interval && !needsRedraw){
       fpsFrames++;
-      scheduleRender(); // continuous mode — keep ticking
+      // Sleep until next frame is due instead of spinning RAF
+      if(!_rafId) _rafId=setTimeout(()=>{_rafId=0;scheduleRender();}, Math.max(1, interval-(now-lastRisoFrame)));
       return;
     }
     lastRisoFrame=now;
@@ -2311,7 +2331,7 @@ function render(){
       if(!window._lastStaticFrame) window._lastStaticFrame = 0;
       if(now - window._lastStaticFrame < staticInterval && !needsRedraw) {
         fpsFrames++;
-        scheduleRender();
+        if(!_rafId) _rafId=setTimeout(()=>{_rafId=0;scheduleRender();}, Math.max(1, staticInterval-(now-window._lastStaticFrame)));
         return;
       }
       window._lastStaticFrame = now;
@@ -2501,9 +2521,9 @@ function render(){
     fpsFrames=0;fpsLast=fpsNow;
   }
 
-  // Schedule next frame only if continuous mode
+  // Schedule next frame only if continuous mode — throttled scheduling happens above
   const continuous = camOn || videoOn || isRecording || cached.grainStatic > 0;
-  if(continuous) scheduleRender();
+  if(continuous && !_rafId) scheduleRender();
 }
 
 // Texture double-buffer swap helper
@@ -2529,6 +2549,8 @@ function stopVideo(){
     $vid.pause();$vid.removeAttribute('src');$vid.load();
     videoOn=false;
   }
+  if(window._vidFallback){clearInterval(window._vidFallback);window._vidFallback=null;}
+  if(window._camFallback){clearInterval(window._camFallback);window._camFallback=null;}
   if(gifRafId){cancelAnimationFrame(gifRafId);gifRafId=0;}
   gifImg=null;
 }
@@ -2561,7 +2583,7 @@ function handleFile(e){
       if($vid.requestVideoFrameCallback){
         $vid.requestVideoFrameCallback(onVideoFrame);
       }else{
-        const fb=()=>{if(videoOn&&$vid.readyState>=2)videoFrameReady=true;requestAnimationFrame(fb);};fb();
+        window._vidFallback=setInterval(()=>{if(videoOn&&$vid.readyState>=2){videoFrameReady=true;scheduleRender();}else if(!videoOn)clearInterval(window._vidFallback);},50);
       }
       markDirty();
     };
@@ -2671,7 +2693,9 @@ function hideOnboarding(){const h=document.getElementById('onboardHint');if(h)h.
 async function toggleCam(){
   if(camOn){
     if(camStream)camStream.getTracks().forEach(t=>t.stop());
-    camOn=false;el('camBtn').textContent='CAMERA';
+    camOn=false;
+    if(window._camFallback){clearInterval(window._camFallback);window._camFallback=null;}
+    el('camBtn').textContent='CAMERA';
     if(srcImg){
       gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
       gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,srcImg);
@@ -2696,9 +2720,9 @@ async function toggleCam(){
     if($vid.requestVideoFrameCallback){
       $vid.requestVideoFrameCallback(onVideoFrame);
     }else{
-      // Fallback: mark ready every animation frame
-      const fallback=()=>{if(camOn&&$vid.readyState>=2)videoFrameReady=true;requestAnimationFrame(fallback);};
-      fallback();
+      // Fallback: check video readiness at 20fps instead of every RAF
+      if(window._camFallback)clearInterval(window._camFallback);
+      window._camFallback=setInterval(()=>{if(camOn&&$vid.readyState>=2){videoFrameReady=true;scheduleRender();}else if(!camOn)clearInterval(window._camFallback);},50);
     }
   }catch(e){toast('Camera not available');}
 }
@@ -3329,7 +3353,7 @@ function openProfileCreator(){
     </div>
   </div>`;
   document.body.appendChild(overlay);
-  overlay.addEventListener('click',e=>{if(e.target===overlay) closeProfCreator();});
+  overlay.addEventListener('pointerdown',e=>{if(!e.target.closest('.prof-creator-modal')) closeProfCreator();});
 }
 function closeProfCreator(){ const o=document.getElementById('profCreatorOverlay'); if(o) o.remove(); }
 function luminance(hex){ const r=parseInt(hex.slice(1,3),16)/255,g=parseInt(hex.slice(3,5),16)/255,b=parseInt(hex.slice(5,7),16)/255; return 0.299*r+0.587*g+0.114*b; }
@@ -3713,36 +3737,66 @@ function phToggleBcs(){
   const actions=document.querySelector('.ph-actions');
   if(strip) strip.classList.toggle('visible',phBcsOpen);
   if(btn) btn.classList.toggle('highlight',phBcsOpen);
-  // BCS full-takeover: hide tool strip and action circles
-  if(tools) tools.style.display=phBcsOpen?'none':'';
-  if(actions){
-    actions.querySelectorAll('.ph-action-circle').forEach(c=>c.style.display=phBcsOpen?'none':'');
-    // Keep shutter visible but compact
-  }
-  // Sync values
+  // Sync arc slider positions
   if(phBcsOpen){
-    el('phBcs0').value=cached.imgBright;el('phBcs0Val').textContent=cached.imgBright;
-    el('phBcs1').value=cached.imgContrast;el('phBcs1Val').textContent=cached.imgContrast;
-    el('phBcs2').value=cached.imgSat;el('phBcs2Val').textContent=cached.imgSat;
+    syncArcSliders();
   }
 }
 
+function syncArcSliders(){
+  document.querySelectorAll('.ph-bcs-arc').forEach(svg=>{
+    const path=svg.querySelector('.ph-bcs-track');
+    const thumb=svg.querySelector('.ph-bcs-thumb');
+    const key=svg.dataset.key;
+    const val=cached[key]||0;
+    const t=(val+30)/60;
+    const len=path.getTotalLength();
+    const pt=path.getPointAtLength(t*len);
+    thumb.setAttribute('cx',pt.x);
+    thumb.setAttribute('cy',pt.y);
+    const valEl=svg.parentElement.querySelector('.ph-bcs-val');
+    if(valEl) valEl.textContent=val;
+  });
+}
+
 function phBindBcs(){
-  [['phBcs0','imgBright'],['phBcs1','imgContrast'],['phBcs2','imgSat']].forEach(([phId,key])=>{
-    const s=el(phId);
-    if(!s)return;
-    s.addEventListener('input',()=>{
-      const v=parseFloat(s.value);
+  document.querySelectorAll('.ph-bcs-arc').forEach(svg=>{
+    const path=svg.querySelector('.ph-bcs-track');
+    const thumb=svg.querySelector('.ph-bcs-thumb');
+    const key=svg.dataset.key;
+    const valEl=svg.parentElement.querySelector('.ph-bcs-val');
+    const len=path.getTotalLength();
+    function setNorm(t){
+      t=Math.max(0,Math.min(1,t));
+      const pt=path.getPointAtLength(t*len);
+      thumb.setAttribute('cx',pt.x);
+      thumb.setAttribute('cy',pt.y);
+      const v=Math.round((t*60-30)/2)*2;
       cached[key]=v;
-      const valEl=el(phId+'Val');
-      if(valEl)valEl.textContent=v;
-      // Sync desktop sliders
-      const desk=el(key);
-      if(desk)desk.value=v;
-      const deskVal=el(key+'Val');
-      if(deskVal)deskVal.textContent=v;
+      if(valEl) valEl.textContent=v;
+      const desk=el(key);if(desk)desk.value=v;
+      const dv=el(key+'Val');if(dv)dv.textContent=v;
       markDirty();
+    }
+    // Initial position
+    const initT=((cached[key]||0)+30)/60;
+    const initPt=path.getPointAtLength(initT*len);
+    thumb.setAttribute('cx',initPt.x);
+    thumb.setAttribute('cy',initPt.y);
+    svg.addEventListener('pointerdown',e=>{
+      e.preventDefault();
+      svg.setPointerCapture(e.pointerId);
+      svg.classList.add('dragging');
+      const r=svg.getBoundingClientRect();
+      setNorm((e.clientX-r.left)/r.width);
     });
+    svg.addEventListener('pointermove',e=>{
+      if(!svg.classList.contains('dragging'))return;
+      const r=svg.getBoundingClientRect();
+      setNorm((e.clientX-r.left)/r.width);
+    });
+    svg.addEventListener('pointerup',()=>svg.classList.remove('dragging'));
+    svg.addEventListener('pointercancel',()=>svg.classList.remove('dragging'));
   });
 }
 
@@ -3771,7 +3825,7 @@ async function phFlipCam(){
       await $vid.play();
       camOn=true;needsAspectUpdate=true;computeCrop();scheduleRender();
       if($vid.requestVideoFrameCallback) $vid.requestVideoFrameCallback(onVideoFrame);
-      else{const fb=()=>{if(camOn&&$vid.readyState>=2)videoFrameReady=true;requestAnimationFrame(fb);};fb();}
+      else{if(window._camFallback)clearInterval(window._camFallback);window._camFallback=setInterval(()=>{if(camOn&&$vid.readyState>=2){videoFrameReady=true;scheduleRender();}else if(!camOn)clearInterval(window._camFallback);},50);}
       return;
     }catch(e){/* try next constraint */}
   }
@@ -3781,7 +3835,7 @@ async function phFlipCam(){
     camStream=s;$vid.srcObject=s;await $vid.play();
     camOn=true;needsAspectUpdate=true;computeCrop();scheduleRender();
     if($vid.requestVideoFrameCallback) $vid.requestVideoFrameCallback(onVideoFrame);
-    else{const fb=()=>{if(camOn&&$vid.readyState>=2)videoFrameReady=true;requestAnimationFrame(fb);};fb();}
+    else{if(window._camFallback)clearInterval(window._camFallback);window._camFallback=setInterval(()=>{if(camOn&&$vid.readyState>=2){videoFrameReady=true;scheduleRender();}else if(!camOn)clearInterval(window._camFallback);},50);}
     toast('Only one camera available');
   }catch(e){toast('Camera error');}
 }
