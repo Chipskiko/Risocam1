@@ -84,7 +84,7 @@ function handleFile(e){
       $status.textContent='▶ VIDEO';
       $res.textContent=$vid.videoWidth+'×'+$vid.videoHeight;
       if($vid.requestVideoFrameCallback){
-        $vid.requestVideoFrameCallback(onVideoFrame);
+        $vid.requestVideoFrameCallback(R.onVideoFrame);
       }else{
         window._vidFallback=setInterval(()=>{if(videoOn&&$vid.readyState>=2){videoFrameReady=true;scheduleRender();}else if(!videoOn)clearInterval(window._vidFallback);},50);
       }
@@ -277,7 +277,7 @@ async function toggleCam(){
   }
   try{
     stopVideo(); // stop any uploaded video before starting camera
-    camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:isPhone()?640:1280}}});
+    camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:R.isPhone()?640:1280}}});
     $vid.srcObject=camStream;
     // Wait for video to actually start playing
     await $vid.play();
@@ -288,7 +288,7 @@ async function toggleCam(){
     hideOnboarding();
     // Use requestVideoFrameCallback if available (Chrome/Edge)
     if($vid.requestVideoFrameCallback){
-      $vid.requestVideoFrameCallback(onVideoFrame);
+      $vid.requestVideoFrameCallback(R.onVideoFrame);
     }else{
       // Fallback: check video readiness at 20fps instead of every RAF
       if(window._camFallback)clearInterval(window._camFallback);

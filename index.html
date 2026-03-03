@@ -46,7 +46,7 @@
   <div class="viewfinder-wrap">
   <div class="viewfinder-panel" id="viewfinder">
     <canvas id="gl"></canvas>
-    <div id="paperOverlay" style="position:absolute;inset:-20px;pointer-events:none;mix-blend-mode:multiply;background-size:cover;background-position:center;background-repeat:no-repeat;opacity:0.3"></div>
+    <div id="paperOverlay" style="position:absolute;inset:0;pointer-events:none;mix-blend-mode:multiply;background-size:cover;background-position:center;background-repeat:repeat;opacity:0.3"></div>
     <video id="vid" autoplay playsinline muted style="display:none"></video>
     <div class="compare-overlay" id="compareOverlay"><img id="compareImg" /><canvas id="compareCanvas" style="display:none"></canvas><div class="compare-handle" id="compareHandle"></div><div class="compare-label compare-label-l">ORIGINAL</div><div class="compare-label compare-label-r">RISO</div></div>
     <div class="crop-guide" id="deskCropGuide"><div class="crop-guide-inner" id="deskCropInner"></div></div>
@@ -168,7 +168,7 @@
   <!-- Viewfinder — full bleed, canvas fills this -->
   <div class="ph-viewfinder" id="phViewfinder">
     <!-- canvas gets moved here in phone mode -->
-    <div id="phPaperOverlay" style="position:absolute;inset:-20px;pointer-events:none;mix-blend-mode:multiply;background-size:cover;background-position:center;background-repeat:no-repeat;opacity:0.3;z-index:1"></div>
+    <div id="phPaperOverlay" style="position:absolute;inset:0;pointer-events:none;mix-blend-mode:multiply;background-size:cover;background-position:center;background-repeat:repeat;opacity:0.3;z-index:1"></div>
     <span class="ph-rec-badge" id="phRecBadge">● REC 00:00</span>
     <div class="ph-crop-guide" id="phCropGuide"><div class="ph-crop-guide-inner" id="phCropInner"></div></div>
   </div>
@@ -1471,10 +1471,10 @@ void main(){
 <script src="js/undo.js?v=2"></script>
 <script src="js/compare.js?v=2"></script>
 <script src="js/renderer.js?v=3"></script>
-<script src="js/source.js?v=4"></script>
+<script src="js/source.js?v=5"></script>
 <script src="js/save.js?v=3"></script>
 <script src="js/ui-controls.js?v=9"></script>
 <script src="js/ui-paper.js?v=11"></script>
-<script src="js/phone.js?v=10"></script>
+<script src="js/phone.js?v=11"></script>
 </body>
 </html>

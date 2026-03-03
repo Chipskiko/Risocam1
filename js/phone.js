@@ -209,8 +209,8 @@ async function phFlipCam(){
   camOn=false;
   // Try exact constraint first, then ideal as fallback
   const constraints=[
-    {video:{facingMode:{exact:newFacing},width:{ideal:isPhone()?640:1280}}},
-    {video:{facingMode:newFacing,width:{ideal:isPhone()?640:1280}}}
+    {video:{facingMode:{exact:newFacing},width:{ideal:R.isPhone()?640:1280}}},
+    {video:{facingMode:newFacing,width:{ideal:R.isPhone()?640:1280}}}
   ];
   for(const c of constraints){
     try{
@@ -221,18 +221,18 @@ async function phFlipCam(){
       await $vid.play();
       camOn=true;needsAspectUpdate=true;computeCrop();scheduleRender();
       $gl.classList.toggle('mirrored',facingMode==='user');
-      if($vid.requestVideoFrameCallback) $vid.requestVideoFrameCallback(onVideoFrame);
+      if($vid.requestVideoFrameCallback) $vid.requestVideoFrameCallback(R.onVideoFrame);
       else{if(window._camFallback)clearInterval(window._camFallback);window._camFallback=setInterval(()=>{if(camOn&&$vid.readyState>=2){videoFrameReady=true;scheduleRender();}else if(!camOn)clearInterval(window._camFallback);},50);}
       return;
     }catch(e){/* try next constraint */}
   }
   // All failed — try to restore previous camera
   try{
-    const s=await navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:isPhone()?640:1280}}});
+    const s=await navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:R.isPhone()?640:1280}}});
     camStream=s;$vid.srcObject=s;await $vid.play();
     camOn=true;needsAspectUpdate=true;computeCrop();scheduleRender();
     $gl.classList.toggle('mirrored',facingMode==='user');
-    if($vid.requestVideoFrameCallback) $vid.requestVideoFrameCallback(onVideoFrame);
+    if($vid.requestVideoFrameCallback) $vid.requestVideoFrameCallback(R.onVideoFrame);
     else{if(window._camFallback)clearInterval(window._camFallback);window._camFallback=setInterval(()=>{if(camOn&&$vid.readyState>=2){videoFrameReady=true;scheduleRender();}else if(!camOn)clearInterval(window._camFallback);},50);}
     R.toast('Only one camera available');
   }catch(e){R.toast('Camera error');}
@@ -512,7 +512,7 @@ function phBuildStepGroups(){
 
 // Move canvas between desktop/phone viewfinders
 function layoutSwitch(){
-  const phone=isPhone();
+  const phone=R.isPhone();
   if(phone===lastLayoutPhone)return;
   lastLayoutPhone=phone;
   if(phone){
@@ -617,7 +617,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     if(mod && (e.key==='Z'||(e.key==='z'&&e.shiftKey))){e.preventDefault();R.redo();}
     if(mod && e.key==='y'){e.preventDefault();R.redo();}
     // Volume down = shutter (hold for video)
-    if(isPhone() && (e.key==='VolumeDown'||e.key==='AudioVolumeDown')){
+    if(R.isPhone() && (e.key==='VolumeDown'||e.key==='AudioVolumeDown')){
       e.preventDefault();
       if(!_volDown){
         _volDown=true;
@@ -628,7 +628,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   });
   let _volDown=false;
   document.addEventListener('keyup',e=>{
-    if(isPhone() && (e.key==='VolumeDown'||e.key==='AudioVolumeDown')){
+    if(R.isPhone() && (e.key==='VolumeDown'||e.key==='AudioVolumeDown')){
       e.preventDefault();
       _volDown=false;
       clearTimeout(_shutterTimer);
