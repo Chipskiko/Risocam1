@@ -31,7 +31,18 @@ function updatePaperBg(){
       o.style.visibility='hidden';
     });
   }
+  syncOverlayOpacity();
   document.documentElement.style.setProperty('--ph-paper-bg',hex);
+}
+// Sync overlay opacity to texture strength slider (0→hidden, 20→max)
+function syncOverlayOpacity(){
+  const slider=el('paperTex');
+  if(!slider) return;
+  const v=parseFloat(slider.value); // 0-20
+  const alpha=(v<=0)?0:(v/20)*0.35; // max 0.35 at Heavy
+  const ov=el('paperOverlay');
+  const phOv=el('phPaperOverlay');
+  [ov,phOv].forEach(o=>{if(o) o.style.opacity=alpha;});
 }
 
 function setPaperColor(idx){
@@ -114,6 +125,7 @@ function cyclePaperTexIntensity(){
   ['paperTexBtn','phPaperTexCycleBtn','phLookTexCycleBtn'].forEach(id=>{
     const b=el(id);if(b)b.textContent=next.l;
   });
+  syncOverlayOpacity();
 }
 
 
@@ -125,5 +137,6 @@ R.setPaperTex = setPaperTex;
 R.cyclePaperTex = cyclePaperTex;
 R.cyclePaperTexIntensity = cyclePaperTexIntensity;
 R.updatePaperBg = updatePaperBg;
+R.syncOverlayOpacity = syncOverlayOpacity;
 
 })(window.R);

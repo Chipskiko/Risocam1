@@ -152,6 +152,8 @@
           </div>
           <div style="margin-top:6px;font-size:8px;letter-spacing:1px;opacity:0.5;margin-bottom:2px">INFO</div>
           <div id="debugInfo" style="font-size:9px;font-family:monospace;opacity:0.6;line-height:1.5"></div>
+          <div style="margin-top:6px;font-size:8px;letter-spacing:1px;opacity:0.5;margin-bottom:2px">LOG</div>
+          <div id="debugLog" style="font-size:8px;font-family:monospace;opacity:0.7;line-height:1.4;max-height:120px;overflow-y:auto;color:#c00"></div>
           <button id="copyDebugBtn" style="margin-top:6px;font-size:9px;padding:3px 10px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px;letter-spacing:0.5px" onclick="R.copyDebugValues()">COPY VALUES</button>
           <button style="margin-top:4px;margin-left:4px;font-size:9px;padding:3px 10px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px;letter-spacing:0.5px" onclick="R.resetCmykDefaults()">RESET CMYK</button>
           <button style="margin-top:4px;margin-left:4px;font-size:9px;padding:3px 10px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px;letter-spacing:0.5px" onclick="R.resetPhysicsDefaults()">RESET PHYSICS</button>
@@ -1436,6 +1438,28 @@ void main(){
 }
 </script>
 
+<script>
+// Debug error logger — captures errors and shows in debug panel
+(function(){
+  const maxLog=30, logs=[];
+  function addLog(msg,type){
+    logs.push({t:Date.now(),msg,type});
+    if(logs.length>maxLog)logs.shift();
+    const d=document.getElementById('debugLog');
+    if(!d)return;
+    d.innerHTML=logs.map(l=>{
+      const c=l.type==='err'?'#c00':l.type==='warn'?'#a80':'#666';
+      return `<div style="color:${c}">${l.msg}</div>`;
+    }).join('');
+    d.scrollTop=d.scrollHeight;
+  }
+  window.addEventListener('error',e=>addLog(`ERR: ${e.message} (${e.filename?.split('/').pop()}:${e.lineno})`,'err'));
+  window.addEventListener('unhandledrejection',e=>addLog(`REJECT: ${e.reason}`,'err'));
+  const origWarn=console.warn;
+  console.warn=function(){origWarn.apply(console,arguments);addLog('WARN: '+[...arguments].join(' '),'warn');};
+  window._debugLog=function(msg){addLog(msg,'info');};
+})();
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="js/data.js?v=3"></script>
 <script src="js/state.js?v=3"></script>

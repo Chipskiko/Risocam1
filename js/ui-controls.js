@@ -470,7 +470,7 @@ function bindSliders(){
       v.textContent=id==='skew'?s.value+'°':s.value;
       if(id==='misreg'||id==='skew'){ cacheSlider(id,s.value); R.newMisreg(); updateRegmarkUI(); }
       else if(id==='margin'){ cacheSlider(id,s.value); updateRegmarkUI(); }
-      else cacheSlider(id,s.value);
+      else { cacheSlider(id,s.value); if(id==='paperTex'&&R.syncOverlayOpacity) R.syncOverlayOpacity(); }
     };
     cacheSlider(id,s.value);
   });
@@ -590,7 +590,9 @@ function updateDebugInfo(){
     `layers: ${layers.length} | mode: ${mode}<br>`+
     `sep: ${cached.sepType===1?'approx':'cmyk'}<br>`+
     `profile: ${activeProf?activeProf.name:'custom'}<br>`+
-    `crop: ${Array.isArray(cropAspect)?cropAspect.join(':'):cropAspect}`;
+    `crop: ${Array.isArray(cropAspect)?cropAspect.join(':'):cropAspect}<br>`+
+    `grain: ${el('grainSize')?.value} | lpi: ${el('lpi')?.value} | dotGain: ${el('dotGain')?.value}<br>`+
+    `paper: ${activePaperTex} | tex: ${el('paperTex')?.value}`;
 }
 function toggleSection(gridId,hdr){
   const grid=el(gridId);
@@ -829,30 +831,24 @@ function updateRegmarkUI() {
     });
   }
 
-  // Drum Pressure — 4 icon states: OFF / Low / Med / Hi
+  // Drum Pressure — 3 icon states: Low / Med / Hi
   // Based on user-designed SVGs: drum circle + paper line + downward pressure arrow
-  // Arrow weight and center dot weight increase with pressure level
   const dg = parseFloat(el('dotGain')?.value || 0);
   let dgLabel = dg;
   let dgIdx = 0;
-  INK_SPREAD_PRESETS.forEach((p,i) => { if (Math.abs(p.v - dg) < 0.5) { dgLabel = p.l; dgIdx = i; } });
-  syncBtn('inkSpreadBtn', dgLabel, dg > 0, false);
+  INK_SPREAD_PRESETS.forEach((p,i) => { if (Math.abs(p.v - dg) <= Math.abs(INK_SPREAD_PRESETS[dgIdx].v - dg)) { dgLabel = p.l; dgIdx = i; } });
+  syncBtn('inkSpreadBtn', dgLabel, true, false);
   {
-    // Shared elements: drum circle + paper line (scaled from 137→20 viewBox)
     const drum = '<circle cx="10" cy="9.5" r="6.6" stroke="currentColor" stroke-width="1.2" fill="none"/>';
     const paper = '<line x1="2" y1="16.6" x2="18" y2="16.6" stroke="currentColor" stroke-width="1"/>';
     let pressureSvg;
     if (dgIdx === 0) {
-      // OFF: drum + paper + small center dot, no arrow
-      pressureSvg = drum + paper +
-        '<circle cx="10" cy="10" r="1" stroke="currentColor" stroke-width="1" fill="none"/>';
-    } else if (dgIdx === 1) {
       // Low: thin arrow, thin center circle
       pressureSvg = drum + paper +
         '<circle cx="10" cy="10" r="1" stroke="currentColor" stroke-width="1.2" fill="none"/>' +
         '<line x1="10" y1="11.1" x2="10" y2="15" stroke="currentColor" stroke-width="0.7"/>' +
         '<path d="M8.9,14.2 L10,15.5 L11.1,14.2" fill="currentColor"/>';
-    } else if (dgIdx === 2) {
+    } else if (dgIdx === 1) {
       // Med: medium arrow, medium center circle
       pressureSvg = drum + paper +
         '<circle cx="10" cy="10" r="0.95" stroke="currentColor" stroke-width="1.8" fill="none"/>' +

@@ -294,7 +294,10 @@ async function toggleCam(){
       if(window._camFallback)clearInterval(window._camFallback);
       window._camFallback=setInterval(()=>{if(camOn&&$vid.readyState>=2){videoFrameReady=true;scheduleRender();}else if(!camOn)clearInterval(window._camFallback);},50);
     }
-  }catch(e){R.toast('Camera not available');}
+  }catch(e){
+    R.toast('Camera not available');
+    if(window._debugLog) window._debugLog('CAM: '+e.name+': '+e.message);
+  }
 }
 
 
