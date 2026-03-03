@@ -122,7 +122,7 @@ const CH_NAMES=['C','M','Y','K'];
 
 const STEP_PRESETS={
   grainSize:[{v:0.5,l:'600dpi'},{v:1.5,l:'300dpi'},{v:3,l:'150dpi'}],
-  lpi:[{v:40,l:'40'},{v:70,l:'70'},{v:90,l:'90'},{v:110,l:'110'}],
+  lpi:[{v:10,l:'40'},{v:40,l:'70'},{v:60,l:'90'},{v:80,l:'110'}],
   misreg:[{v:0,l:'OFF'},{v:2,l:'Low'},{v:4,l:'Med'},{v:6,l:'Hi'}],
   margin:[{v:0,l:'0'},{v:2,l:'2'},{v:4,l:'4'},{v:6,l:'6'},{v:8,l:'8'},{v:12,l:'12'}],
   ghosting:[{v:0,l:'OFF'},{v:40,l:'Med'},{v:80,l:'High'}],
