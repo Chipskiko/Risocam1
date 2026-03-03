@@ -46,7 +46,7 @@
   <div class="viewfinder-wrap">
   <div class="viewfinder-panel" id="viewfinder">
     <canvas id="gl"></canvas>
-    <div id="paperOverlay" style="position:absolute;inset:0;pointer-events:none;mix-blend-mode:multiply;background-size:cover;background-position:center;background-repeat:no-repeat;opacity:0.5"></div>
+    <div id="paperOverlay" style="position:absolute;inset:-20px;pointer-events:none;mix-blend-mode:multiply;background-size:cover;background-position:center;background-repeat:no-repeat;opacity:0.3"></div>
     <video id="vid" autoplay playsinline muted style="display:none"></video>
     <div class="compare-overlay" id="compareOverlay"><img id="compareImg" /><canvas id="compareCanvas" style="display:none"></canvas><div class="compare-handle" id="compareHandle"></div><div class="compare-label compare-label-l">ORIGINAL</div><div class="compare-label compare-label-r">RISO</div></div>
     <div class="crop-guide" id="deskCropGuide"><div class="crop-guide-inner" id="deskCropInner"></div></div>
@@ -168,7 +168,7 @@
   <!-- Viewfinder — full bleed, canvas fills this -->
   <div class="ph-viewfinder" id="phViewfinder">
     <!-- canvas gets moved here in phone mode -->
-    <div id="phPaperOverlay" style="position:absolute;inset:0;pointer-events:none;mix-blend-mode:multiply;background-size:cover;background-position:center;background-repeat:no-repeat;opacity:0.5;z-index:1"></div>
+    <div id="phPaperOverlay" style="position:absolute;inset:-20px;pointer-events:none;mix-blend-mode:multiply;background-size:cover;background-position:center;background-repeat:no-repeat;opacity:0.3;z-index:1"></div>
     <span class="ph-rec-badge" id="phRecBadge">● REC 00:00</span>
     <div class="ph-crop-guide" id="phCropGuide"><div class="ph-crop-guide-inner" id="phCropInner"></div></div>
   </div>
@@ -330,6 +330,7 @@ uniform vec3 u_paperColor;   // paper base color
 uniform float u_paperTex;    // paper texture intensity 0..1 (from slider 0-25 mapped)
 uniform sampler2D u_paperScan; // scanned paper fiber texture (grayscale, tiling)
 uniform float u_usePaperScan;  // 1.0 = use scanned texture, 0.0 = procedural
+uniform vec2 u_paperShift;    // per-frame paper position offset (simulates different sheet feeds)
 uniform vec4 u_crop;         // UV crop region: x, y, w, h (default 0,0,1,1)
 
 // ─── Hash (no diagonal artifacts) ───
@@ -853,6 +854,7 @@ float getCoverage(vec4 cmyk, vec2 rpx, int idx, int ch, float noise1, float dens
   ink *= flicker;
 
   // Ink absorption modulation: paper fibers trap ink unevenly
+  // Softened (70%) to prevent wash-out in dark areas from asymmetric clamping
   ink *= pf;
 
   // Print pressure variation (roller)
@@ -1064,29 +1066,32 @@ float valueNoise(vec2 p){
 // Multi-scale fiber texture centered at 1.0
 // Influences ink absorption, dot gain, and reflectance
 float paperFieldProcedural(vec2 pix){
+  // Shift paper position per frame (each print is a different sheet)
+  vec2 sp = pix + u_paperShift;
   // Large fiber structure: directional (fibers run ~horizontal)
-  float fiber = valueNoise(vec2(pix.x * 0.05, pix.y * 0.15)) * 0.4
-              + valueNoise(vec2(pix.x * 0.08, pix.y * 0.25)) * 0.35
-              + valueNoise(vec2(pix.x * 0.03, pix.y * 0.12) + 77.0) * 0.25;
+  float fiber = valueNoise(vec2(sp.x * 0.05, sp.y * 0.15)) * 0.4
+              + valueNoise(vec2(sp.x * 0.08, sp.y * 0.25)) * 0.35
+              + valueNoise(vec2(sp.x * 0.03, sp.y * 0.12) + 77.0) * 0.25;
   // Micro surface: per-pixel roughness (white noise is correct here)
-  float micro = hash(pix * 1.1) * 0.5 + hash2(pix * 2.3) * 0.5;
+  float micro = hash(sp * 1.1) * 0.5 + hash2(sp * 2.3) * 0.5;
   // Macro sheet variation: slow gradients across the page
-  float macro = valueNoise(pix * 0.006) * 0.5
-              + valueNoise(pix * 0.012 + 33.0) * 0.5;
+  float macro = valueNoise(sp * 0.006) * 0.5
+              + valueNoise(sp * 0.012 + 33.0) * 0.5;
   // Combine: 0.5 fiber + 0.3 micro + 0.2 macro
   float raw = fiber * 0.5 + micro * 0.3 + macro * 0.2;
-  // Center at 1.0 with ±0.35 range (visible but not extreme)
+  // Center at 1.0 with ±0.35 range
   return 1.0 + (raw - 0.5) * 0.7;
 }
 
 float paperField(vec2 pix){
   if (u_usePaperScan < 0.5) return paperFieldProcedural(pix);
+  // Shift paper position per frame (each scan is a different sheet)
+  vec2 sp = pix + u_paperShift;
   // Sample scanned paper texture — tiles at 256px intervals in reference space
-  // Scale so texture repeats naturally across the print area
-  vec2 texUV = pix / 256.0;
+  vec2 texUV = sp / 256.0;
   float scan = texture2D(u_paperScan, texUV).r; // grayscale, 0-1, mean≈0.5
   // Add micro noise that the scan can't capture (sub-pixel fiber)
-  float micro = hash(pix * 1.1) * 0.15;
+  float micro = hash(sp * 1.1) * 0.15;
   // Map scan from [0,1] (mean 0.5) to paperField range [0.65, 1.35]
   float raw = scan + micro;
   return 1.0 + (raw - 0.5) * 0.7;
@@ -1094,7 +1099,7 @@ float paperField(vec2 pix){
 
 // Paper field with intensity slider: mix(1.0, P, intensity)
 float paperEffect(vec2 pix){
-  float intensity = u_paperTex * 0.04; // slider 0-25 → 0-1
+  float intensity = u_paperTex * 0.04; // slider 0-25 → 0-1 (fixed at 20 → 0.8)
   float base = mix(1.0, paperField(pix), intensity);
   // Temporal paper variation: each "print" has slightly different fiber response
   float paperVar = (hash(vec2(u_frameSeed * 11.1, 0.5)) - 0.5) * 0.03;
@@ -1291,8 +1296,8 @@ void main(){
   }
 
   // 3. Reflectance modulation: paper fibers scatter light through ink
-  // Subtle brightness variation, most visible in lighter tones
-  float reflectStr = 0.2; // reflect_strength per spec
+  // Visible brightness variation where fibers show through ink
+  float reflectStr = 0.2;
   float reflectMod = 1.0 + (pf - 1.0) * reflectStr;
   result *= reflectMod;
 
