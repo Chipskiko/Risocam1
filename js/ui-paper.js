@@ -18,7 +18,7 @@ function updatePaperBg(){
   const ov=el('paperOverlay');
   const phOv=el('phPaperOverlay');
   if(activePaperTex!=='procedural' && PAPER_TEXTURES[activePaperTex]){
-    const bg=`url(${PAPER_TEXTURES[activePaperTex].data})`;
+    const bg=`url(${PAPER_TEXTURES[activePaperTex].src})`;
     [ov,phOv].forEach(o=>{
       if(!o) return;
       o.style.backgroundImage=bg;
