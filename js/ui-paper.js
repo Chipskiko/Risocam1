@@ -68,14 +68,6 @@ function renderPaperUI(){
     const labels={procedural:'Standard',riso_standard:'Natural',smooth:'Smooth',kraft:'Kraft',textured:'Textured'};
     typeBtn.textContent=labels[activePaperTex]||activePaperTex;
   }
-  const texBtn=el('paperTexBtn');
-  if(texBtn){
-    const cur=parseFloat(el('paperTex').value);
-    const steps=[{v:0,l:'OFF'},{v:6,l:'Light'},{v:12,l:'Med'},{v:20,l:'Heavy'}];
-    let bestIdx=0,bestDist=Infinity;
-    steps.forEach((p,i)=>{const d=Math.abs(p.v-cur);if(d<bestDist){bestDist=d;bestIdx=i;}});
-    texBtn.textContent=steps[bestIdx].l;
-  }
 }
 function setPaperTex(key){
   loadPaperTexture(key);
@@ -102,28 +94,11 @@ function cyclePaperTex(){
   const next=PAPER_TEX_KEYS[(i+1)%PAPER_TEX_KEYS.length];
   setPaperTex(next);
 }
-function cyclePaperTexIntensity(){
-  const cur=parseFloat(el('paperTex').value);
-  // Find closest current step
-  let bestIdx=0,bestDist=Infinity;
-  PAPER_TEX_INTENSITY.forEach((p,i)=>{const d=Math.abs(p.v-cur);if(d<bestDist){bestDist=d;bestIdx=i;}});
-  const next=PAPER_TEX_INTENSITY[(bestIdx+1)%PAPER_TEX_INTENSITY.length];
-  el('paperTex').value=next.v;
-  if(el('paperTex').oninput) el('paperTex').oninput();
-  // Update all tex intensity labels (desktop + phone overlays)
-  ['paperTexBtn','phPaperTexCycleBtn','phLookTexCycleBtn'].forEach(id=>{
-    const b=el(id);if(b)b.textContent=next.l;
-  });
-}
-
-
-
 // --- Namespace exports ---
 R.setPaperColor = setPaperColor;
 R.renderPaperUI = renderPaperUI;
 R.setPaperTex = setPaperTex;
 R.cyclePaperTex = cyclePaperTex;
-R.cyclePaperTexIntensity = cyclePaperTexIntensity;
 R.updatePaperBg = updatePaperBg;
 
 })(window.R);

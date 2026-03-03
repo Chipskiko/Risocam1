@@ -411,25 +411,14 @@ function phPopulateOverlay(name){
       html+=`<button class="paper-tex-btn ph-paper-tex-btn${k===activePaperTex?' active':''}" data-tex="${k}" onclick="R.setPaperTex('${k}')">${texLabels[k]}</button>`;
     });
     html+='</div>';
-    // Paper texture type|strength + margin
+    // Margin
     html+='<div style="display:flex;align-items:center;gap:6px;padding:4px 0;flex-wrap:wrap">';
-    html+='<div class="header-cycle" onclick="R.cyclePaperTexIntensity()"><span class="header-cycle-val" id="phLookTexCycleBtn" style="min-width:24px">Med</span></div>';
-    html+='<span class="controls-sep" style="margin:0 2px"></span>';
     html+='<div class="header-cycle" id="phMarginBtn" onclick="R.toggleMarginSlider()"><span class="header-cycle-val" id="phMarginBtnVal" style="min-width:18px">Margin</span></div>';
     html+='</div>';
     html+='<div id="phMarginSliderWrap" class="margin-slider-wrap" style="display:none"><input type="range" id="phMargin" min="0" max="12" value="'+parseFloat(el('margin').value)+'" step="1" class="regmark-slider"><span class="slider-value" id="phMarginVal">'+parseFloat(el('margin').value)+'</span></div>';
     html+='</div>';
     body.innerHTML=html;
     R.renderProfiles('phProfileGrid');
-    // Set initial tex intensity label
-    const phLookTexBtn=el('phLookTexCycleBtn');
-    if(phLookTexBtn){
-      const cur=parseFloat(el('paperTex').value);
-      const steps=PAPER_TEX_INTENSITY;
-      let bestIdx=0,bestDist=Infinity;
-      steps.forEach((p,i)=>{const d=Math.abs(p.v-cur);if(d<bestDist){bestDist=d;bestIdx=i;}});
-      phLookTexBtn.textContent=steps[bestIdx].l;
-    }
     // Bind phone margin slider to desktop slider
     const phMg=el('phMargin');
     if(phMg){

@@ -69,9 +69,9 @@
   <div class="paper-compact ctrl-group" data-ctrl="paper">
     <span class="paper-compact-label">PAPER</span>
     <div id="paperColorGrid" style="display:flex;gap:4px;flex-wrap:wrap"></div>
-    <div class="header-cycle paper-type-box"><span class="header-cycle-val" id="paperTypeBtn" onclick="R.cyclePaperTex()" style="cursor:pointer">Standard</span><span class="paper-type-sep">|</span><span class="header-cycle-val" id="paperTexBtn" onclick="R.cyclePaperTexIntensity()" style="cursor:pointer">Med</span></div>
+    <div class="header-cycle paper-type-box"><span class="header-cycle-val" id="paperTypeBtn" onclick="R.cyclePaperTex()" style="cursor:pointer">Standard</span></div>
     <div id="paperTexGrid" style="display:none"></div>
-    <input type="range" id="paperTex" min="0" max="25" value="10" step="1" style="display:none"><span class="slider-value" id="paperTexVal" style="display:none">10</span>
+    <input type="range" id="paperTex" min="0" max="25" value="12" step="1" style="display:none"><span class="slider-value" id="paperTexVal" style="display:none">12</span>
     <div class="controls-sep"></div>
     <div class="header-cycle" id="marginBtn" onclick="R.toggleMarginSlider()"><span class="header-cycle-val" id="marginBtnVal" style="min-width:18px">Margin</span></div>
     <div id="marginSliderWrap" class="margin-slider-wrap" style="display:none">
@@ -1461,7 +1461,7 @@ void main(){
 })();
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="js/data.js?v=4"></script>
+<script src="js/data.js?v=5"></script>
 <script src="js/state.js?v=3"></script>
 <script src="js/undo.js?v=2"></script>
 <script src="js/compare.js?v=2"></script>
@@ -1469,7 +1469,7 @@ void main(){
 <script src="js/source.js?v=4"></script>
 <script src="js/save.js?v=3"></script>
 <script src="js/ui-controls.js?v=9"></script>
-<script src="js/ui-paper.js?v=10"></script>
-<script src="js/phone.js?v=9"></script>
+<script src="js/ui-paper.js?v=11"></script>
+<script src="js/phone.js?v=10"></script>
 </body>
 </html>
