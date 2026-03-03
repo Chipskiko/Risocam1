@@ -77,8 +77,50 @@ function getComparePrintArea(){
     return {l:(1-printW)/2,t:(1-printH)/2,r:(1-printW)/2,b:(1-printH)/2};
   }
 }
+// Replicate shader adjustRGB() on canvas pixel data
+function applyImageAdjustments(ctx, x, y, w, h){
+  if(w<=0||h<=0) return;
+  const ix=Math.round(x), iy=Math.round(y), iw=Math.round(w), ih=Math.round(h);
+  const imgData=ctx.getImageData(ix,iy,iw,ih);
+  const d=imgData.data;
+  const bright=cached.imgBright||0;
+  const contrast=cached.imgContrast||0;
+  const sat=cached.imgSat||0;
+  const shadows=cached.imgShadows||0;
+  const cMul=1.0+contrast*0.02;
+  const sMul=1.0+sat*0.03;
+  const shF=shadows*0.01;
+  // Get tone curve LUT if available
+  const lut=window._toneCurveLUT; // Uint8Array(256) or null
+  for(let i=0;i<d.length;i+=4){
+    let r=d[i]/255, g=d[i+1]/255, b=d[i+2]/255;
+    // Brightness
+    r+=bright*0.01; g+=bright*0.01; b+=bright*0.01;
+    // Contrast
+    r=(r-0.5)*cMul+0.5; g=(g-0.5)*cMul+0.5; b=(b-0.5)*cMul+0.5;
+    // Saturation
+    const lum=r*0.299+g*0.587+b*0.114;
+    r=lum+(r-lum)*sMul; g=lum+(g-lum)*sMul; b=lum+(b-lum)*sMul;
+    // Shadows
+    if(Math.abs(shadows)>0.5){
+      const mr=(1-r)*(1-r), mg=(1-g)*(1-g), mb=(1-b)*(1-b);
+      r+=shF*mr; g+=shF*mg; b+=shF*mb;
+    }
+    // Tone curve LUT
+    if(lut){
+      r=lut[Math.round(Math.max(0,Math.min(1,r))*255)]/255;
+      g=lut[Math.round(Math.max(0,Math.min(1,g))*255)]/255;
+      b=lut[Math.round(Math.max(0,Math.min(1,b))*255)]/255;
+    }
+    d[i]=Math.max(0,Math.min(255,r*255));
+    d[i+1]=Math.max(0,Math.min(255,g*255));
+    d[i+2]=Math.max(0,Math.min(255,b*255));
+  }
+  ctx.putImageData(imgData,ix,iy);
+}
+
 function drawCompareFrame(source){
-  // Draw source (img or video) onto compare canvas with correct crop + margin
+  // Draw source with B/C/S/Shadows applied — shows what's fed to ink pipeline
   const cv=el('compareCanvas');
   const ctx=cv.getContext('2d');
   const crop=getCompareCrop();
@@ -98,6 +140,9 @@ function drawCompareFrame(source){
   const dw=cv.width-pa.l*cv.width-pa.r*cv.width;
   const dh=cv.height-pa.t*cv.height-pa.b*cv.height;
   ctx.drawImage(source,crop.sx,crop.sy,crop.sw,crop.sh,dx,dy,dw,dh);
+
+  // Apply image adjustments to match shader's adjustRGB()
+  applyImageAdjustments(ctx, dx, dy, dw, dh);
 }
 function toggleCompare(){
   compareOn=!compareOn;

@@ -63,7 +63,8 @@ function initGL(){
    'u_skew0','u_skew1','u_skew2','u_skew3',
    'u_ucrStr','u_cmykBal','u_tac',
    'u_inkOpacity','u_layerDeplete','u_pressVar','u_densFlicker',
-   'u_tonalGamma','u_dotMin','u_opacityCap'
+   'u_tonalGamma','u_dotMin','u_opacityCap',
+   'u_toneCurve','u_useToneCurve'
   ].forEach(n=>{locs[n]=gl.getUniformLocation(prog,n);});
 
   // Blue noise texture (tex unit 1)
@@ -89,6 +90,20 @@ function initGL(){
   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
   gl.uniform1i(locs.u_paperScan,2);
   gl.uniform1f(locs.u_usePaperScan,0.0);
+
+  // Tone curve LUT texture (tex unit 4) — 256×1 identity
+  var tcTex=gl.createTexture();
+  gl.activeTexture(gl.TEXTURE4);gl.bindTexture(gl.TEXTURE_2D,tcTex);
+  var tcId=new Uint8Array(256*4);
+  for(var ti=0;ti<256;ti++){tcId[ti*4]=ti;tcId[ti*4+1]=ti;tcId[ti*4+2]=ti;tcId[ti*4+3]=255;}
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,256,1,0,gl.RGBA,gl.UNSIGNED_BYTE,tcId);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.uniform1i(locs.u_toneCurve,4);
+  gl.uniform1f(locs.u_useToneCurve,0.0);
+  window._toneCurveTex=tcTex;
 
   // Load default paper texture
   loadPaperTexture('procedural');
@@ -456,11 +471,36 @@ function onVideoFrame(){
 
 
 
+// ======================== TONE CURVE ========================
+function uploadToneCurve(lut){
+  // lut = Uint8Array(256)
+  if(!gl||!window._toneCurveTex) return;
+  var rgba=new Uint8Array(256*4);
+  for(var i=0;i<256;i++){rgba[i*4]=lut[i];rgba[i*4+1]=lut[i];rgba[i*4+2]=lut[i];rgba[i*4+3]=255;}
+  gl.activeTexture(gl.TEXTURE4);
+  gl.bindTexture(gl.TEXTURE_2D,window._toneCurveTex);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,256,1,0,gl.RGBA,gl.UNSIGNED_BYTE,rgba);
+  gl.uniform1f(locs.u_useToneCurve,1.0);
+  // Also store for compare.js CPU-side usage
+  window._toneCurveLUT=lut;
+  markDirty();
+}
+function resetToneCurve(){
+  var id=new Uint8Array(256);
+  for(var i=0;i<256;i++) id[i]=i;
+  uploadToneCurve(id);
+  gl.uniform1f(locs.u_useToneCurve,0.0);
+  window._toneCurveLUT=null;
+  markDirty();
+}
+
 // --- Namespace exports ---
 R.initGL = initGL;
 R.setRenderUniforms = setRenderUniforms;
 R.render = render;
 R.swapSrcTextures = swapSrcTextures;
 R.onVideoFrame = onVideoFrame;
+R.uploadToneCurve = uploadToneCurve;
+R.resetToneCurveGPU = resetToneCurve;
 
 })(window.R);

@@ -875,6 +875,174 @@ function updateRegmarkUI() {
   syncBtn('cropMarksBtn', 'Crop Mark', cm, false);
 }
 
+// ======================== TONE CURVE ========================
+// 5 control points: endpoints fixed at x=0 and x=1, middle 3 draggable
+let tcPoints=[{x:0,y:0},{x:0.25,y:0.25},{x:0.5,y:0.5},{x:0.75,y:0.75},{x:1,y:1}];
+let tcDragIdx=-1;
+
+function drawToneCurve(){
+  const cv=el('toneCurveCanvas');
+  if(!cv) return;
+  const ctx=cv.getContext('2d');
+  const w=cv.width, h=cv.height;
+  ctx.clearRect(0,0,w,h);
+
+  // Background grid
+  ctx.strokeStyle='#eee';
+  ctx.lineWidth=1;
+  for(let i=1;i<4;i++){
+    const p=i*w/4;
+    ctx.beginPath();ctx.moveTo(p,0);ctx.lineTo(p,h);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0,p);ctx.lineTo(w,p);ctx.stroke();
+  }
+
+  // Diagonal reference line (identity)
+  ctx.strokeStyle='#ccc';
+  ctx.lineWidth=1;
+  ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(0,h);ctx.lineTo(w,0);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Generate smooth curve using monotone cubic spline
+  const lut=generateToneCurveLUT();
+  ctx.strokeStyle='#333';
+  ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<256;i++){
+    const px=i/(255)*w;
+    const py=(1-lut[i]/255)*h;
+    if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+  }
+  ctx.stroke();
+
+  // Control points
+  tcPoints.forEach((pt,i)=>{
+    const px=pt.x*w, py=(1-pt.y)*h;
+    ctx.fillStyle='#333';
+    ctx.strokeStyle='#fff';
+    ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(px,py,5,0,Math.PI*2);ctx.fill();ctx.stroke();
+  });
+}
+
+// Monotone cubic (Fritsch-Carlson) interpolation for LUT generation
+function generateToneCurveLUT(){
+  const pts=tcPoints.slice().sort((a,b)=>a.x-b.x);
+  const n=pts.length;
+  const xs=pts.map(p=>p.x), ys=pts.map(p=>p.y);
+
+  // Compute slopes
+  const delta=[];
+  for(let i=0;i<n-1;i++) delta.push((ys[i+1]-ys[i])/(xs[i+1]-xs[i]||0.001));
+
+  // Compute tangents (Fritsch-Carlson monotone)
+  const m=new Array(n);
+  m[0]=delta[0];
+  m[n-1]=delta[n-2];
+  for(let i=1;i<n-1;i++){
+    if(delta[i-1]*delta[i]<=0) m[i]=0;
+    else m[i]=(delta[i-1]+delta[i])/2;
+  }
+  // Enforce monotonicity
+  for(let i=0;i<n-1;i++){
+    if(Math.abs(delta[i])<1e-6){m[i]=0;m[i+1]=0;continue;}
+    const a=m[i]/delta[i], b=m[i+1]/delta[i];
+    const s=a*a+b*b;
+    if(s>9){const t=3/Math.sqrt(s);m[i]=t*a*delta[i];m[i+1]=t*b*delta[i];}
+  }
+
+  // Evaluate LUT
+  const lut=new Uint8Array(256);
+  for(let i=0;i<256;i++){
+    const t=i/255;
+    // Find interval
+    let seg=0;
+    for(let j=0;j<n-1;j++){if(t>=xs[j]&&t<=xs[j+1])seg=j;}
+    const x0=xs[seg],x1=xs[seg+1],y0=ys[seg],y1=ys[seg+1];
+    const h2=x1-x0||0.001;
+    const tt=(t-x0)/h2;
+    const tt2=tt*tt, tt3=tt2*tt;
+    // Hermite basis
+    const h00=2*tt3-3*tt2+1;
+    const h10=tt3-2*tt2+tt;
+    const h01=-2*tt3+3*tt2;
+    const h11=tt3-tt2;
+    const val=h00*y0+h10*h2*m[seg]+h01*y1+h11*h2*m[seg+1];
+    lut[i]=Math.max(0,Math.min(255,Math.round(val*255)));
+  }
+  return lut;
+}
+
+function initToneCurve(){
+  const cv=el('toneCurveCanvas');
+  if(!cv) return;
+  drawToneCurve();
+
+  cv.addEventListener('mousedown',tcDown);
+  cv.addEventListener('touchstart',tcDown,{passive:false});
+
+  function tcDown(e){
+    e.preventDefault();
+    const rect=cv.getBoundingClientRect();
+    const ex=e.touches?e.touches[0].clientX:e.clientX;
+    const ey=e.touches?e.touches[0].clientY:e.clientY;
+    const mx=(ex-rect.left)/rect.width;
+    const my=1-(ey-rect.top)/rect.height;
+
+    // Find nearest point (all 5 are draggable; endpoints lock X)
+    let bestD=Infinity, bestI=-1;
+    for(let i=0;i<tcPoints.length;i++){
+      const dx=tcPoints[i].x-mx, dy=tcPoints[i].y-my;
+      const d=dx*dx+dy*dy;
+      if(d<bestD){bestD=d;bestI=i;}
+    }
+    if(bestD>0.02) return; // too far from any point
+    tcDragIdx=bestI;
+
+    document.addEventListener('mousemove',tcMove);
+    document.addEventListener('mouseup',tcUp);
+    document.addEventListener('touchmove',tcMove,{passive:false});
+    document.addEventListener('touchend',tcUp);
+  }
+
+  function tcMove(e){
+    if(tcDragIdx<0) return;
+    e.preventDefault();
+    const rect=cv.getBoundingClientRect();
+    const ex=e.touches?e.touches[0].clientX:e.clientX;
+    const ey=e.touches?e.touches[0].clientY:e.clientY;
+    // Endpoints: X locked (0 or 1), only Y moves. Middle points: X constrained between neighbors.
+    const mx=(ex-rect.left)/rect.width;
+    const my=1-(ey-rect.top)/rect.height;
+    const isFirst=tcDragIdx===0, isLast=tcDragIdx===tcPoints.length-1;
+    if(!isFirst&&!isLast){
+      const lo=tcPoints[tcDragIdx-1].x+0.01;
+      const hi=tcPoints[tcDragIdx+1].x-0.01;
+      tcPoints[tcDragIdx].x=Math.max(lo,Math.min(hi,mx));
+    }
+    tcPoints[tcDragIdx].y=Math.max(0,Math.min(1,my));
+    drawToneCurve();
+  }
+
+  function tcUp(){
+    if(tcDragIdx<0) return;
+    tcDragIdx=-1;
+    document.removeEventListener('mousemove',tcMove);
+    document.removeEventListener('mouseup',tcUp);
+    document.removeEventListener('touchmove',tcMove);
+    document.removeEventListener('touchend',tcUp);
+    // Apply LUT to shader
+    const lut=generateToneCurveLUT();
+    R.uploadToneCurve(lut);
+  }
+}
+
+function resetToneCurveUI(){
+  tcPoints=[{x:0,y:0},{x:0.25,y:0.25},{x:0.5,y:0.5},{x:0.75,y:0.75},{x:1,y:1}];
+  drawToneCurve();
+  R.resetToneCurveGPU();
+}
+
 // --- Namespace exports ---
 R.togglePicker = togglePicker;
 R.isMono = isMono;
@@ -923,5 +1091,8 @@ R.cycleInkSpread = cycleInkSpread;
 R.toggleCropMarks = toggleCropMarks;
 R.toggleMarginSlider = toggleMarginSlider;
 R.updateRegmarkUI = updateRegmarkUI;
+R.initToneCurve = initToneCurve;
+R.resetToneCurve = resetToneCurveUI;
+R.drawToneCurve = drawToneCurve;
 
 })(window.R);

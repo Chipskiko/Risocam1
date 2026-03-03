@@ -115,7 +115,8 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 .section-toggle:hover{color:var(--text)}
 .toggle-arrow{margin-left:auto;font-size:10px;transition:transform .2s;color:var(--text-muted)}
 .section-toggle.open .toggle-arrow{transform:rotate(90deg)}
-.collapsible{overflow:hidden;transition:max-height .3s ease,opacity .2s ease;max-height:600px;opacity:1}
+.collapsible{overflow:hidden;transition:max-height .3s ease,opacity .2s ease;max-height:2000px;opacity:1}
+#debugBody.collapsible:not(.collapsed){overflow-y:auto;max-height:60vh}
 .collapsible.collapsed{max-height:0;opacity:0;padding-top:0!important;padding-bottom:0!important;margin-top:0!important;margin-bottom:0!important;border-top:none!important}
 /* Profiles - wrapping grid */
 .profile-list{padding:8px 10px;display:flex;gap:6px;flex-wrap:wrap}

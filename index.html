@@ -46,9 +46,9 @@
   <div class="viewfinder-wrap">
   <div class="viewfinder-panel" id="viewfinder">
     <canvas id="gl"></canvas>
-    <div id="paperOverlay" style="position:absolute;inset:0;pointer-events:none;mix-blend-mode:multiply;background-size:cover;background-position:center;background-repeat:repeat;opacity:0.3"></div>
+    <div id="paperOverlay" style="position:absolute;inset:0;pointer-events:none;mix-blend-mode:multiply;background-size:cover;background-position:center;background-repeat:repeat;opacity:0.5"></div>
     <video id="vid" autoplay playsinline muted style="display:none"></video>
-    <div class="compare-overlay" id="compareOverlay"><img id="compareImg" /><canvas id="compareCanvas" style="display:none"></canvas><div class="compare-handle" id="compareHandle"></div><div class="compare-label compare-label-l">ORIGINAL</div><div class="compare-label compare-label-r">RISO</div></div>
+    <div class="compare-overlay" id="compareOverlay"><img id="compareImg" /><canvas id="compareCanvas" style="display:none"></canvas><div class="compare-handle" id="compareHandle"></div><div class="compare-label compare-label-l">ADJUSTED</div><div class="compare-label compare-label-r">RISO</div></div>
     <div class="crop-guide" id="deskCropGuide"><div class="crop-guide-inner" id="deskCropInner"></div></div>
     <div class="fps-counter" id="fps" style="display:none">--</div>
     <!-- Hidden elements kept for JS references -->
@@ -135,6 +135,14 @@
           <div id="imageTuning" style="margin-top:8px">
             <div style="font-size:8px;letter-spacing:1px;opacity:0.5;margin-bottom:2px">IMAGE</div>
             <div class="slider-row"><span class="slider-label">Shadows</span><input type="range" id="imgShadows" min="-30" max="30" value="0" step="2"><span class="slider-value" id="imgShadowsVal">0</span></div>
+            <div style="margin-top:6px">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                <span style="font-size:8px;letter-spacing:1px;opacity:0.5">TONE CURVE</span>
+                <button onclick="R.resetToneCurve()" style="font-size:7px;padding:1px 4px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:2px">RESET</button>
+              </div>
+              <canvas id="toneCurveCanvas" width="128" height="128"
+                style="width:128px;height:128px;border:1px solid var(--border);cursor:crosshair;background:#fff"></canvas>
+            </div>
           </div>
           <div id="physicsTuning" style="margin-top:8px">
             <div style="font-size:8px;letter-spacing:1px;opacity:0.5;margin-bottom:2px">INK PHYSICS</div>
@@ -168,7 +176,7 @@
   <!-- Viewfinder — full bleed, canvas fills this -->
   <div class="ph-viewfinder" id="phViewfinder">
     <!-- canvas gets moved here in phone mode -->
-    <div id="phPaperOverlay" style="position:absolute;inset:0;pointer-events:none;mix-blend-mode:multiply;background-size:cover;background-position:center;background-repeat:repeat;opacity:0.3;z-index:1"></div>
+    <div id="phPaperOverlay" style="position:absolute;inset:0;pointer-events:none;mix-blend-mode:multiply;background-size:cover;background-position:center;background-repeat:repeat;opacity:0.5;z-index:1"></div>
     <span class="ph-rec-badge" id="phRecBadge">● REC 00:00</span>
     <div class="ph-crop-guide" id="phCropGuide"><div class="ph-crop-guide-inner" id="phCropInner"></div></div>
   </div>
@@ -332,6 +340,8 @@ uniform sampler2D u_paperScan; // scanned paper fiber texture (grayscale, tiling
 uniform float u_usePaperScan;  // 1.0 = use scanned texture, 0.0 = procedural
 uniform vec2 u_paperShift;    // per-frame paper position offset (simulates different sheet feeds)
 uniform vec4 u_crop;         // UV crop region: x, y, w, h (default 0,0,1,1)
+uniform sampler2D u_toneCurve; // 256×1 tone curve LUT texture
+uniform float u_useToneCurve;  // 1.0 when curve is non-identity
 
 // ─── Hash (no diagonal artifacts) ───
 float hash(vec2 p){
@@ -398,6 +408,12 @@ vec3 adjustRGB(vec3 rgb, vec2 pix){
     vec3 mask = (vec3(1.0) - rgb);
     mask *= mask; // squared falloff — more targeted to deep shadows
     rgb += sh * mask;
+  }
+  // Tone curve LUT — applied after B/C/S/Shadows, before dither
+  if(u_useToneCurve > 0.5){
+    rgb.r = texture2D(u_toneCurve, vec2(clamp(rgb.r, 0.0, 1.0), 0.5)).r;
+    rgb.g = texture2D(u_toneCurve, vec2(clamp(rgb.g, 0.0, 1.0), 0.5)).r;
+    rgb.b = texture2D(u_toneCurve, vec2(clamp(rgb.b, 0.0, 1.0), 0.5)).r;
   }
   // Anti-banding: triangular-PDF dither breaks 8-bit posterization
   float d1 = hash(pix + 0.07);
@@ -1161,17 +1177,9 @@ void main(){
   // Transport streak: earlier layers smear more — paper moved through more drum passes
   // Layer 0 (C, first printed) = most streak, Layer 3 (K, last) = sharpest
 
-  // ─── Approx mode: compute NNLS weights once at base UV ───
-  // In Approx mode, we decompose the source pixel into ink weights using NNLS.
-  // This is done once at the center UV (before misregistration) because the
-  // stencil is created from a single analysis — misregistration only shifts
-  // where the ink pattern lands, not the underlying color analysis.
-  vec4 approxW = vec4(0.0);
-  if(u_sepType == 1){
-    vec3 baseSrc = texture2D(u_src, srcUV(uv)).rgb;
-    baseSrc = adjustRGB(baseSrc, rpx);
-    approxW = nnlsDecompose(u_layers, u_paperColor, baseSrc, u_ink0, u_ink1, u_ink2, u_ink3);
-  }
+  // ─── Approx mode helper: decompose at given UV ───
+  // Each layer computes its own NNLS at its misregistered UV so that
+  // color stencils shift with misregistration (visible color fringing).
 
   if(u_layers >= 1){
     vec2 dr0 = vec2(hash(vec2(u_frameSeed*5.1, 0.1))-0.5, hash(vec2(u_frameSeed*5.7, 0.2))-0.5)*0.0014;
@@ -1183,7 +1191,10 @@ void main(){
     float n0 = hash(lrpx * 1.7);
     float cov;
     if(u_sepType == 1){
-      cov = getCoverageApprox(approxW.x, lrpx, 0, n0, u_dens0, pf);
+      vec3 src0a = texture2D(u_src, srcUV(uv0)).rgb;
+      src0a = adjustRGB(src0a, lrpx);
+      vec4 w0 = nnlsDecompose(u_layers, u_paperColor, src0a, u_ink0, u_ink1, u_ink2, u_ink3);
+      cov = getCoverageApprox(w0.x, lrpx, 0, n0, u_dens0, pf);
     } else {
       vec3 src = texture2D(u_src, srcUV(uv0)).rgb;
       vec3 srcS = texture2D(u_src, srcUV(uv0 + vec2(0.0, 0.0012))).rgb;
@@ -1214,7 +1225,10 @@ void main(){
     float n1 = hash(lrpx * 1.7 + 100.0);
     float cov;
     if(u_sepType == 1){
-      cov = getCoverageApprox(approxW.y, lrpx, 1, n1, u_dens1, pf);
+      vec3 src1a = texture2D(u_src, srcUV(uv1)).rgb;
+      src1a = adjustRGB(src1a, lrpx);
+      vec4 w1 = nnlsDecompose(u_layers, u_paperColor, src1a, u_ink0, u_ink1, u_ink2, u_ink3);
+      cov = getCoverageApprox(w1.y, lrpx, 1, n1, u_dens1, pf);
     } else {
       vec3 src = texture2D(u_src, srcUV(uv1)).rgb;
       vec3 srcS = texture2D(u_src, srcUV(uv1 + vec2(0.0, 0.0008))).rgb;
@@ -1245,7 +1259,10 @@ void main(){
     float n2 = hash(lrpx * 1.7 + 200.0);
     float cov;
     if(u_sepType == 1){
-      cov = getCoverageApprox(approxW.z, lrpx, 2, n2, u_dens2, pf);
+      vec3 src2a = texture2D(u_src, srcUV(uv2)).rgb;
+      src2a = adjustRGB(src2a, lrpx);
+      vec4 w2 = nnlsDecompose(u_layers, u_paperColor, src2a, u_ink0, u_ink1, u_ink2, u_ink3);
+      cov = getCoverageApprox(w2.z, lrpx, 2, n2, u_dens2, pf);
     } else {
       vec3 src = texture2D(u_src, srcUV(uv2)).rgb;
       vec3 srcS = texture2D(u_src, srcUV(uv2 + vec2(0.0, 0.0004))).rgb;
@@ -1275,7 +1292,10 @@ void main(){
     float n3 = hash(lrpx * 1.7 + 300.0);
     float cov;
     if(u_sepType == 1){
-      cov = getCoverageApprox(approxW.w, lrpx, 3, n3, u_dens3, pf);
+      vec3 src3a = texture2D(u_src, srcUV(skUV3 + off3)).rgb;
+      src3a = adjustRGB(src3a, lrpx);
+      vec4 w3 = nnlsDecompose(u_layers, u_paperColor, src3a, u_ink0, u_ink1, u_ink2, u_ink3);
+      cov = getCoverageApprox(w3.w, lrpx, 3, n3, u_dens3, pf);
     } else {
       vec3 src = texture2D(u_src, srcUV(skUV3 + off3)).rgb;
       src = adjustRGB(src, lrpx);
@@ -1469,12 +1489,12 @@ void main(){
 <script src="js/data.js?v=5"></script>
 <script src="js/state.js?v=3"></script>
 <script src="js/undo.js?v=2"></script>
-<script src="js/compare.js?v=2"></script>
-<script src="js/renderer.js?v=3"></script>
+<script src="js/compare.js?v=3"></script>
+<script src="js/renderer.js?v=4"></script>
 <script src="js/source.js?v=5"></script>
 <script src="js/save.js?v=3"></script>
-<script src="js/ui-controls.js?v=9"></script>
+<script src="js/ui-controls.js?v=10"></script>
 <script src="js/ui-paper.js?v=11"></script>
-<script src="js/phone.js?v=11"></script>
+<script src="js/phone.js?v=12"></script>
 </body>
 </html>

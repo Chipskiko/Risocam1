@@ -562,7 +562,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   $gl=el('gl'); $vf=el('viewfinder'); $vid=el('vid');
   $fps=el('fps'); $res=el('resBadge'); $status=el('statusBadge');
 
-  R.renderColors();R.renderProfiles();R.renderPaperUI();R.bindSliders();R.buildStepGroups();R.updateRegmarkUI();R.setRisoFps(risoFps);initShutter();initOverlaySwipe();
+  R.renderColors();R.renderProfiles();R.renderPaperUI();R.bindSliders();R.buildStepGroups();R.initToneCurve();R.updateRegmarkUI();R.setRisoFps(risoFps);initShutter();initOverlaySwipe();
   // Set initial paper background (color + texture scan)
   R.updatePaperBg();
   R.initGL();
