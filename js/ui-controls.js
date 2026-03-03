@@ -470,7 +470,7 @@ function bindSliders(){
       v.textContent=id==='skew'?s.value+'°':s.value;
       if(id==='misreg'||id==='skew'){ cacheSlider(id,s.value); R.newMisreg(); updateRegmarkUI(); }
       else if(id==='margin'){ cacheSlider(id,s.value); updateRegmarkUI(); }
-      else { cacheSlider(id,s.value); if(id==='paperTex'&&R.syncOverlayOpacity) R.syncOverlayOpacity(); }
+      else cacheSlider(id,s.value);
     };
     cacheSlider(id,s.value);
   });
