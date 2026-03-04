@@ -463,7 +463,7 @@ function setAngle(ch,deg){
   markDirty();
 }
 function bindSliders(){
-  ['grainSize','dotGain','misreg','inkNoise','paperTex','lpi','grainStatic','ghosting','margin','skew','imgBright','imgContrast','imgSat','imgShadows','ucrStr','balC','balM','balY','balK','tac','inkOpacity','layerDeplete','pressVar','densFlicker','ghostMul'].forEach(id=>{
+  ['grainSize','dotGain','misreg','inkNoise','paperTex','lpi','grainStatic','ghosting','margin','skew','imgBright','imgContrast','imgSat','imgShadows','imgHighlights','ucrStr','balC','balM','balY','balK','tac','inkOpacity','layerDeplete','pressVar','densFlicker','ghostMul'].forEach(id=>{
     const s=el(id),v=el(id+'Val');
     if(!s||!v)return;
     s.oninput=()=>{
@@ -918,10 +918,11 @@ function drawToneCurve(){
   // Control points
   tcPoints.forEach((pt,i)=>{
     const px=pt.x*w, py=(1-pt.y)*h;
-    ctx.fillStyle='#333';
+    const isEnd=(i===0||i===tcPoints.length-1);
+    ctx.fillStyle=isEnd?'#c44':'#333';
     ctx.strokeStyle='#fff';
     ctx.lineWidth=2;
-    ctx.beginPath();ctx.arc(px,py,5,0,Math.PI*2);ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.arc(px,py,isEnd?6:5,0,Math.PI*2);ctx.fill();ctx.stroke();
   });
 }
 
@@ -996,7 +997,7 @@ function initToneCurve(){
       const d=dx*dx+dy*dy;
       if(d<bestD){bestD=d;bestI=i;}
     }
-    if(bestD>0.02) return; // too far from any point
+    if(bestD>0.04) return; // too far from any point
     tcDragIdx=bestI;
 
     document.addEventListener('mousemove',tcMove);

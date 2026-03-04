@@ -48,7 +48,7 @@ function initGL(){
    'u_off0','u_off1','u_off2','u_off3',
    'u_angle0','u_angle1','u_angle2','u_angle3','u_screenCell',
    'u_chan0','u_chan1','u_chan2','u_chan3',
-   'u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_mode','u_sepMode','u_sepType',
+   'u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_mode','u_sepMode','u_sepType',
    'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_paperShift','u_crop','u_paper',
    'u_lutA0','u_lutA1','u_lutA2','u_lutA3',
    'u_lutB0','u_lutB1','u_lutB2','u_lutB3',
@@ -64,7 +64,8 @@ function initGL(){
    'u_ucrStr','u_cmykBal','u_tac',
    'u_inkOpacity','u_layerDeplete','u_pressVar','u_densFlicker',
    'u_tonalGamma','u_dotMin','u_opacityCap',
-   'u_toneCurve','u_useToneCurve'
+   'u_toneCurve','u_useToneCurve',
+   'u_dbgP100','u_dbgLutDirect','u_dbgNoDotMin','u_dbgNoOpaque','u_dbgShowCov','u_dbgFixedCov','u_dbgBinaryGrain','u_dbgLinearize','u_ditherMode'
   ].forEach(n=>{locs[n]=gl.getUniformLocation(prog,n);});
 
   // Blue noise texture (tex unit 1)
@@ -186,6 +187,7 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   gl.uniform1f(locs.u_contrast,cached.imgContrast);
   gl.uniform1f(locs.u_sat,cached.imgSat);
   gl.uniform1f(locs.u_shadows,cached.imgShadows);
+  gl.uniform1f(locs.u_highlights,cached.imgHighlights||0);
   gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(dw,dh)/(8.267*cached.lpi)));
   gl.uniform3fv(locs.u_paperColor,cached.paperColor);
   gl.uniform3f(locs.u_paper, 0.910, 0.912, 0.908);
@@ -502,5 +504,38 @@ R.swapSrcTextures = swapSrcTextures;
 R.onVideoFrame = onVideoFrame;
 R.uploadToneCurve = uploadToneCurve;
 R.resetToneCurveGPU = resetToneCurve;
+
+// ─── Pipeline debug toggles ───
+function setDbgToggle(name, on){
+  if(!gl||!locs[name]) return;
+  gl.uniform1f(locs[name], on ? 1.0 : 0.0);
+  markDirty();
+}
+R.setDbgToggle = setDbgToggle;
+
+function setFixedCov(val){
+  if(!gl||!locs['u_dbgFixedCov']) return;
+  gl.uniform1f(locs['u_dbgFixedCov'], val);
+  // highlight active button
+  document.querySelectorAll('.fcBtn').forEach(b=>{
+    const bv = parseFloat(b.dataset.cov);
+    b.style.background = (Math.abs(bv - val) < 0.001) ? 'var(--accent,#e44)' : '';
+    b.style.color = (Math.abs(bv - val) < 0.001) ? '#fff' : '';
+  });
+  markDirty();
+}
+R.setFixedCov = setFixedCov;
+
+function setDitherMode(mode){
+  if(!gl||!locs['u_ditherMode']) return;
+  gl.uniform1i(locs['u_ditherMode'], mode);
+  document.querySelectorAll('.dmBtn').forEach(b=>{
+    const bm = parseInt(b.dataset.dm);
+    b.style.background = (bm === mode) ? 'var(--accent,#e44)' : '';
+    b.style.color = (bm === mode) ? '#fff' : '';
+  });
+  markDirty();
+}
+R.setDitherMode = setDitherMode;
 
 })(window.R);

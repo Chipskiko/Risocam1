@@ -87,9 +87,11 @@ function applyImageAdjustments(ctx, x, y, w, h){
   const contrast=cached.imgContrast||0;
   const sat=cached.imgSat||0;
   const shadows=cached.imgShadows||0;
+  const highlights=cached.imgHighlights||0;
   const cMul=1.0+contrast*0.02;
   const sMul=1.0+sat*0.03;
   const shF=shadows*0.01;
+  const hlF=highlights*0.01;
   // Get tone curve LUT if available
   const lut=window._toneCurveLUT; // Uint8Array(256) or null
   for(let i=0;i<d.length;i+=4){
@@ -105,6 +107,10 @@ function applyImageAdjustments(ctx, x, y, w, h){
     if(Math.abs(shadows)>0.5){
       const mr=(1-r)*(1-r), mg=(1-g)*(1-g), mb=(1-b)*(1-b);
       r+=shF*mr; g+=shF*mg; b+=shF*mb;
+    }
+    // Highlights
+    if(Math.abs(highlights)>0.5){
+      r+=hlF*r*r; g+=hlF*g*g; b+=hlF*b*b;
     }
     // Tone curve LUT
     if(lut){

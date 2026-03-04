@@ -135,6 +135,7 @@
           <div id="imageTuning" style="margin-top:8px">
             <div style="font-size:8px;letter-spacing:1px;opacity:0.5;margin-bottom:2px">IMAGE</div>
             <div class="slider-row"><span class="slider-label">Shadows</span><input type="range" id="imgShadows" min="-30" max="30" value="0" step="2"><span class="slider-value" id="imgShadowsVal">0</span></div>
+            <div class="slider-row"><span class="slider-label">Highlights</span><input type="range" id="imgHighlights" min="-30" max="30" value="0" step="2"><span class="slider-value" id="imgHighlightsVal">0</span></div>
             <div style="margin-top:6px">
               <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
                 <span style="font-size:8px;letter-spacing:1px;opacity:0.5">TONE CURVE</span>
@@ -157,6 +158,33 @@
             <div class="slider-row"><span class="slider-label">Tone γ</span><input type="range" id="tonalGamma" min="50" max="300" value="140" step="5"><span class="slider-value" id="tonalGammaVal">1.40</span></div>
             <div class="slider-row"><span class="slider-label">Dot Min</span><input type="range" id="dotMin" min="0" max="100" value="15" step="1"><span class="slider-value" id="dotMinVal">15</span></div>
             <div class="slider-row"><span class="slider-label">Op. Cap</span><input type="range" id="opacityCap" min="0" max="100" value="45" step="1"><span class="slider-value" id="opacityCapVal">45</span></div>
+          </div>
+          <div id="pipelineDbg" style="margin-top:8px">
+            <div style="font-size:8px;letter-spacing:1px;opacity:0.5;margin-bottom:4px">PIPELINE DEBUG</div>
+            <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgP100" onchange="R.setDbgToggle('u_dbgP100',this.checked)"> Force ink=p100</label>
+            <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgLutDirect" onchange="R.setDbgToggle('u_dbgLutDirect',this.checked)"> LUT direct (no Beer-Lambert)</label>
+            <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgNoDotMin" onchange="R.setDbgToggle('u_dbgNoDotMin',this.checked)"> Bypass dotMin</label>
+            <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgNoOpaque" onchange="R.setDbgToggle('u_dbgNoOpaque',this.checked)"> Transparent only (no opaque crossfade)</label>
+            <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgShowCov" onchange="R.setDbgToggle('u_dbgShowCov',this.checked)"> Show raw coverage</label>
+            <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgBinaryGrain" onchange="R.setDbgToggle('u_dbgBinaryGrain',this.checked)"> Binary grain (real riso)</label>
+            <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgLinearize" onchange="R.setDbgToggle('u_dbgLinearize',this.checked)"> Linearize before CMYK</label>
+            <div style="margin-top:6px;font-size:8px;letter-spacing:1px;opacity:0.5;margin-bottom:4px">DITHER MODE</div>
+            <div style="display:flex;flex-wrap:wrap;gap:3px">
+              <button class="dmBtn" data-dm="0" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:var(--accent,#e44);color:#fff;border-radius:3px" onclick="R.setDitherMode(0)">Grain Touch</button>
+              <button class="dmBtn" data-dm="1" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px" onclick="R.setDitherMode(1)">Stucki</button>
+              <button class="dmBtn" data-dm="2" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px" onclick="R.setDitherMode(2)">JJN</button>
+            </div>
+            <div style="margin-top:6px;font-size:8px;letter-spacing:1px;opacity:0.5;margin-bottom:4px">FIXED COVERAGE</div>
+            <div id="fixedCovBtns" style="display:flex;flex-wrap:wrap;gap:3px">
+              <button class="fcBtn" data-cov="0" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px" onclick="R.setFixedCov(0)">OFF</button>
+              <button class="fcBtn" data-cov="0.1" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px" onclick="R.setFixedCov(0.10)">10%</button>
+              <button class="fcBtn" data-cov="0.25" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px" onclick="R.setFixedCov(0.25)">25%</button>
+              <button class="fcBtn" data-cov="0.3" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px" onclick="R.setFixedCov(0.30)">30%</button>
+              <button class="fcBtn" data-cov="0.5" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px" onclick="R.setFixedCov(0.50)">50%</button>
+              <button class="fcBtn" data-cov="0.7" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px" onclick="R.setFixedCov(0.70)">70%</button>
+              <button class="fcBtn" data-cov="0.75" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px" onclick="R.setFixedCov(0.75)">75%</button>
+              <button class="fcBtn" data-cov="1" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px" onclick="R.setFixedCov(1.00)">100%</button>
+            </div>
           </div>
           <div style="margin-top:6px;font-size:8px;letter-spacing:1px;opacity:0.5;margin-bottom:2px">INFO</div>
           <div id="debugInfo" style="font-size:9px;font-family:monospace;opacity:0.6;line-height:1.5"></div>
@@ -304,6 +332,17 @@ uniform float u_tonalGamma;   // coverage gamma curve (default 1.4)
 uniform float u_dotMin;       // min per-dot absorption in lightest areas (default 0.15)
 uniform float u_opacityCap;   // max opacity crossover for overprint blending (default 0.45)
 
+// Pipeline debug toggles (0.0 = off, 1.0 = on)
+uniform float u_dbgP100;       // force ink = p100 always (ignore LUT blend)
+uniform float u_dbgLutDirect;  // bypass Beer-Lambert, use lutBlend() directly
+uniform float u_dbgNoDotMin;   // skip dotMin ink thinning
+uniform float u_dbgNoOpaque;   // disable opaque crossfade (transparent only)
+uniform float u_dbgShowCov;    // visualize raw coverage as grayscale
+uniform float u_dbgFixedCov;   // force fixed coverage (0 = disabled, >0 = override)
+uniform float u_dbgBinaryGrain; // binary grain mode (real riso: all dots same density)
+uniform float u_dbgLinearize;  // linearize sRGB before CMYK conversion
+uniform int u_ditherMode;      // 0=grain touch, 1=Stucki, 2=JJN
+
 // 5-point color LUT per layer (scanned swatch data)
 uniform vec3 u_lutA0, u_lutA1, u_lutA2, u_lutA3; // 10% coverage
 uniform vec3 u_lutB0, u_lutB1, u_lutB2, u_lutB3; // 30% coverage
@@ -330,6 +369,7 @@ uniform float u_bright;     // brightness -30..30
 uniform float u_contrast;   // contrast -30..30
 uniform float u_sat;        // saturation -30..30
 uniform float u_shadows;    // shadow lift/crush -30..30
+uniform float u_highlights; // highlight push/pull -30..30
 uniform int u_mode;
 uniform int u_chan0, u_chan1, u_chan2, u_chan3;
 uniform int u_sepMode; // 0=normal, 1=output grayscale separation (black=ink)
@@ -409,7 +449,14 @@ vec3 adjustRGB(vec3 rgb, vec2 pix){
     mask *= mask; // squared falloff — more targeted to deep shadows
     rgb += sh * mask;
   }
-  // Tone curve LUT — applied after B/C/S/Shadows, before dither
+  // Highlights: push or pull bright values, leaving shadows untouched
+  if(abs(u_highlights) > 0.5){
+    float hl = u_highlights * 0.01; // -0.30 .. +0.30
+    // x^2 mask: 0.0 at black, 1.0 at white
+    vec3 hmask = rgb * rgb;
+    rgb += hl * hmask;
+  }
+  // Tone curve LUT — applied after B/C/S/Shadows/Highlights, before dither
   if(u_useToneCurve > 0.5){
     rgb.r = texture2D(u_toneCurve, vec2(clamp(rgb.r, 0.0, 1.0), 0.5)).r;
     rgb.g = texture2D(u_toneCurve, vec2(clamp(rgb.g, 0.0, 1.0), 0.5)).r;
@@ -426,6 +473,8 @@ vec3 adjustRGB(vec3 rgb, vec2 pix){
 // ─── RGB to CMYK with UCR (Under Color Removal) ───
 // Reduces CMY in shadows where K carries the density, preventing 4-ink mud
 vec4 toCMYK(vec3 rgb){
+  // sRGB → linear: fixes gamma trap where 50-100% sRGB compresses to narrow coverage range
+  if(u_dbgLinearize > 0.5) rgb = pow(max(rgb, vec3(0.0)), vec3(2.2));
   float k = 1.0 - max(rgb.r, max(rgb.g, rgb.b));
   if(k >= 0.999) return vec4(0.0, 0.0, 0.0, 1.0);
   float ik = 1.0 / (1.0 - k);
@@ -776,6 +825,46 @@ float grainDither(float val, vec2 pix, float scale, float layerOff){
   return smoothstep(thr - edge, thr + edge, coverage);
 }
 
+// ─── Stucki error-diffusion approximation ───
+// Simulates Stucki's 4×2 kernel by blending noise at multiple offsets
+// to create spatially correlated thresholds (wider spread than grain touch)
+float stuckiDither(float val, vec2 pix, float layerOff){
+  vec2 nuv = pix / 256.0;
+  float n0 = texture2D(u_noise, fract(nuv + layerOff)).r;
+  // Sample neighbors at kernel-weighted offsets (Stucki: 4×2 kernel)
+  float n1 = texture2D(u_noise, fract(nuv + vec2(1.0/256.0, 0.0) + layerOff)).r;
+  float n2 = texture2D(u_noise, fract(nuv + vec2(2.0/256.0, 0.0) + layerOff)).r;
+  float n3 = texture2D(u_noise, fract(nuv + vec2(-1.0/256.0, 1.0/256.0) + layerOff)).r;
+  float n4 = texture2D(u_noise, fract(nuv + vec2(0.0, 1.0/256.0) + layerOff)).r;
+  float n5 = texture2D(u_noise, fract(nuv + vec2(1.0/256.0, 1.0/256.0) + layerOff)).r;
+  // Stucki weights: center heavily weighted, neighbors weighted by kernel
+  // 8/42, 4/42, 2/42, 4/42, 8/42, 4/42 → normalized
+  float thr = (n0 * 8.0 + n1 * 8.0 + n2 * 4.0 + n3 * 4.0 + n4 * 8.0 + n5 * 4.0) / 36.0;
+  // Hard threshold — error diffusion produces binary output
+  return step(thr, val);
+}
+
+// ─── Jarvis-Judice-Ninke error-diffusion approximation ───
+// JJN has the widest kernel (5×3), creating more diffused/organic dot patterns
+float jjnDither(float val, vec2 pix, float layerOff){
+  vec2 nuv = pix / 256.0;
+  float px = 1.0 / 256.0;
+  float n0 = texture2D(u_noise, fract(nuv + layerOff)).r;
+  // Wider kernel: 5×3 neighborhood
+  float n1 = texture2D(u_noise, fract(nuv + vec2(px, 0.0) + layerOff)).r;
+  float n2 = texture2D(u_noise, fract(nuv + vec2(2.0*px, 0.0) + layerOff)).r;
+  float n3 = texture2D(u_noise, fract(nuv + vec2(-2.0*px, px) + layerOff)).r;
+  float n4 = texture2D(u_noise, fract(nuv + vec2(-px, px) + layerOff)).r;
+  float n5 = texture2D(u_noise, fract(nuv + vec2(0.0, px) + layerOff)).r;
+  float n6 = texture2D(u_noise, fract(nuv + vec2(px, px) + layerOff)).r;
+  float n7 = texture2D(u_noise, fract(nuv + vec2(2.0*px, px) + layerOff)).r;
+  float n8 = texture2D(u_noise, fract(nuv + vec2(0.0, 2.0*px) + layerOff)).r;
+  // JJN weights: 7,5 / 3,5,7,5,3 / 1,3,5,3,1 → total 48
+  float thr = (n0 * 7.0 + n1 * 7.0 + n2 * 5.0 + n3 * 3.0 + n4 * 5.0 +
+               n5 * 7.0 + n6 * 5.0 + n7 * 3.0 + n8 * 5.0) / 47.0;
+  return step(thr, val);
+}
+
 // ─── [IMPROVED] Halftone screen — rough dot edges like real print ───
 float screenDither(float val, vec2 pix, float cellPx, float angle){
   float c=cos(angle), s=sin(angle);
@@ -938,7 +1027,10 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
   vec2 jitPix = vec2(pix.x + slip * u_res.x / REF, pix.y);
 
   float adjustedGrain = u_grainSize * grainMul;
-  if(u_mode == 0) return grainDither(val, jitRpx, adjustedGrain, float(idx)*0.3137);
+  float lo = float(idx)*0.3137;
+  if(u_ditherMode == 1) return stuckiDither(val, jitRpx, lo);
+  if(u_ditherMode == 2) return jjnDither(val, jitRpx, lo);
+  if(u_mode == 0) return grainDither(val, jitRpx, adjustedGrain, lo);
   return screenDither(val, jitPix, u_screenCell, angle);
 }
 
@@ -960,28 +1052,63 @@ vec3 lutBlend(float d, vec3 paper, vec3 p10, vec3 p30, vec3 p50, vec3 p70, vec3 
   return mix(p70, p100, (d - 0.70) / 0.30);
 }
 
-// ─── Apply calibrated ink using Beer-Lambert physics with LUT color ───
-// Same model as yuBlend (V8) but with calibrated ink color from the LUT.
-// This avoids the color cast that ratio-transfer creates in highlights.
+// ─── Apply calibrated ink — Beer-Lambert with debug toggles ───
+// Default: Beer-Lambert with p100 + dotMin (original V8 behavior).
+// Debug toggles allow bypassing each pipeline stage to isolate issues.
 vec3 calBlend(vec3 result, vec3 paper, float coverage, float grain, vec3 p10, vec3 p30, vec3 p50, vec3 p70, vec3 p100, float layerIdx) {
+  // ── Toggle: force fixed coverage ──
+  if (u_dbgFixedCov > 0.001) coverage = u_dbgFixedCov;
+
   if (coverage < 0.001) return result;
 
-  // Use the grain texture directly as the ink density — same as V8.
-  // The grain value IS the printed texture (chunky dither pattern).
-  float d = grain;
+  // ── Toggle: show raw coverage as grayscale ──
+  if (u_dbgShowCov > 0.5) return vec3(coverage);
 
-  // Ink opacity: scale effective coverage (normalized so default 0.88 ≈ 1.0)
-  d = clamp(d * u_inkOpacity * 1.136, 0.0, 1.0);
+  // ── Toggle: LUT direct (bypass Beer-Lambert entirely) ──
+  if (u_dbgLutDirect > 0.5) {
+    // Grain modulation for texture (same as calBlendOpaque)
+    float grainRange = coverage * (1.0 - coverage) * 3.5;
+    grainRange = min(grainRange, 0.85);
+    float grainOffset = (grain - coverage) * grainRange;
+    float modCov = clamp(coverage + grainOffset, 0.0, 1.0);
+    modCov = clamp(modCov * u_inkOpacity * 1.136, 0.0, 1.0);
+    vec3 target = lutBlend(modCov, paper, p10, p30, p50, p70, p100);
+    // Transmission for overprint compatibility
+    vec3 safePaper = max(paper, vec3(0.01));
+    vec3 transmission = clamp(target / safePaper, vec3(0.001), vec3(1.0));
+    return result * transmission;
+  }
 
-  // Per-dot ink intensity: riso stencil deposits thinner ink in lighter areas.
-  // Without this, each dot at d=1 renders at full absorption, making
-  // even 25% coverage look nearly as dark as 100% on screen.
-  // Linear scale from u_dotMin to 100% based on coverage — preserves grain
-  // texture pattern but thins the ink for lighter areas.
-  d *= mix(u_dotMin, 1.0, coverage);
+  // ── Stage 1: Grain texture → ink density ──
+  float d;
+  if (u_dbgBinaryGrain > 0.5) {
+    // Binary grain: dot is ON or OFF, all ON dots get same master density
+    // grainDither returns soft values — anything > ~0 means "this dot has ink"
+    d = grain > 0.01 ? 1.0 : 0.0;  // binary on/off
+    // No dotMin — every dot is the same constant density
+  } else {
+    // Default: soft grain with variable per-dot density
+    d = grain;
+    d = clamp(d * u_inkOpacity * 1.136, 0.0, 1.0);
 
-  // Beer-Lambert with Yule-Nielsen n=2 (same physics as yuBlend)
-  vec3 ink = p100; // calibrated 100% ink color from LUT
+    // ── Stage 2: dotMin (toggle-able) ──
+    if (u_dbgNoDotMin < 0.5) {
+      d *= mix(u_dotMin, 1.0, coverage);
+    }
+  }
+
+  // ── Stage 3: Ink color (toggle-able) ──
+  vec3 ink;
+  if (u_dbgP100 > 0.5) {
+    ink = p100;  // force p100 always
+  } else {
+    // Default: coverage-adaptive (p100 at low cov, LUT at high)
+    float lutMix = smoothstep(0.3, 0.7, coverage);
+    vec3 lutInk = lutBlend(coverage, paper, p10, p30, p50, p70, p100);
+    ink = mix(p100, lutInk, lutMix);
+  }
+
+  // ── Stage 4: Beer-Lambert with Yule-Nielsen n=2 ──
   vec3 safeInk = max(ink, vec3(0.05));
   vec3 paperYN = sqrt(max(result, vec3(0.001)));
   vec3 inkYN = sqrt(safeInk);
@@ -989,17 +1116,17 @@ vec3 calBlend(vec3 result, vec3 paper, float coverage, float grain, vec3 p10, ve
   vec3 resultYN = paperYN * absorption;
   vec3 transparent = resultYN * resultYN;
 
-  // At high coverage, ink sits opaque on the surface
-  vec3 opaque = mix(result, ink, d);
+  // ── Stage 5: Opaque crossfade (toggle-able) ──
+  vec3 blended;
+  if (u_dbgNoOpaque > 0.5) {
+    blended = transparent;  // pure transparent mode
+  } else {
+    vec3 opaque = mix(result, ink, d);
+    float opacity = smoothstep(0.3, 0.85, d) * u_opacityCap;
+    blended = mix(transparent, opaque, opacity);
+  }
 
-  // Crossfade: low coverage = transparent dots, high = mostly opaque solid
-  // Cap at u_opacityCap so transparent Beer-Lambert blending dominates —
-  // real riso inks are quite transparent even at solid coverage,
-  // producing cool teal-greens (not warm olives) in blue+yellow overprints.
-  float opacity = smoothstep(0.3, 0.85, d) * u_opacityCap;
-  vec3 blended = mix(transparent, opaque, opacity);
-
-  // Ink contamination
+  // ── Stage 6: Ink contamination ──
   vec3 contam = blended * 0.02 * d;
   blended += contam * (ink - blended);
 
@@ -1489,11 +1616,11 @@ void main(){
 <script src="js/data.js?v=5"></script>
 <script src="js/state.js?v=3"></script>
 <script src="js/undo.js?v=2"></script>
-<script src="js/compare.js?v=3"></script>
-<script src="js/renderer.js?v=4"></script>
+<script src="js/compare.js?v=4"></script>
+<script src="js/renderer.js?v=6"></script>
 <script src="js/source.js?v=5"></script>
 <script src="js/save.js?v=3"></script>
-<script src="js/ui-controls.js?v=10"></script>
+<script src="js/ui-controls.js?v=11"></script>
 <script src="js/ui-paper.js?v=11"></script>
 <script src="js/phone.js?v=12"></script>
 </body>
