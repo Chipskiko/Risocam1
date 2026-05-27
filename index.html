@@ -12,25 +12,32 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='512' height='512' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='80' fill='%231a1a1a'/%3E%3Ccircle cx='256' cy='230' r='95' stroke='%23f5f0e8' stroke-width='14' fill='none'/%3E%3Ccircle cx='256' cy='230' r='35' fill='%23d2515e'/%3E%3Crect x='156' y='365' width='200' height='6' rx='3' fill='%230078bf'/%3E%3Crect x='156' y='385' width='200' height='6' rx='3' fill='%23f15060'/%3E%3Crect x='156' y='405' width='200' height='6' rx='3' fill='%23ffe800'/%3E%3C/svg%3E">
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='512' height='512' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='80' fill='%231a1a1a'/%3E%3Ccircle cx='256' cy='230' r='95' stroke='%23f5f0e8' stroke-width='14' fill='none'/%3E%3Ccircle cx='256' cy='230' r='35' fill='%23d2515e'/%3E%3Crect x='156' y='365' width='200' height='6' rx='3' fill='%230078bf'/%3E%3Crect x='156' y='385' width='200' height='6' rx='3' fill='%23f15060'/%3E%3Crect x='156' y='405' width='200' height='6' rx='3' fill='%23ffe800'/%3E%3C/svg%3E">
 <title>RISO/CAM</title>
+<link rel="manifest" href="manifest.json">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/main.css">
+<link rel="stylesheet" href="css/main.css?v=27">
 <!-- Styles extracted to css/main.css -->
+<script data-goatcounter="https://chipskiko.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </head>
 <body>
 <header>
   <div class="header-inner">
   <div class="header-row">
+    <a class="header-btn header-back" href="../" title="Art Tools">←</a>
     <div class="header-mode">
-      <button class="header-mode-btn active" id="modeGrain" onclick="R.setMode('grain')">GRAIN</button>
-      <button class="header-mode-btn" id="modeScreen" onclick="R.setMode('screen')">SCREEN</button>
+      <button class="header-mode-btn active" id="modeGrain" onclick="R.setMode('grain')" title="Stochastic grain — random dot placement, like real riso">GRAIN</button>
+      <button class="header-mode-btn" id="modeScreen" onclick="R.setMode('screen')" title="Halftone screen — circular dots in a regular grid">SCREEN</button>
+      <button class="header-mode-btn" id="modeLines" onclick="R.setMode('lines')" title="Line screen — parallel lines varying in thickness, like litho/engraving">LINES</button>
+      <button class="header-mode-btn" id="modeFlat" onclick="R.setMode('flat')" title="RISO — true Riso driver pipeline (vanilla Floyd-Steinberg + empirical tone curve from real captured prints). CPU prepass, static source only. All physical effects (paper, misreg, slip jitter, drum noise) still animate on top.">RISO</button>
     </div>
     <div class="header-dl">
       <span class="header-dl-arrow"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg></span>
-      <button class="header-dl-btn" onclick="R.saveHiRes()">PNG</button>
-      <button class="header-dl-btn" onclick="R.saveGif()">GIF</button>
+      <button class="header-dl-btn" onclick="R.saveHiRes()" title="Lossless PNG — best quality, largest file, preserves alpha">PNG</button>
+      <button class="header-dl-btn" onclick="R.saveJpg()" title="JPEG q=0.95 capped at 2400px — sharing-optimized, ~500KB–1MB files">JPG</button>
+      <button class="header-dl-btn" onclick="R.toggleRecording()" title="Click to start a 5-second countdown then record. Click again to stop early. Max 30s. Saved as MP4/WebM.">VID</button>
+      <button class="header-dl-btn" onclick="R.savePdf()">PDF</button>
       <button class="header-dl-btn" onclick="R.exportSeparations()">SEPS</button>
     </div>
-    <button class="header-btn" onclick="R.newMisreg()" title="Re-register"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></button>
+    <button class="header-btn" onclick="R.reseedAll()" title="Reseed — re-roll plate offsets, grain pattern, and paper-texture shift"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/><circle cx="16" cy="8" r="1.4" fill="currentColor"/><circle cx="8" cy="16" r="1.4" fill="currentColor"/><circle cx="16" cy="16" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/></svg></button>
     <button class="header-btn" id="compareBtn" onclick="R.toggleCompare()" title="Compare"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="18" height="18" rx="2"/><line x1="11" y1="3" x2="11" y2="21"/><polyline points="15 8 19 12 15 16"/></svg></button>
     <div class="header-src">
       <button class="header-src-btn" onclick="R.pickFile()" title="Upload">↑</button>
@@ -40,7 +47,7 @@
   </div>
   </div>
 </header>
-<span id="versionTag" style="display:none">v1.3</span>
+<span id="versionTag" style="display:none">v1.6 (2026-05-02)</span>
 <div class="app-container">
   <div class="left-col">
   <div class="viewfinder-wrap">
@@ -60,6 +67,7 @@
     <div class="img-slider"><span class="img-label">B</span><input type="range" id="imgBright" min="-30" max="30" value="0" step="2"><span class="img-val" id="imgBrightVal">0</span></div>
     <div class="img-slider"><span class="img-label">C</span><input type="range" id="imgContrast" min="-30" max="30" value="0" step="2"><span class="img-val" id="imgContrastVal">0</span></div>
     <div class="img-slider"><span class="img-label">S</span><input type="range" id="imgSat" min="-30" max="30" value="0" step="2"><span class="img-val" id="imgSatVal">0</span></div>
+    <div class="header-cycle" onclick="R.rotateSource()" title="Rotate 90° clockwise"><span class="header-cycle-val" id="rotateBtn" style="min-width:24px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></span></div>
     <div class="header-cycle" onclick="R.cycleAspect()"><span class="header-cycle-val" id="aspectBtn" style="min-width:42px">4:3</span></div>
     <div class="header-cycle" onclick="R.cycleFps()"><span class="header-cycle-label">FPS</span><span class="header-cycle-val" id="fpsBtn" style="min-width:50px">4</span></div>
     <!-- RES removed: always max resolution -->
@@ -78,7 +86,7 @@
       <input type="range" id="margin" min="0" max="12" value="4" step="1" class="regmark-slider">
       <span class="slider-value" id="marginVal">4</span>
     </div>
-    <input type="checkbox" id="cropMarksToggle" checked style="display:none">
+    <input type="checkbox" id="cropMarksToggle" style="display:none">
   </div>
   <!-- Profiles -->
   <div class="control-section ctrl-group" data-ctrl="profiles"><div class="section-header no-border ctrl-group__title">PROFILES</div><div class="profile-list" id="profileList"></div></div>
@@ -86,22 +94,70 @@
   <div class="controls-panel">
     <!-- Channels -->
     <div class="control-section ctrl-group" data-ctrl="channels">
-      <div class="section-header ctrl-group__title">PLATES <span class="count" id="layerCount">4</span><span style="margin-left:auto;display:flex;gap:0"><button class="header-mode-btn ctrl-toggle" id="sepCmyk" onclick="R.setSepType(0)">CMYK</button><button class="header-mode-btn ctrl-toggle" id="sepApprox" onclick="R.setSepType(1)">SPOT</button></span></div>
+      <div class="section-header ctrl-group__title">PLATES <span class="count" id="layerCount">4</span><span style="margin-left:auto;display:flex;gap:6px;align-items:center"><button class="header-mode-btn ctrl-toggle" id="pdfModeBtn" onclick="R.togglePdfMode()" title="PDF mode — route vector text to a single plate (avoids letterforms smearing across multiple plates from misregistration). Only available when source is a PDF." style="padding:2px 6px;font-size:9px;display:none">PDF</button><button class="header-mode-btn ctrl-toggle" id="lockAnglesBtn" onclick="R.lockCmykAngles()" title="Snap all four plate angles to the standard CMYK rosette default: C=15° M=75° Y=0° K=45° (only relevant in SCREEN / LINES modes)" style="padding:2px 6px;font-size:9px;display:none">DEFAULT</button><span style="display:flex;gap:0"><button class="header-mode-btn ctrl-toggle active" id="sepCmyk" onclick="R.setSepType(0)">CMYK</button><button class="header-mode-btn ctrl-toggle" id="sepApprox" onclick="R.setSepType(1)">SPOT</button></span></span></div>
       <div class="channel-list" id="channelList"></div>
+      <!-- Text channel row — visible only in PDF mode. Color choice MUST
+           come from the currently-active channels (max 4 inks total cap)
+           so picking a color matching an existing channel just routes text
+           there; you don't add a 5th slot. -->
+      <div id="textChannelRow" class="text-channel-row" style="display:none">
+        <div class="text-channel-divider"></div>
+        <div class="ch-row text-channel-inner">
+          <span class="ch-badge ch-badge-text" title="Text channel: vector text from the PDF goes to this plate only">T</span>
+          <div class="ch-color-btn" id="textChannelColorBtn" style="background:#888" onclick="R.toggleTextChannelPicker()" title="Pick the ink that vector text routes to. Only inks already in your channel slots are listed (the 4-color cap is enforced by reusing those slots)."></div>
+          <span class="ch-text-label" id="textChannelLabel" style="font-size:10px;letter-spacing:1px;flex:1">Off</span>
+          <button class="ch-angle-btn" id="textKnockoutBtn" onclick="R.toggleTextKnockout()" title="Knockout — when ON, text glyphs cut a hole through every plate to paper instead of trying to reconstruct the bg behind them. Better for text on complex/non-flat backgrounds where bg-reconstruction creates a visible square." style="padding:2px 6px;font-size:9px">K/O</button>
+          <button class="ch-text-clear" onclick="R.clearTextChannel()" title="Disable text routing" style="font-size:10px;padding:2px 6px;border:1px solid var(--border);background:white;border-radius:3px;cursor:pointer">✕</button>
+        </div>
+        <div class="ch-dropdown" id="textChannelDropdown"></div>
+      </div>
     </div>
     <!-- Settings -->
     <div class="control-section ctrl-group" data-ctrl="settings">
-      <div class="section-header section-toggle open ctrl-group__title" onclick="R.toggleSection('settingsBody',this)">SETTINGS <span style="font-size:8px;opacity:.4;margin-left:4px;cursor:pointer" onclick="event.stopPropagation();R.toggleDebug()" title="Debug">v1.3</span><span class="toggle-arrow">▸</span></div>
+      <div class="section-header section-toggle open ctrl-group__title" onclick="R.toggleSection('settingsBody',this)">SETTINGS <span style="font-size:8px;opacity:.4;margin-left:4px;cursor:pointer" onclick="event.stopPropagation();R.toggleDebug()" title="Debug">v1.6 (2026-05-02)</span><span class="toggle-arrow">▸</span></div>
       <div class="settings-body collapsible" id="settingsBody">
+        <!-- Row 1 — primary mode controls + pressure (always visible).
+             Layout: [size knob] [shape selector] | [pressure]
+             Different modes plug in different size/shape buttons via the
+             *Primary divs below; setMode() toggles their visibility. -->
         <div class="regmark-row">
-          <div id="grainSettings"><button class="regmark-btn active" id="grainSizeBtn" onclick="R.cycleGrainSize()" title="Grain Size"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="2.5" fill="currentColor"/><circle cx="5" cy="5" r="1" fill="currentColor" opacity="0.5"/><circle cx="15" cy="5" r="1.2" fill="currentColor" opacity="0.5"/><circle cx="5" cy="15" r="1.1" fill="currentColor" opacity="0.5"/><circle cx="15" cy="15" r="0.9" fill="currentColor" opacity="0.5"/><circle cx="10" cy="4" r="0.8" fill="currentColor" opacity="0.4"/><circle cx="4" cy="10" r="0.9" fill="currentColor" opacity="0.4"/><circle cx="16" cy="10" r="1" fill="currentColor" opacity="0.4"/><circle cx="10" cy="16" r="0.8" fill="currentColor" opacity="0.4"/></svg><span class="regmark-val" id="grainSizeBtnVal">1.5</span></button></div>
-          <div id="screenSettings" style="display:none"><button class="regmark-btn active" id="lpiBtn" onclick="R.cycleLpi()" title="Lines Per Inch"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><g transform="rotate(45 10 10)"><circle cx="5" cy="5" r="1.5" fill="currentColor"/><circle cx="13" cy="5" r="1.5" fill="currentColor"/><circle cx="5" cy="13" r="1.5" fill="currentColor"/><circle cx="13" cy="13" r="1.5" fill="currentColor"/><circle cx="9" cy="9" r="2" fill="currentColor"/></g></svg><span class="regmark-val" id="lpiBtnVal">35</span></button></div>
-          <span class="regmark-link">&ndash;</span>
+          <!-- GRAIN: grain size + dither algo -->
+          <div id="grainPrimary" style="display:flex;gap:6px">
+            <button class="regmark-btn active" id="grainSizeBtn" onclick="R.cycleGrainSize()" title="Grain Size"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="2.5" fill="currentColor"/><circle cx="5" cy="5" r="1" fill="currentColor" opacity="0.5"/><circle cx="15" cy="5" r="1.2" fill="currentColor" opacity="0.5"/><circle cx="5" cy="15" r="1.1" fill="currentColor" opacity="0.5"/><circle cx="15" cy="15" r="0.9" fill="currentColor" opacity="0.5"/><circle cx="10" cy="4" r="0.8" fill="currentColor" opacity="0.4"/><circle cx="4" cy="10" r="0.9" fill="currentColor" opacity="0.4"/><circle cx="16" cy="10" r="1" fill="currentColor" opacity="0.4"/><circle cx="10" cy="16" r="0.8" fill="currentColor" opacity="0.4"/></svg><span class="regmark-val" id="grainSizeBtnVal">1.5</span></button>
+            <button class="regmark-btn" id="ditherModeBtn" onclick="R.cycleDitherMode()" title="Dither algorithm — Grain (stochastic), RISO (literal ht5 matrix from MZ9 driver), Bayer 4/8 (ordered), Stucki/JJN/Atkinson/FS (error-diffusion approximations)"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><rect x="3" y="3" width="3" height="3" fill="currentColor"/><rect x="9" y="3" width="3" height="3" fill="currentColor" opacity="0.4"/><rect x="15" y="3" width="2" height="2" fill="currentColor" opacity="0.7"/><rect x="3" y="9" width="2" height="2" fill="currentColor" opacity="0.5"/><rect x="9" y="9" width="3" height="3" fill="currentColor"/><rect x="15" y="9" width="3" height="3" fill="currentColor" opacity="0.6"/><rect x="3" y="15" width="3" height="3" fill="currentColor" opacity="0.7"/><rect x="9" y="15" width="2" height="2" fill="currentColor" opacity="0.4"/><rect x="15" y="15" width="3" height="3" fill="currentColor"/></svg><span class="regmark-val" id="ditherModeBtnVal">Grain</span></button>
+          </div>
+          <!-- SCREEN: LPI + halftone stamp shape -->
+          <div id="screenPrimary" style="display:none;gap:6px">
+            <button class="regmark-btn active" id="lpiBtnScreen" onclick="R.cycleLpi()" title="Lines Per Inch"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><g transform="rotate(45 10 10)"><circle cx="5" cy="5" r="1.5" fill="currentColor"/><circle cx="13" cy="5" r="1.5" fill="currentColor"/><circle cx="5" cy="13" r="1.5" fill="currentColor"/><circle cx="13" cy="13" r="1.5" fill="currentColor"/><circle cx="9" cy="9" r="2" fill="currentColor"/></g></svg><span class="regmark-val" id="lpiBtnVal">35</span></button>
+            <button class="regmark-btn" id="stampShapeBtn" onclick="R.cycleStampShape()" title="Halftone stamp shape — replaces the round dot with a custom shape (square, diamond, plus, star, heart)."><span class="regmark-icon" id="stampShapeIcon" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px"></span><span class="regmark-val" id="stampShapeBtnVal">Circle</span></button>
+            <button class="regmark-btn" id="screenCleanBtn" onclick="R.toggleScreenClean()" title="Clean halftone preview — bypasses paper texture, drum jitter, ink noise, dot gain, etc. Pure halftone dots like Spectrolite's preview, what a printer's RIP would receive."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="6" cy="6" r="1.5" fill="currentColor"/><circle cx="14" cy="6" r="1.5" fill="currentColor"/><circle cx="6" cy="14" r="1.5" fill="currentColor"/><circle cx="14" cy="14" r="1.5" fill="currentColor"/><circle cx="10" cy="10" r="1.5" fill="currentColor"/></svg><span class="regmark-val" id="screenCleanBtnVal">Off</span></button>
+          </div>
+          <!-- LINES: LPI + line shape -->
+          <div id="linesPrimary" style="display:none;gap:6px">
+            <button class="regmark-btn active" id="lpiBtnLines" onclick="R.cycleLpi()" title="Lines Per Inch"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><line x1="2" y1="5" x2="18" y2="5" stroke="currentColor" stroke-width="1.4"/><line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" stroke-width="1.4"/><line x1="2" y1="15" x2="18" y2="15" stroke="currentColor" stroke-width="1.4"/></svg><span class="regmark-val" id="lpiBtnLinesVal">35</span></button>
+            <button class="regmark-btn active" id="lineShapeBtnPanel" onclick="R.cycleLineShape()" title="Line shape"><span class="regmark-icon" id="lineShapeIcon" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px"></span><span class="regmark-val" id="lineShapeBtnPanelVal">STRAIGHT</span></button>
+          </div>
+          <span class="regmark-link" id="primaryDivider">&ndash;</span>
           <button class="regmark-btn" id="inkSpreadBtn" onclick="R.cycleInkSpread()" title="Drum Pressure"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="9.5" r="6.6" stroke="currentColor" stroke-width="1.2" fill="none"/><line x1="2" y1="16.6" x2="18" y2="16.6" stroke="currentColor" stroke-width="1"/><circle cx="10" cy="10" r="1" stroke="currentColor" stroke-width="1.2" fill="none"/><line x1="10" y1="11.1" x2="10" y2="15" stroke="currentColor" stroke-width="0.7"/><path d="M8.9,14.2 L10,15.5 L11.1,14.2" fill="currentColor"/></svg><span class="regmark-val" id="inkSpreadBtnVal">Low</span></button>
           <input type="range" id="dotGain" min="0" max="40" value="12" step="2" style="display:none"><span class="slider-value" id="dotGainVal" style="display:none">12</span>
           <input type="range" id="inkNoise" min="0" max="30" value="8" step="2" style="display:none"><span id="inkNoiseVal" style="display:none">8</span>
         </div>
-        <input type="range" id="grainSize" min="0.5" max="4" value="1.5" step="0.25" style="display:none"><span id="grainSizeVal" style="display:none">1.5</span>
+        <!-- Row 2 — mode-specific shared sub-settings. Hidden when empty. -->
+        <div class="regmark-row" id="modeSecondaryRow" style="display:none">
+          <button class="regmark-btn" id="ditherScaleBtn" onclick="R.cycleDitherScale()" title="Dither cell size — number of source pixels per dither cell. Only affects Bayer / Atkinson / FS / Stucki / JJN sub-modes." style="display:none"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><rect x="2" y="2" width="3" height="3" fill="currentColor"/><rect x="6" y="2" width="3" height="3" fill="currentColor" opacity="0.6"/><rect x="11" y="2" width="7" height="7" fill="currentColor"/><rect x="2" y="11" width="7" height="7" fill="currentColor" opacity="0.6"/></svg><span class="regmark-val" id="ditherScaleBtnVal">1×</span></button>
+          <div id="linesSecondary" style="display:none;gap:6px">
+            <button class="regmark-btn" id="lineWeightBtn" onclick="R.cycleLineWeight()" title="Line weight"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><line x1="2" y1="5" x2="18" y2="5" stroke="currentColor" stroke-width="0.8"/><line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" stroke-width="1.6"/><line x1="2" y1="15" x2="18" y2="15" stroke="currentColor" stroke-width="3"/></svg><span class="regmark-val" id="lineWeightBtnVal">1×</span></button>
+            <button class="regmark-btn" id="lineAmountBtn" onclick="R.cycleLineAmount()" title="Shape amount (wave amplitude / variation strength / spiral twirl)"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><path d="M2 10 Q5 6 8 10 T14 10 T20 10" stroke="currentColor" stroke-width="1.4" fill="none"/></svg><span class="regmark-val" id="lineAmountBtnVal">100%</span></button>
+            <button class="regmark-btn" id="lineRoughBtn" onclick="R.cycleLineRoughness()" title="Edge roughness / fray"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><path d="M2 6 L4 5 L6 7 L8 5.5 L10 6.5 L12 5 L14 7 L16 5.5 L18 6" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M2 14 L4 13 L6 15 L8 13.5 L10 14.5 L12 13 L14 15 L16 13.5 L18 14" stroke="currentColor" stroke-width="1.2" fill="none"/></svg><span class="regmark-val" id="lineRoughBtnVal">Med</span></button>
+          </div>
+        </div>
+        <!-- Row 3 — shape-specific sub-settings. Visible only for
+             radial-ish shapes (CONCENTRIC / RADIAL / SPIRAL). -->
+        <div class="regmark-row line-center-btn" id="shapeSpecificRow" style="display:none">
+          <button class="regmark-btn" id="lineCountBtn" onclick="R.cycleLineCount()" title="Density — multiplier for the number of rings/spokes. 1× = default; >1 = denser, <1 = sparser."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="3" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="10" r="6" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="10" r="9" fill="none" stroke="currentColor" stroke-width="1.4"/></svg><span class="regmark-val" id="lineCountBtnVal">1×</span></button>
+          <button class="regmark-btn" id="lineEdgeBtn" onclick="R.cycleLineEdgeThickness()" title="Edge thickness — outer rings/spokes get progressively thicker than the ones near the center."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="2.5" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="10" cy="10" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="8.5" fill="none" stroke="currentColor" stroke-width="2.2"/></svg><span class="regmark-val" id="lineEdgeBtnVal">Off</span></button>
+        </div>
+        <input type="range" id="grainSize" min="1.5" max="9" value="3" step="0.5" style="display:none"><span id="grainSizeVal" style="display:none">3</span>
         <input type="range" id="lpi" min="5" max="100" value="40" step="5" style="display:none"><span id="lpiVal" style="display:none">40</span>
         <div class="regmark-row">
           <button class="regmark-btn" id="ghostingBtn" onclick="R.cycleGhosting()" title="Ghosting"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><path d="M10 2C6.5 2 4 5 4 8v7c0 0 1-1.5 2-1.5s1.5 1.5 2.5 1.5 1.5-1.5 2.5-1.5 1.5 1.5 2.5 1.5S15 14 16 15.5V8c0-3-2.5-6-6-6z" fill="currentColor" opacity="0.7"/><circle cx="8" cy="8" r="1.2" fill="white"/><circle cx="12" cy="8" r="1.2" fill="white"/></svg><span class="regmark-val" id="ghostingBtnVal">OFF</span></button>
@@ -114,8 +170,20 @@
           <button class="regmark-btn" id="skewBtn" onclick="R.cycleSkew()" title="Skew"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><line x1="4" y1="16" x2="4" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="4" y1="16" x2="16" y2="16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M4 11 A5 5 0 0 0 9 16" fill="none" stroke="currentColor" stroke-width="1"/></svg><span class="regmark-val" id="skewBtnVal">0</span></button>
           <input type="range" id="misreg" min="0" max="6" value="2" step="1" style="display:none"><span id="misregVal" style="display:none">2</span>
           <input type="range" id="skew" min="-1" max="1" value="0" step="0.1" style="display:none"><span id="skewVal" style="display:none">0°</span>
+          <span class="regmark-link">&ndash;</span>
+          <button class="regmark-btn" id="trappingBtn" onclick="R.cycleTrapping()" title="Trapping — contracts knockout regions by N px so adjacent inks overlap, hiding white halos from misregistration. Same UX as Spectrolite (px values shown with mm equivalent at 600dpi)."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><rect x="3" y="3" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="8" y="8" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="1.5,1"/></svg><span class="regmark-val" id="trappingBtnVal">None</span></button>
         </div>
         <input type="range" id="grainStatic" min="0" max="20" value="0" step="1" style="display:none"><span id="grainStaticVal" style="display:none">0</span>
+      </div>
+    </div>
+    <!-- Post-Processing -->
+    <div class="control-section ctrl-group" data-ctrl="postproc">
+      <div class="section-header section-toggle ctrl-group__title" onclick="R.toggleSection('postprocBody',this)">POST<span class="toggle-arrow">▸</span></div>
+      <div class="settings-body collapsible collapsed" id="postprocBody">
+        <div class="slider-row"><span class="slider-label">Exposure</span><input type="range" id="postExposure" min="-50" max="50" value="0" step="2"><span class="slider-value" id="postExposureVal">0</span></div>
+        <div class="slider-row"><span class="slider-label">Contrast</span><input type="range" id="postContrast" min="-50" max="50" value="0" step="2"><span class="slider-value" id="postContrastVal">0</span></div>
+        <div class="slider-row"><span class="slider-label">Saturation</span><input type="range" id="postSat" min="-50" max="50" value="0" step="2"><span class="slider-value" id="postSatVal">0</span></div>
+        <div class="slider-row" title="Channel mixer — biases the CMYK split. Negative = cool (more cyan/black). Positive = warm (more magenta/yellow)."><span class="slider-label">Warm/Cool</span><input type="range" id="warmCool" min="-50" max="50" value="0" step="2"><span class="slider-value" id="warmCoolVal">0</span></div>
       </div>
     </div>
     <!-- Debug -->
@@ -155,9 +223,30 @@
           </div>
           <div id="tonalTuning" style="margin-top:8px">
             <div style="font-size:8px;letter-spacing:1px;opacity:0.5;margin-bottom:2px">TONAL CALIBRATION</div>
-            <div class="slider-row"><span class="slider-label">Tone γ</span><input type="range" id="tonalGamma" min="50" max="300" value="140" step="5"><span class="slider-value" id="tonalGammaVal">1.40</span></div>
+            <div class="slider-row"><span class="slider-label">Tone γ</span><input type="range" id="tonalGamma" min="50" max="300" value="100" step="5"><span class="slider-value" id="tonalGammaVal">1.00</span></div>
             <div class="slider-row"><span class="slider-label">Dot Min</span><input type="range" id="dotMin" min="0" max="100" value="15" step="1"><span class="slider-value" id="dotMinVal">15</span></div>
             <div class="slider-row"><span class="slider-label">Op. Cap</span><input type="range" id="opacityCap" min="0" max="100" value="45" step="1"><span class="slider-value" id="opacityCapVal">45</span></div>
+          </div>
+          <div id="risoTuning" style="margin-top:8px">
+            <div style="font-size:8px;letter-spacing:1px;opacity:0.5;margin-bottom:2px">RISO MODE (CPU FS halftone)</div>
+            <div class="slider-row" title="Coverage scale on tone-curve output. 170% (default) is the realistic RISO look — leaves enough gaps in solid-black areas for paper texture to show through. 100% caps tighter (~46% max). 220% saturates to ~100% (no paper threads visible).">
+              <span class="slider-label">Max Cov</span><input type="range" id="risoMaxCov" min="20" max="220" value="170" step="5" oninput="R.setRisoParams({maxCoverage:this.value/100}); document.getElementById('risoMaxCovVal').textContent=this.value+'%';"><span class="slider-value" id="risoMaxCovVal">170%</span>
+            </div>
+            <div class="slider-row" title="Per-pixel threshold jitter — disrupts the periodic FS sawtooth at high-contrast edges. 0 = clean FS, 0.10 = noticeable, 0.20 = heavy.">
+              <span class="slider-label">Edge Noise</span><input type="range" id="risoEdgeNoise" min="0" max="30" value="0" step="1" oninput="R.setRisoParams({thresholdNoise:this.value/100}); document.getElementById('risoEdgeNoiseVal').textContent=(this.value/100).toFixed(2);"><span class="slider-value" id="risoEdgeNoiseVal">0.00</span>
+            </div>
+            <div class="slider-row" title="Gaussian σ in master pixels for soft round dot edges (ink spread on paper).">
+              <span class="slider-label">Ink Spread</span><input type="range" id="risoInkSpread" min="0" max="20" value="5" step="1" oninput="R.setRisoParams({inkSpread:this.value/10}); document.getElementById('risoInkSpreadVal').textContent=(this.value/10).toFixed(1);"><span class="slider-value" id="risoInkSpreadVal">0.5</span>
+            </div>
+            <div class="slider-row" title="Master resolution (DPI). Real Riso = 600. Higher = finer dots but slower prepass.">
+              <span class="slider-label">DPI</span><input type="range" id="risoDpi" min="100" max="600" value="150" step="50" oninput="R.setRisoParams({dpi:parseInt(this.value)}); document.getElementById('risoDpiVal').textContent=this.value;"><span class="slider-value" id="risoDpiVal">150</span>
+            </div>
+            <div style="margin-top:6px" title="Driver-faithful mode applies the LCG threshold modulation from the real RISO driver (Tables A/B/C) — stochastic dot placement, grainy/noisy look. Plain FS gives clean orderly Floyd-Steinberg dot patterns without the LCG noise — closer to ImageMagick / Photoshop FS output.">
+              <label style="display:flex;gap:6px;align-items:center;font-size:10px;cursor:pointer">
+                <input type="checkbox" id="risoLCG" checked onchange="R.setLcgModulation(this.checked)">
+                <span>LCG modulation (driver-faithful grain)</span>
+              </label>
+            </div>
           </div>
           <div id="pipelineDbg" style="margin-top:8px">
             <div style="font-size:8px;letter-spacing:1px;opacity:0.5;margin-bottom:4px">PIPELINE DEBUG</div>
@@ -167,12 +256,31 @@
             <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgNoOpaque" onchange="R.setDbgToggle('u_dbgNoOpaque',this.checked)"> Transparent only (no opaque crossfade)</label>
             <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgShowCov" onchange="R.setDbgToggle('u_dbgShowCov',this.checked)"> Show raw coverage</label>
             <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgBinaryGrain" onchange="R.setDbgToggle('u_dbgBinaryGrain',this.checked)"> Binary grain (real riso)</label>
+            <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgFMDots" onchange="R.setDbgToggle('u_dbgFMDots',this.checked)"> FM dots (stochastic screening)</label>
             <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgLinearize" onchange="R.setDbgToggle('u_dbgLinearize',this.checked)"> Linearize before CMYK</label>
+            <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgLumMono" onchange="R.setDbgToggle('u_dbgLumMono',this.checked)"> Luminance mono (bypass CMYK weights)</label>
+            <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgNeutralBypass" onchange="R.setDbgToggle('u_dbgNeutralBypass',this.checked)"> Neutral bypass (grayscale accuracy)</label>
+            <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgTrcSCurve" onchange="R.setDbgToggle('u_dbgTrcSCurve',this.checked)"> TRC S-curve (midtone contrast)</label>
+            <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgYNArea" onchange="R.setDbgToggle('u_dbgYNArea',this.checked)"> YN scattering (replace Beer-Lambert)</label>
             <div style="margin-top:6px;font-size:8px;letter-spacing:1px;opacity:0.5;margin-bottom:4px">DITHER MODE</div>
             <div style="display:flex;flex-wrap:wrap;gap:3px">
-              <button class="dmBtn" data-dm="0" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:var(--accent,#e44);color:#fff;border-radius:3px" onclick="R.setDitherMode(0)">Grain Touch</button>
+              <button class="dmBtn" data-dm="7" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px" onclick="R.setDitherMode(7)">Grain Touch</button>
+              <button class="dmBtn" data-dm="0" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:var(--accent,#e44);color:#fff;border-radius:3px" onclick="R.setDitherMode(0)">Grain</button>
               <button class="dmBtn" data-dm="1" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px" onclick="R.setDitherMode(1)">Stucki</button>
               <button class="dmBtn" data-dm="2" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px" onclick="R.setDitherMode(2)">JJN</button>
+              <button class="dmBtn" data-dm="3" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px" onclick="R.setDitherMode(3)">Atkinson</button>
+              <button class="dmBtn" data-dm="4" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px" onclick="R.setDitherMode(4)">F-S</button>
+              <button class="dmBtn" data-dm="5" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px" onclick="R.setDitherMode(5)">Bayer 4</button>
+              <button class="dmBtn" data-dm="6" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px" onclick="R.setDitherMode(6)">Bayer 8</button>
+            </div>
+            <div style="margin-top:6px;font-size:8px;letter-spacing:1px;opacity:0.5;margin-bottom:4px">RISO DRIVER LUT <span style="opacity:0.6">(MZ9 transfer curve)</span></div>
+            <div id="driverLutBtns" style="display:flex;flex-wrap:wrap;gap:3px">
+              <button class="dlBtn" data-dl="0" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:var(--accent,#e44);color:#fff;border-radius:3px" onclick="R.setDriverLUT(0)">OFF</button>
+              <button class="dlBtn" data-dl="1" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px" onclick="R.setDriverLUT(1)">γ1.1</button>
+              <button class="dlBtn" data-dl="2" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px" onclick="R.setDriverLUT(2)">γ1.4</button>
+              <button class="dlBtn" data-dl="3" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px" onclick="R.setDriverLUT(3)">γ2.0</button>
+              <button class="dlBtn" data-dl="4" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px;font-weight:bold" onclick="R.setDriverLUT(4)">γ2.6★</button>
+              <button class="dlBtn" data-dl="5" style="font-size:9px;padding:2px 6px;cursor:pointer;border:1px solid #ccc;background:#f5f5f5;border-radius:3px" onclick="R.setDriverLUT(5)">γ0.6</button>
             </div>
             <div style="margin-top:6px;font-size:8px;letter-spacing:1px;opacity:0.5;margin-bottom:4px">FIXED COVERAGE</div>
             <div id="fixedCovBtns" style="display:flex;flex-wrap:wrap;gap:3px">
@@ -282,7 +390,7 @@
   <div id="phLookBody"></div>
 </div>
 <div class="toast" id="toast"></div>
-<input type="file" id="fileInput" accept="image/*,video/*,.gif" style="display:none" onchange="R.handleFile(event)">
+<input type="file" id="fileInput" accept="image/*,video/*,.gif,.pdf,application/pdf" style="display:none" onchange="R.handleFile(event)">
 
 <!-- ====== VERTEX SHADER ====== -->
 <script id="vs" type="x-shader/x-vertex">
@@ -341,18 +449,48 @@ uniform float u_dbgShowCov;    // visualize raw coverage as grayscale
 uniform float u_dbgFixedCov;   // force fixed coverage (0 = disabled, >0 = override)
 uniform float u_dbgBinaryGrain; // binary grain mode (real riso: all dots same density)
 uniform float u_dbgLinearize;  // linearize sRGB before CMYK conversion
-uniform int u_ditherMode;      // 0=grain touch, 1=Stucki, 2=JJN
+uniform float u_dbgLumMono;   // luminance-based mono coverage (bypass CMYK weights)
+uniform float u_dbgYNArea;    // Yule-Nielsen area mixing (replace Beer-Lambert + opaque)
+uniform float u_dbgNeutralBypass; // neutral/grayscale bypass — skip CMYK weights for near-gray pixels
+uniform float u_dbgTrcSCurve;    // TRC S-curve — replace pow(gamma) with S-curve for midtone contrast
+uniform float u_dbgFMDots;       // FM stochastic dots — fixed-size binary dots at physical DPI
+uniform int u_ditherMode;      // 0=grain, 1=Stucki, 2=JJN, 3=Atkinson, 4=Floyd-Steinberg, 5=Bayer4, 6=Bayer8, 7=RISO (literal ht5 matrix)
+uniform float u_ditherScale;   // 1..8 — pixels per dither cell (bigger = chunkier dots, applied to error-diffusion + Bayer)
+uniform sampler2D u_driverLUT; // 256×1 RISO driver transfer function LUT
+uniform sampler2D u_ht5Matrix; // 8×8 RISO Grain Touch threshold matrix (literal bytes from ht5_3x3_6x6_04A.hft)
+uniform sampler2D u_amtMaster0; // JS-computed 1-bit AMT halftone master — ink channel 0
+uniform sampler2D u_amtMaster1; // ditto — channel 1
+uniform sampler2D u_amtMaster2; // ditto — channel 2
+uniform sampler2D u_amtMaster3; // ditto — channel 3
+uniform float u_useAmt;        // 1.0 = sample u_amtMaster<idx> (Grain Touch true AMT); 0.0 = fall back to per-fragment matrix threshold
+uniform vec2 u_amtTexel;       // 1.0 / master_resolution — for stochastic supersampling in RISO mode
+uniform float u_amtSuperSample; // sample radius multiplier (in master texels). 0 = single-sample, 1.5 = good default.
+// GPU Grain Touch path — replaces JS AMT pre-pass with a per-fragment V&C
+// blue-noise threshold + density-gamma. ~60fps on phone GPUs vs ~5fps for JS FS.
+uniform sampler2D u_bnVC;        // 64×64 Void-and-Cluster blue-noise threshold mask, REPEAT + NEAREST
+uniform float u_risoGamma;       // density gamma (>1 boosts midtones; default 1.5)
+uniform float u_risoGrainScale;  // mask cells per canvas pixel (1.0 = finest, 0.5 = chunky)
+uniform float u_risoDebugBaseline; // 1.0 = bypass shear+gamma+smoothstep, show RAW step(threshold,val) V&C
+uniform float u_useDriverLUT;  // 1.0 when driver LUT is active
 
 // 5-point color LUT per layer (scanned swatch data)
 uniform vec3 u_lutA0, u_lutA1, u_lutA2, u_lutA3; // 10% coverage
 uniform vec3 u_lutB0, u_lutB1, u_lutB2, u_lutB3; // 30% coverage
 uniform vec3 u_lutC0, u_lutC1, u_lutC2, u_lutC3; // 50% coverage
 uniform vec3 u_lutD0, u_lutD1, u_lutD2, u_lutD3; // 70% coverage
+// Pre-baked per-ink coverage→color texture (T3-F): 4 rows × 256 cols, RGBA8.
+// Worker rebuilds on palette change using same Fritsch-Carlson Hermite as
+// inline lutBlend. Single texture lookup replaces ~50 GLSL ops × 8-12
+// invocations per pixel. Gated by u_useCalLutTex (default ON).
+uniform sampler2D u_calLutTex;
+uniform float u_useCalLutTex;
 // u_ink0..3 = 100% coverage (reused)
 uniform float u_inkGamma0, u_inkGamma1, u_inkGamma2, u_inkGamma3;
 uniform float u_grainMul0, u_grainMul1, u_grainMul2, u_grainMul3;
 uniform float u_hasCal0, u_hasCal1, u_hasCal2, u_hasCal3;
 uniform float u_opaque0, u_opaque1, u_opaque2, u_opaque3; // 1.0 for metallic/opaque inks
+uniform float u_transparent0, u_transparent1, u_transparent2, u_transparent3; // 1.0 for fully transparent inks (process CMYK) — skips opaque crossfade
+uniform float u_knockout0, u_knockout1, u_knockout2, u_knockout3; // 1.0 = knockout — this ink cuts a hole through layers below back to paper
 uniform vec3 u_paper; // paper white color for LUT blending
 uniform float u_showCropMarks; // toggle crop marks on/off
 uniform vec4 u_printArea;      // print area within paper: left, top, right, bottom (UV coords)
@@ -370,7 +508,20 @@ uniform float u_contrast;   // contrast -30..30
 uniform float u_sat;        // saturation -30..30
 uniform float u_shadows;    // shadow lift/crush -30..30
 uniform float u_highlights; // highlight push/pull -30..30
+// Post-processing (applied to final composited output)
+uniform float u_postExposure;  // -50..50
+uniform float u_postContrast;  // -50..50
+uniform float u_postSat;       // -50..50
 uniform int u_mode;
+uniform int u_lineShape;     // 0=straight 1=wavy 2=guilloche 3=concentric 4=radial 5=cross
+uniform float u_lineAmount;  // 0..1 strength of the shape's distinctive parameter
+uniform float u_lineWeight;  // 0.5..2.0 multiplier on stripe thickness (visual line weight)
+uniform float u_lineRoughness; // 0..1 amount of edge fray / position jitter
+// Per-layer CONCENTRIC/RADIAL pivot — independent X/Y per plate so the
+// rings/spokes of each ink can radiate from a different point.
+uniform vec2 u_lineCenter0, u_lineCenter1, u_lineCenter2, u_lineCenter3;
+uniform float u_lineEdgeThickness; // 0..1 — for CONCENTRIC/RADIAL: rings/spokes get thicker the further they are from center
+uniform float u_lineCount;         // density multiplier for CONCENTRIC rings + RADIAL spokes (1.0 = default)
 uniform int u_chan0, u_chan1, u_chan2, u_chan3;
 uniform int u_sepMode; // 0=normal, 1=output grayscale separation (black=ink)
 uniform int u_sepType; // 0=CMYK, 1=Approx (NNLS spot color decomposition)
@@ -382,6 +533,22 @@ uniform vec2 u_paperShift;    // per-frame paper position offset (simulates diff
 uniform vec4 u_crop;         // UV crop region: x, y, w, h (default 0,0,1,1)
 uniform sampler2D u_toneCurve; // 256×1 tone curve LUT texture
 uniform float u_useToneCurve;  // 1.0 when curve is non-identity
+uniform sampler2D u_textMask;  // 1-channel mask: white=text region, black=non-text
+uniform int u_textLayerIdx;    // which active layer (0..3) gets text; -1 = off
+uniform sampler2D u_srcOrig;   // un-inpainted PDF raster (text plate reads glyph color from here)
+uniform float u_textKnockout;  // 1.0 = text glyphs punch through every plate to paper; 0.0 = render bg behind glyphs
+uniform float u_trappingPx;    // canvas-pixel trapping amount — contracts knockout regions so adjacent inks overlap (no white halos at misregistered edges)
+uniform float u_colorQuant;    // 0=off, else N levels per channel (8/16/32) — pre-NNLS posterize
+uniform float u_useLabResidual; // 0=RGB residual, 1=Lab residual in NNLS subset selection
+uniform float u_useCalChord;     // 0=naive delta (ink100-paper), 1=calibrated chord 2*(p50-paper)
+                                 //   Calibrated chord linearizes NNLS against measured 50% swatches,
+                                 //   correcting Risocam's biggest separation error: ink response is
+                                 //   concave near 100%, so linear-from-paper-to-ink100 overestimates
+                                 //   ink power at low/mid coverage → NNLS prescribes too little ink.
+uniform float u_screenClean;    // 1.0 = SCREEN mode without simulation noise (clean halftone preview)
+uniform float u_simNoise;       // master noise multiplier — scales every hardcoded noise source (0 = none, 1 = full)
+uniform float u_warmCool;       // -1..1 — bias the CMYK split: <0 cool (more C+K), >0 warm (more M+Y)
+uniform int u_stampShape;       // SCREEN dot shape: 0=circle, 1=square, 2=diamond, 3=plus, 4=star, 5=heart
 
 // ─── Hash (no diagonal artifacts) ───
 float hash(vec2 p){
@@ -436,9 +603,10 @@ vec3 adjustRGB(vec3 rgb, vec2 pix){
   // Contrast: pivot around mid-gray
   float c = 1.0 + u_contrast * 0.02;
   rgb = (rgb - 0.5) * c + 0.5;
-  // Saturation: lerp toward luminance
+  // Saturation: lerp toward luminance. Range -30..+30 maps to s in [0, 2]
+  // so -30 = pure gray, 0 = unchanged, +30 = double saturation.
   float lum = dot(rgb, vec3(0.299, 0.587, 0.114));
-  float s = 1.0 + u_sat * 0.03;
+  float s = clamp(1.0 + u_sat * (1.0/30.0), 0.0, 2.0);
   rgb = mix(vec3(lum), rgb, s);
   // Shadows: lift or crush dark values, leaving highlights untouched
   if(abs(u_shadows) > 0.5){
@@ -462,6 +630,13 @@ vec3 adjustRGB(vec3 rgb, vec2 pix){
     rgb.g = texture2D(u_toneCurve, vec2(clamp(rgb.g, 0.0, 1.0), 0.5)).r;
     rgb.b = texture2D(u_toneCurve, vec2(clamp(rgb.b, 0.0, 1.0), 0.5)).r;
   }
+  // RISO driver transfer LUT — extracted from MZ9 printer driver
+  // Applied after all user adjustments, before halftoning (same as real driver)
+  if(u_useDriverLUT > 0.5){
+    rgb.r = texture2D(u_driverLUT, vec2(clamp(rgb.r, 0.0, 1.0), 0.5)).r;
+    rgb.g = texture2D(u_driverLUT, vec2(clamp(rgb.g, 0.0, 1.0), 0.5)).r;
+    rgb.b = texture2D(u_driverLUT, vec2(clamp(rgb.b, 0.0, 1.0), 0.5)).r;
+  }
   // Anti-banding: triangular-PDF dither breaks 8-bit posterization
   float d1 = hash(pix + 0.07);
   float d2 = hash2(pix + 0.13);
@@ -472,21 +647,92 @@ vec3 adjustRGB(vec3 rgb, vec2 pix){
 
 // ─── RGB to CMYK with UCR (Under Color Removal) ───
 // Reduces CMY in shadows where K carries the density, preventing 4-ink mud
+//
+// Color-space discipline:
+//   - K (black coverage) is computed in sRGB to preserve grayscale calibration.
+//   - CMY ratios are computed in sRGB by default to match the LUT calibration
+//     data (swatches were measured against this pipeline).
+//   - Toggle u_dbgLinearize=1 to compute CMY in linear space (more physically
+//     correct for saturated colors, but mismatches LUT calibration → darker).
 vec4 toCMYK(vec3 rgb){
-  // sRGB → linear: fixes gamma trap where 50-100% sRGB compresses to narrow coverage range
-  if(u_dbgLinearize > 0.5) rgb = pow(max(rgb, vec3(0.0)), vec3(2.2));
+  // K in sRGB — preserves perceptual spacing for grayscale calibration
   float k = 1.0 - max(rgb.r, max(rgb.g, rgb.b));
   if(k >= 0.999) return vec4(0.0, 0.0, 0.0, 1.0);
-  float ik = 1.0 / (1.0 - k);
-  float c = (1.0-rgb.r-k)*ik;
-  float m = (1.0-rgb.g-k)*ik;
-  float y = (1.0-rgb.b-k)*ik;
+  // CMY ratios in sRGB (matches LUT calibration); toggle on for linear (legacy/experimental)
+  vec3 lin = (u_dbgLinearize > 0.5) ? pow(max(rgb, vec3(0.0)), vec3(2.2)) : rgb;
+  float linK = 1.0 - max(lin.r, max(lin.g, lin.b));
+  float ik = 1.0 / max(1.0 - linK, 0.001);
+  float c = (1.0-lin.r-linK)*ik;
+  float m = (1.0-lin.g-linK)*ik;
+  float y = (1.0-lin.b-linK)*ik;
   // UCR: when K is high, reduce CMY to avoid oversaturation and ink mud
   float ucr = smoothstep(0.25, 0.85, k) * u_ucrStr;
   c *= 1.0 - ucr;
   m *= 1.0 - ucr;
   y *= 1.0 - ucr;
+  // Warm/Cool channel mixer: shifts the CMYK split. Positive = warm (more
+  // M+Y, less C+K → reds and yellows lift), negative = cool (more C+K, less
+  // M+Y → blues and shadows deepen). Effect scales with mid-tones (cmykMid)
+  // so highlights and shadows aren't crushed.
+  if(abs(u_warmCool) > 0.01){
+    float wc = u_warmCool;
+    float midM = m * (1.0 - m);  // peak at 50% — preserves extremes
+    float midY = y * (1.0 - y);
+    float midC = c * (1.0 - c);
+    if(wc > 0.0){
+      m += wc * midM * 0.6;
+      y += wc * midY * 0.4;
+      c -= wc * midC * 0.4;
+    } else {
+      c += -wc * midC * 0.6;
+      k += -wc * (1.0 - k) * k * 0.3; // boost K subtly in cool
+      m -= -wc * midM * 0.3;
+      y -= -wc * midY * 0.3;
+    }
+    c = clamp(c, 0.0, 1.0); m = clamp(m, 0.0, 1.0);
+    y = clamp(y, 0.0, 1.0); k = clamp(k, 0.0, 1.0);
+  }
   return vec4(c, m, y, k);
+}
+
+// ─── Color quantization (pre-NNLS posterize) ───
+// Snapping the input target to N evenly-spaced levels per channel reduces
+// the variation NNLS sees, giving flatter "screen-printed" output. This
+// also acts as a coarse cache: many similar pixels map to the same target,
+// so the GPU's instruction cache benefits from the reduced state-space.
+vec3 quantizeColor(vec3 c){
+  if(u_colorQuant < 1.5) return c;
+  float n = u_colorQuant;
+  return floor(c * n + 0.5) / n;
+}
+
+// ─── RGB → Lab (D65) for perceptual residuals ───
+// Bradford D65 white point. Returns (L, a, b) with L roughly 0..100.
+// Used to evaluate NNLS subset residuals in a perceptual space — better
+// than RGB when two candidate solutions differ in hue but similar in
+// raw RGB delta.
+vec3 rgbToXyz(vec3 c){
+  // sRGB to linear (gamma 2.2 approximation, fast)
+  vec3 lin = pow(max(c, vec3(0.0)), vec3(2.2));
+  // sRGB → XYZ matrix (D65)
+  return vec3(
+    0.4124*lin.r + 0.3576*lin.g + 0.1805*lin.b,
+    0.2126*lin.r + 0.7152*lin.g + 0.0722*lin.b,
+    0.0193*lin.r + 0.1192*lin.g + 0.9505*lin.b
+  );
+}
+vec3 xyzToLab(vec3 xyz){
+  vec3 ref = vec3(0.95047, 1.0, 1.08883); // D65
+  vec3 t = xyz / ref;
+  // Lab f() function with linear segment near zero
+  vec3 f = mix(7.787*t + 16.0/116.0, pow(max(t, vec3(1e-6)), vec3(1.0/3.0)), step(0.008856, t));
+  return vec3(116.0*f.y - 16.0, 500.0*(f.x - f.y), 200.0*(f.y - f.z));
+}
+vec3 rgbToLab(vec3 c){ return xyzToLab(rgbToXyz(c)); }
+// Squared residual in either RGB or Lab space, controlled by u_useLabResidual
+float perceptualResid(vec3 a, vec3 b){
+  vec3 d = (u_useLabResidual > 0.5) ? (rgbToLab(a) - rgbToLab(b)) : (a - b);
+  return dot(d, d);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -650,14 +896,32 @@ vec4 nnls3(vec3 b, vec3 a0, vec3 a1, vec3 a2) {
 // triples of inks and pick the feasible solution with lowest residual.
 // This is exact (not iterative) and handles all edge cases.
 vec4 nnlsDecompose(int inkN, vec3 paper, vec3 target, vec3 ink0, vec3 ink1, vec3 ink2, vec3 ink3) {
+  // Optional pre-quantize the target — coarsens input space, gives flatter
+  // screen-printed look, and reduces NNLS state-space (cache-friendly).
+  target = quantizeColor(target);
   // b = target delta from paper (what the inks need to produce)
   vec3 b = target - paper;
 
-  // Ink deltas: how much each ink shifts the color from paper
-  vec3 d0 = ink0 - paper;
-  vec3 d1 = ink1 - paper;
-  vec3 d2 = ink2 - paper;
-  vec3 d3 = ink3 - paper;
+  // Ink deltas: how much each ink shifts the color from paper.
+  // Naive: delta = ink100 - paper (assumes linear coverage→color response).
+  // Calibrated (u_useCalChord): use the chord from paper to the measured 50%
+  // swatch, doubled — that's the slope a linear model would need to hit the
+  // observed midpoint, which is what NNLS sees in real coverage ranges.
+  // Real Riso response is concave (50% darker than linear midpoint), so the
+  // calibrated chord is stronger than the naive delta → NNLS prescribes less
+  // ink for the same target color → print matches target more closely.
+  vec3 d0, d1, d2, d3;
+  if (u_useCalChord > 0.5) {
+    d0 = 2.0 * (u_lutC0 - paper);
+    d1 = 2.0 * (u_lutC1 - paper);
+    d2 = 2.0 * (u_lutC2 - paper);
+    d3 = 2.0 * (u_lutC3 - paper);
+  } else {
+    d0 = ink0 - paper;
+    d1 = ink1 - paper;
+    d2 = ink2 - paper;
+    d3 = ink3 - paper;
+  }
 
   // ── 1 ink ──
   if (inkN == 1) {
@@ -682,30 +946,45 @@ vec4 nnlsDecompose(int inkN, vec3 paper, vec3 target, vec3 ink0, vec3 ink1, vec3
   // We try all C(4,3)=4 triples and all C(4,2)=6 pairs, keeping the
   // feasible solution with minimum residual. This is exact NNLS.
 
+  // Lab-aware residual: when u_useLabResidual is on we compare candidate
+  // subsets in perceptual Lab space (via reconstructed RGB → Lab) instead
+  // of raw RGB squared distance — picks better hue matches at low residual.
+
   // Triple (0,1,2) — ink3 inactive
   vec4 t012 = nnls3(b, d0, d1, d2);
   vec4 best = vec4(t012.x, t012.y, t012.z, 0.0);
-  float bestErr = t012.w;
+  float bestErr = (u_useLabResidual > 0.5)
+    ? perceptualResid(target, paper + d0*t012.x + d1*t012.y + d2*t012.z)
+    : t012.w;
 
   // Triple (0,1,3) — ink2 inactive
   vec4 t013 = nnls3(b, d0, d1, d3);
-  if (t013.w < bestErr) {
+  float e013 = (u_useLabResidual > 0.5)
+    ? perceptualResid(target, paper + d0*t013.x + d1*t013.y + d3*t013.z)
+    : t013.w;
+  if (e013 < bestErr) {
     best = vec4(t013.x, t013.y, 0.0, t013.z);
-    bestErr = t013.w;
+    bestErr = e013;
   }
 
   // Triple (0,2,3) — ink1 inactive
   vec4 t023 = nnls3(b, d0, d2, d3);
-  if (t023.w < bestErr) {
+  float e023 = (u_useLabResidual > 0.5)
+    ? perceptualResid(target, paper + d0*t023.x + d2*t023.y + d3*t023.z)
+    : t023.w;
+  if (e023 < bestErr) {
     best = vec4(t023.x, 0.0, t023.y, t023.z);
-    bestErr = t023.w;
+    bestErr = e023;
   }
 
   // Triple (1,2,3) — ink0 inactive
   vec4 t123 = nnls3(b, d1, d2, d3);
-  if (t123.w < bestErr) {
+  float e123 = (u_useLabResidual > 0.5)
+    ? perceptualResid(target, paper + d1*t123.x + d2*t123.y + d3*t123.z)
+    : t123.w;
+  if (e123 < bestErr) {
     best = vec4(0.0, t123.x, t123.y, t123.z);
-    bestErr = t123.w;
+    bestErr = e123;
   }
 
   // Note: nnls3 already tries all 2-ink and 1-ink subsets internally
@@ -733,20 +1012,18 @@ float grayness(vec3 rgb){
 float getChannelInner(vec4 cmyk, int ch, int totalLayers){
   float raw;
   if(totalLayers == 1){
-    raw = cmyk.x*0.10+cmyk.y*0.25+cmyk.z*0.05+cmyk.w*0.95;
+    return clamp(cmyk.x*0.10+cmyk.y*0.25+cmyk.z*0.05+cmyk.w*0.95, 0.0, 1.0);
   } else if(totalLayers == 2){
-    if(ch==0) raw = cmyk.x*0.25+cmyk.z*0.05+cmyk.w*0.75;
-    else raw = cmyk.y*0.25+cmyk.z*0.05+cmyk.w*0.75;
+    if(ch==0) return clamp(cmyk.x*0.25+cmyk.z*0.05+cmyk.w*0.75, 0.0, 1.0);
+    else return clamp(cmyk.y*0.25+cmyk.z*0.05+cmyk.w*0.75, 0.0, 1.0);
   } else if(totalLayers == 3){
     float base = ch==0?cmyk.x:(ch==1?cmyk.y:cmyk.z);
-    raw = base + cmyk.w*0.55;
-  } else {
-    raw = ch==0?cmyk.x:(ch==1?cmyk.y:(ch==2?cmyk.z:cmyk.w));
+    return clamp(base + cmyk.w*0.55, 0.0, 1.0);
   }
-  // Balance per channel from tuning sliders
+  // 4-layer CMYK: apply balance + TAC (matches v8 architecture)
+  raw = ch==0?cmyk.x:(ch==1?cmyk.y:(ch==2?cmyk.z:cmyk.w));
   float balance = ch==0 ? u_cmykBal.x : (ch==1 ? u_cmykBal.y : (ch==2 ? u_cmykBal.z : u_cmykBal.w));
   raw *= balance;
-  // Total ink limit from tuning slider
   float total = cmyk.x + cmyk.y + cmyk.z + cmyk.w;
   if(total > u_tac) raw *= u_tac / total;
   return clamp(raw, 0.0, 1.0);
@@ -754,6 +1031,30 @@ float getChannelInner(vec4 cmyk, int ch, int totalLayers){
 
 // ─── Channel extraction with duotone detection ───
 float getChannel(vec4 cmyk, int ch, int totalLayers, vec3 srcRGB){
+  // Mono: direct luminance → ink coverage, no CMYK conversion needed
+  if(totalLayers == 1){
+    float lum = dot(srcRGB, vec3(0.299, 0.587, 0.114));
+    return clamp(1.0 - lum, 0.0, 1.0);
+  }
+  // Neutral bypass: for near-gray pixels, blend toward direct luminance path
+  // Fixes grayscale accuracy — avoids K-weight compression and gamma trap for neutrals
+  // Works in ALL modes (mono, duo, 3-4 layer), gracefully fades based on saturation
+  if(u_dbgNeutralBypass > 0.5){
+    float gray = grayness(srcRGB);
+    if(gray > 0.01){
+      float lum = dot(srcRGB, vec3(0.299, 0.587, 0.114));
+      float ink = 1.0 - lum;
+      float balance = ch==0 ? u_cmykBal.x : (ch==1 ? u_cmykBal.y : (ch==2 ? u_cmykBal.z : u_cmykBal.w));
+      float neutralCov = ink * balance;
+      // TAC limit
+      float totalBal = u_cmykBal.x + u_cmykBal.y + u_cmykBal.z + u_cmykBal.w;
+      float totalInk = ink * totalBal;
+      if(totalInk > u_tac) neutralCov *= u_tac / totalInk;
+      neutralCov = clamp(neutralCov, 0.0, 1.0);
+      float normalCov = getChannelInner(cmyk, ch, totalLayers);
+      return mix(normalCov, neutralCov, gray);
+    }
+  }
   float gray = grayness(srcRGB);
   if(gray > 0.01 && totalLayers > 1){
     float lum = dot(srcRGB, vec3(0.299, 0.587, 0.114));
@@ -772,27 +1073,53 @@ float getChannel(vec4 cmyk, int ch, int totalLayers, vec3 srcRGB){
   return getChannelInner(cmyk, ch, totalLayers);
 }
 
-// ─── Tone curve — gentle S-curve for contrast ───
-float toneCurve(float v){
-  float t = clamp(v, 0.0, 1.0);
-  // Blend between linear and Hermite — 40% S-curve, 60% linear
-  float curved = t * t * (3.0 - 2.0 * t);
-  return mix(t, curved, 0.4);
-}
+// [REMOVED] toneCurve() — was dead code (never called; replaced by u_toneCurve LUT texture)
+// [REMOVED] dotGain() — was dead code (never called; dot gain is inline in getCoverage())
 
-// ─── Dot gain (ink spread on uncoated paper) ───
-float dotGain(float v, float g){
-  float spread = g * 0.01;
-  return clamp(v + spread * v * (1.0-v) * 4.0, 0.0, 1.0);
+// ─── FM stochastic dot dithering ───
+// Physical simulation: fixed-size binary dots placed stochastically.
+// Dot density (dots per area) controls tone. Each dot is full ink or nothing.
+// rpx = reference pixels (resolution-independent), grainSize drives dot cell size.
+float fmDotDither(float val, vec2 rpx, float scale, float layerOff){
+  // Dot cell size in reference pixels — grainSize 1.5=600dpi, 3=300dpi, 9=100dpi
+  // Larger scale = bigger cells = coarser/lower DPI
+  float cellSize = max(2.0, scale * 3.0);
+  // Grid cell this pixel belongs to
+  vec2 cell = floor(rpx / cellSize);
+  // Position within cell (0-1)
+  vec2 inCell = fract(rpx / cellSize);
+  // Per-cell random: determines if this cell has a dot
+  float cellRnd = hash(cell + layerOff * 137.0);
+  // Temporal variation (subtle, per-cell)
+  float drift = u_time * 0.008;
+  float timeRnd = hash(cell + layerOff * 137.0 + floor(drift) * 0.1);
+  float blend = u_static * 0.05;
+  cellRnd = mix(cellRnd, timeRnd, blend);
+  // Dot is placed if cell random < coverage (more coverage = more dots)
+  float coverage = clamp(val, 0.0, 0.98);
+  // Slight irregularity in placement — dot center jitters within cell
+  vec2 dotCenter = vec2(0.5) + (vec2(hash(cell * 1.3 + layerOff), hash(cell * 2.7 + layerOff + 0.5)) - 0.5) * 0.6;
+  float dist = length(inCell - dotCenter);
+  // Dot radius: fixed physical size, slight random variation per dot
+  float baseRadius = 0.38;
+  float radiusVar = hash(cell * 3.1 + layerOff * 71.0) * 0.08;
+  float dotRadius = baseRadius + radiusVar;
+  // Binary: pixel is inside dot AND cell is active
+  float inDot = 1.0 - smoothstep(dotRadius - 0.05, dotRadius + 0.05, dist);
+  float active = step(cellRnd, coverage);
+  return inDot * active;
 }
 
 // ─── Grain touch dithering ───
 // u_static controls grain animation: smooth drift, not discrete jumps
 float grainDither(float val, vec2 pix, float scale, float layerOff){
   vec2 fiberScale = vec2(1.0, 1.25);
-  // Use noise-based drift instead of sine wave to avoid visible wave banding
+  // Use noise-based drift instead of sine wave to avoid visible wave banding.
+  // Even so, the noise sampling here has a low X-frequency that reads as
+  // a wave at certain scales — gate it via u_simNoise so it disappears
+  // (and dial-able when we add an intensity slider).
   float driftNoise = texture2D(u_noise, fract(vec2(pix.x * 0.0004, 0.3 + layerOff))).r;
-  vec2 fiberDrift = vec2(0.0, (driftNoise - 0.5) * 2.0);
+  vec2 fiberDrift = vec2(0.0, (driftNoise - 0.5) * 2.0 * u_simNoise);
   // Limit UV scaling so noise never gets blocky (max 1.8× coarser)
   float uvScale = mix(1.0, 1.8, clamp((scale - 0.5) / 3.5, 0.0, 1.0));
   vec2 nuv = ((pix + fiberDrift) * fiberScale) / (256.0 * uvScale);
@@ -813,10 +1140,13 @@ float grainDither(float val, vec2 pix, float scale, float layerOff){
   // ─── Dark tone realism ───
   float coverage = min(val, 0.96);
   float darkMask = smoothstep(0.75, 1.0, val);
-  coverage += (bn - 0.5) * 0.04 * darkMask;
+  // Both the noise jitter AND the random "holes" at high coverage are
+  // simulation effects — gate via u_simNoise so clean modes get clean
+  // ink-density gradients in the shadows.
+  coverage += (bn - 0.5) * 0.04 * darkMask * u_simNoise;
   float holeRnd = hash2(pix * 7.3 + layerOff * 31.0);
   float hole = step(0.995, holeRnd);
-  coverage -= hole * 0.08 * darkMask;
+  coverage -= hole * 0.08 * darkMask * u_simNoise;
   coverage = clamp(coverage, 0.0, 1.0);
 
   float thr = fract(bn * 0.75 + h * 0.25);
@@ -865,25 +1195,308 @@ float jjnDither(float val, vec2 pix, float layerOff){
   return step(thr, val);
 }
 
+// ─── Atkinson (parallel approximation) ───
+// True Atkinson is sequential error-diffusion. We approximate with weighted
+// sampling of 6 neighbors with equal 1/8 weights — gives the characteristic
+// "loose" look (high-frequency content preserved, midtones slightly bright)
+// without sequential dependency.
+float atkinsonDither(float val, vec2 pix, float layerOff){
+  vec2 nuv = pix / 256.0;
+  float px = 1.0 / 256.0;
+  float n0 = texture2D(u_noise, fract(nuv + layerOff)).r;
+  float n1 = texture2D(u_noise, fract(nuv + vec2(px, 0.0) + layerOff)).r;
+  float n2 = texture2D(u_noise, fract(nuv + vec2(2.0*px, 0.0) + layerOff)).r;
+  float n3 = texture2D(u_noise, fract(nuv + vec2(-px, px) + layerOff)).r;
+  float n4 = texture2D(u_noise, fract(nuv + vec2(0.0, px) + layerOff)).r;
+  float n5 = texture2D(u_noise, fract(nuv + vec2(px, px) + layerOff)).r;
+  float n6 = texture2D(u_noise, fract(nuv + vec2(0.0, 2.0*px) + layerOff)).r;
+  // Atkinson: 6 neighbors at 1/8 each (total 6/8 — only 75% of error diffuses)
+  // Center pixel weighted to make up the shortfall.
+  float thr = (n0 * 2.0 + n1 + n2 + n3 + n4 + n5 + n6) / 8.0;
+  return step(thr, val);
+}
+
+// ─── Floyd-Steinberg (parallel approximation) ───
+// 4-neighbor weights: 7/16 right, 3/16 below-left, 5/16 below, 1/16 below-right
+float fsDither(float val, vec2 pix, float layerOff){
+  vec2 nuv = pix / 256.0;
+  float px = 1.0 / 256.0;
+  float n0 = texture2D(u_noise, fract(nuv + layerOff)).r;
+  float nR = texture2D(u_noise, fract(nuv + vec2(px, 0.0) + layerOff)).r;
+  float nBL = texture2D(u_noise, fract(nuv + vec2(-px, px) + layerOff)).r;
+  float nB = texture2D(u_noise, fract(nuv + vec2(0.0, px) + layerOff)).r;
+  float nBR = texture2D(u_noise, fract(nuv + vec2(px, px) + layerOff)).r;
+  float thr = (n0 * 16.0 + nR * 7.0 + nBL * 3.0 + nB * 5.0 + nBR * 1.0) / 32.0;
+  return step(thr, val);
+}
+
+// ─── Bayer 4×4 ordered dither ───
+// Threshold matrix gives crisp regular pattern — no random noise, fully
+// deterministic per coordinate. Perfect for grayscale tonal stepping.
+float bayer4Dither(float val, vec2 pix){
+  // Bayer 4×4 indices (0-15) at each (x%4, y%4). Threshold = (i + 0.5) / 16.
+  ivec2 p = ivec2(mod(pix, 4.0));
+  float idx;
+  // Precomputed index matrix (matches standard Bayer 4×4 pattern)
+  if(p.y == 0){      idx = p.x == 0 ? 0.0 : (p.x == 1 ? 8.0 : (p.x == 2 ? 2.0 : 10.0)); }
+  else if(p.y == 1){ idx = p.x == 0 ? 12.0 : (p.x == 1 ? 4.0 : (p.x == 2 ? 14.0 : 6.0)); }
+  else if(p.y == 2){ idx = p.x == 0 ? 3.0 : (p.x == 1 ? 11.0 : (p.x == 2 ? 1.0 : 9.0)); }
+  else {             idx = p.x == 0 ? 15.0 : (p.x == 1 ? 7.0 : (p.x == 2 ? 13.0 : 5.0)); }
+  float thr = (idx + 0.5) / 16.0;
+  return step(thr, val);
+}
+
+// ─── Bayer 8×8 ordered dither ───
+// Finer pattern — closer to grayscale fidelity but visible on smooth gradients.
+float bayer8Dither(float val, vec2 pix){
+  // Use formula: bayer(x,y) = reverse(interleave(x XOR y, y)) / 64
+  // GLSL fast computation via bit ops would need ints. We use a packed
+  // 8×8 cumulative formula based on recursive tile structure.
+  vec2 p = mod(pix, 8.0);
+  // Compute Bayer index recursively: B8 = 4*B4(p/2) + B4(p%2)
+  vec2 hp = floor(p * 0.5); // upper half (Bayer 4×4 index of p/2)
+  vec2 lp = mod(p, 2.0);    // lower half (Bayer 2×2 index of p%2)
+  // Bayer 4×4 index of hp:
+  ivec2 q = ivec2(mod(hp, 4.0));
+  float i4;
+  if(q.y == 0){      i4 = q.x == 0 ? 0.0 : (q.x == 1 ? 8.0 : (q.x == 2 ? 2.0 : 10.0)); }
+  else if(q.y == 1){ i4 = q.x == 0 ? 12.0 : (q.x == 1 ? 4.0 : (q.x == 2 ? 14.0 : 6.0)); }
+  else if(q.y == 2){ i4 = q.x == 0 ? 3.0 : (q.x == 1 ? 11.0 : (q.x == 2 ? 1.0 : 9.0)); }
+  else {             i4 = q.x == 0 ? 15.0 : (q.x == 1 ? 7.0 : (q.x == 2 ? 13.0 : 5.0)); }
+  // Bayer 2×2 index of lp:
+  float i2 = lp.y == 0.0 ? (lp.x == 0.0 ? 0.0 : 2.0) : (lp.x == 0.0 ? 3.0 : 1.0);
+  // Compose 64-level index
+  float idx = 4.0 * i4 + i2;
+  float thr = (idx + 0.5) / 64.0;
+  return step(thr, val);
+}
+
+// ─── RISO Grain Touch — literal byte-accurate ht5_3x3_6x6 matrix ───
+// The 8×8 threshold matrix extracted from
+//   /Library/Printers/RISO/Halftones/04A/ht5_3x3_6x6_04A.hft
+// (the actual binary the MZ9 Mac driver loads when "Grain-touch" is selected
+//  in the print dialog). Two dot centers at (1,1)=5 and (5,5)=9 — discrete
+// clustered-dot screen at 0°. Sample with NEAREST + REPEAT so the matrix
+// tiles seamlessly and each thermal-head cell is one matrix entry.
+//
+// u_ditherScale = pixels per thermal-head dot. Default 1 = "native res"
+// (one canvas pixel per dot — typically too small to see individual dots on
+// screen). Bump to 2..8 to make the dot grid visible at normal viewing zoom.
+float risoMatrixDither(float val, vec2 pix, int idx){
+  // Per-channel AMT: one 1-bit master texture per ink layer. Each was
+  // halftoned in JS from THIS channel's color-projection coverage map,
+  // so dot positions are independent per ink — matching real RISO output.
+  if(u_useAmt > 0.5){
+    // DEBUG BASELINE: bypass shear, gamma, smoothstep — raw V&C step
+    if(u_risoDebugBaseline > 0.5){
+      vec2 bnUV_raw = pix / 128.0;
+      float thr_raw = texture2D(u_bnVC, bnUV_raw).r;
+      return step(thr_raw, val);
+    }
+    // GPU Grain Touch: V&C blue-noise threshold + density gamma.
+    // 128 = renderer.js BN_SIZE — keep in sync.
+    vec2 bnUV = pix * u_risoGrainScale / 128.0;
+    float threshold = texture2D(u_bnVC, bnUV).r;
+    float density = pow(max(val, 0.0001), 1.0 / max(u_risoGamma, 0.1));
+    return step(threshold, density);
+  }
+  float scale = max(1.0, u_ditherScale);
+  vec2 cellID = floor(pix / scale);
+  vec2 uv = (cellID + 0.5) / 8.0;
+  float thr = texture2D(u_ht5Matrix, uv).r;
+  return step(thr, val);
+}
+
 // ─── [IMPROVED] Halftone screen — rough dot edges like real print ───
+//
+// Distance mapping: with multiplier M, the cell corner has dist = M * 0.707.
+//   M = 1.414  → dot only reaches corner exactly at val=1, leaving tiny
+//                negative-space at every cell intersection. At high coverage
+//                across many cells these gaps tile into a visible square
+//                grid (looks "blocky").
+//   M = 1.15   → corner reached at val ≈ 0.81, so high-coverage areas merge
+//                cleanly into solid ink while mid-coverage dots still look
+//                like distinct circles. Adjacent dots smoothly overlap at
+//                their inscribed-circle boundaries.
+// ─── Halftone stamp shape distance fields ───
+// Each function returns a "distance from shape center" in 0..~1. Threshold
+// against `val` decides which pixels are inside the stamp. Each shape has
+// the same compositing math (smoothstep edge) so they share roughness.
+float dist_circle(vec2 c){ return length(c) * 1.15; }
+float dist_square(vec2 c){ return max(abs(c.x), abs(c.y)) * 2.0; }
+float dist_diamond(vec2 c){ return (abs(c.x) + abs(c.y)) * 1.4; }
+float dist_plus(vec2 c){
+  // Two overlapping rects (plus sign) — distance is min of two box fields
+  float armW = 0.18; // arm half-thickness
+  float horiz = max(abs(c.y) / armW, abs(c.x) * 2.0);
+  float vert  = max(abs(c.x) / armW, abs(c.y) * 2.0);
+  return min(horiz, vert);
+}
+float dist_star(vec2 c){
+  // 5-pointed star via polar modulation. Periodic angular function pinches
+  // at every 72° to form the star's points.
+  float r = length(c);
+  float ang = atan(c.y, c.x);
+  // 5 lobes — radius modulated by cosine with 5x frequency
+  float lobe = 0.30 + 0.20 * cos(5.0 * ang - 1.5708);
+  return r / max(lobe, 0.05);
+}
+float dist_heart(vec2 c){
+  // Heart curve — implicit equation r = a(1 - sin(theta)). Rendered as
+  // distance from inside (negative) shifted to 0..1 normalized.
+  vec2 p = vec2(c.x * 1.05, c.y * 1.05 + 0.04); // tweak aspect & shift down
+  float r = length(p);
+  float ang = atan(-p.y, p.x); // flip Y so cusp points up
+  float lobe = 0.40 * (1.0 - sin(ang));
+  return r / max(lobe, 0.05);
+}
+
 float screenDither(float val, vec2 pix, float cellPx, float angle){
   float c=cos(angle), s=sin(angle);
   vec2 rp = vec2(pix.x*c - pix.y*s, pix.x*s + pix.y*c);
   vec2 cellPos = mod(rp, cellPx) / cellPx;
   vec2 centered = cellPos - 0.5;
-  // Drum pressure deformation: dots stretch slightly in transport (y) direction
-  centered.x *= 1.12;
-  float dist = length(centered) * 1.414;
-  // Rough edge — hash adds tiny irregularities to dot boundary
+  // Drum-pressure asymmetry, scaled by u_simNoise (0 = perfect circles).
+  centered.x *= 1.0 + 0.05 * u_simNoise;
+  float dist;
+  if(u_stampShape == 1){       dist = dist_square(centered); }
+  else if(u_stampShape == 2){  dist = dist_diamond(centered); }
+  else if(u_stampShape == 3){  dist = dist_plus(centered); }
+  else if(u_stampShape == 4){  dist = dist_star(centered); }
+  else if(u_stampShape == 5){  dist = dist_heart(centered); }
+  else {                        dist = dist_circle(centered); }
+  // Per-cell hash roughness + angular wobble, scaled by u_simNoise.
   vec2 cellID = floor(rp / cellPx);
-  float roughness = (hash(cellID * 7.3) - 0.5) * 0.10;
-  // Angular wobble — dots aren't perfect circles
+  float roughness = (hash(cellID * 7.3) - 0.5) * 0.08 * u_simNoise;
   float ang = atan(centered.y, centered.x);
-  float wobble = hash(cellID * 13.1 + floor(ang * 2.0)) * 0.03;
+  float wobble = hash(cellID * 13.1 + floor(ang * 2.0)) * 0.025 * u_simNoise;
   dist += roughness + wobble;
-  // Soft edge with ink spread
-  float edge = 1.5 / cellPx;
+  // Soft edge — narrows when u_simNoise is low so dot edges are crisper.
+  float edge = mix(0.5, 1.5, u_simNoise) / cellPx;
   return 1.0 - smoothstep(val - edge, val + edge, dist);
+}
+
+// ─── Line screens — parallel/curved/radial line patterns ───
+// 6 shape variants drawn from intaglio/printmaking traditions:
+//   0=STRAIGHT  parallel lines
+//   1=WAVY      etched sinusoidal tremor
+//   2=GUILLOCHE banknote-style double-modulated curves
+//   3=CONCENTRIC circles around image center (ripple)
+//   4=RADIAL    lines emanating from image center (sunburst)
+//   5=CROSS     cross-hatch — two perpendicular line sets max'd together
+//
+// Each function returns a "distance from line center" in 0..1 so the
+// caller can apply the same threshold-vs-coverage logic uniformly.
+
+// Helper: per-stripe roughness for organic ink-spread feel.
+// u_lineRoughness scales the amount of edge fray (0 = clean engraver, 1 = inky).
+float lineRoughness(float lineID, float along){
+  float jitter = (hash(vec2(lineID, lineID*1.7)) - 0.5) * 0.10;
+  float spread = hash(vec2(along, lineID)) * 0.03;
+  return (jitter + spread) * u_lineRoughness;
+}
+
+float lineDither(float val, vec2 pix, float cellPx, float angle, int idx){
+  // Pick this layer's center (CONCENTRIC/RADIAL only — others ignore it).
+  vec2 lineCenter = (idx == 0) ? u_lineCenter0
+                  : (idx == 1) ? u_lineCenter1
+                  : (idx == 2) ? u_lineCenter2 : u_lineCenter3;
+  float c = cos(angle), s = sin(angle);
+  vec2 rp = vec2(pix.x*c - pix.y*s, pix.x*s + pix.y*c);
+  float dist;
+  if(u_lineShape == 0){
+    // STRAIGHT — parallel lines
+    float pos = mod(rp.y, cellPx) / cellPx;
+    dist = abs(pos - 0.5) * 2.0;
+    dist += lineRoughness(floor(rp.y / cellPx), floor(rp.x * 0.5));
+  } else if(u_lineShape == 1){
+    // WAVY — sinusoidal stripe modulation, like an etched plate
+    float wob = sin(rp.x * (3.14159 / cellPx) * 0.7) * cellPx * 0.35 * u_lineAmount
+              + sin(rp.x * (3.14159 / cellPx) * 0.21) * cellPx * 0.25 * u_lineAmount;
+    float pos = mod(rp.y + wob, cellPx) / cellPx;
+    dist = abs(pos - 0.5) * 2.0;
+    dist += lineRoughness(floor((rp.y+wob) / cellPx), floor(rp.x * 0.5));
+  } else if(u_lineShape == 2){
+    // GUILLOCHE — banknote curves: sin nested in sin for braided look
+    float carrier = rp.x * (3.14159 / cellPx) * 0.5;
+    float modulator = sin(rp.x * (3.14159 / cellPx) * 0.05);
+    float wob = sin(carrier + modulator * 3.0 * u_lineAmount) * cellPx * 0.4 * u_lineAmount;
+    float pos = mod(rp.y + wob, cellPx) / cellPx;
+    dist = abs(pos - 0.5) * 2.0;
+    dist += lineRoughness(floor((rp.y+wob) / cellPx), floor(rp.x * 0.5));
+  } else if(u_lineShape == 3){
+    // CONCENTRIC — circles around configurable center, like ripples.
+    // u_lineCount divides the cell so >1 gives more rings, <1 gives fewer.
+    vec2 center = lineCenter * u_res;
+    float r = length(pix - center);
+    float cellPxAdj = cellPx / max(u_lineCount, 0.01);
+    float pos = mod(r, cellPxAdj) / cellPxAdj;
+    dist = abs(pos - 0.5) * 2.0;
+    dist += lineRoughness(floor(r / cellPxAdj), 0.0);
+  } else if(u_lineShape == 4){
+    // RADIAL — spokes emanating from configurable center.
+    // u_lineCount multiplies the base spoke count.
+    // Per-plate angle (from the C/M/Y/K row buttons) rotates the whole
+    // spoke pattern, so different plates can have offset spoke arrangements
+    // — creates the classic CMYK moiré rosette when each plate gets a
+    // different angle (e.g. 15°/75°/0°/45°).
+    vec2 d = pix - lineCenter * u_res;
+    float ang = atan(d.y, d.x) + angle;
+    float spokes = max(8.0, u_res.x / cellPx * 0.7) * u_lineCount;
+    float pos = mod(ang * spokes / 6.2832, 1.0);
+    dist = abs(pos - 0.5) * 2.0;
+    // Falloff near center to avoid the singularity
+    float r = length(d);
+    dist = mix(1.0, dist, smoothstep(0.0, cellPx*2.0, r));
+    dist += lineRoughness(floor(ang * spokes / 6.2832), floor(r / cellPx));
+  } else if(u_lineShape == 5){
+    // SPIRAL — radial spokes that twist as they grow outward. Same as
+    // RADIAL but the polar angle picks up an extra rotation proportional
+    // to the radius. Twirl strength is reused from u_lineAmount so the
+    // existing "Amount" knob controls how tight the spiral coils.
+    vec2 d = pix - lineCenter * u_res;
+    float r = length(d);
+    float twirl = u_lineAmount * 6.0; // radians of rotation per unit r/u_res
+    float ang = atan(d.y, d.x) + angle + r * twirl / max(u_res.x, 1.0);
+    float spokes = max(8.0, u_res.x / cellPx * 0.7) * u_lineCount;
+    float pos = mod(ang * spokes / 6.2832, 1.0);
+    dist = abs(pos - 0.5) * 2.0;
+    dist = mix(1.0, dist, smoothstep(0.0, cellPx*2.0, r));
+    dist += lineRoughness(floor(ang * spokes / 6.2832), floor(r / cellPx));
+  } else {
+    // CROSS — two perpendicular line sets max'd together (cross-hatch in one layer)
+    float p1 = mod(rp.y, cellPx) / cellPx;
+    float p2 = mod(rp.x, cellPx) / cellPx;
+    float d1 = abs(p1 - 0.5) * 2.0 + lineRoughness(floor(rp.y / cellPx), floor(rp.x * 0.5));
+    float d2 = abs(p2 - 0.5) * 2.0 + lineRoughness(floor(rp.x / cellPx) + 13.0, floor(rp.y * 0.5));
+    dist = min(d1, d2); // min = max of the two ink masks (closer of either line)
+  }
+  // Line weight: scale the threshold so heavier weight = thicker stripes
+  // for the same coverage (val). Clamp to keep ink solid at extremes.
+  float thicknessMod = 1.0;
+  if(u_lineEdgeThickness > 0.001 && (u_lineShape == 3 || u_lineShape == 4 || u_lineShape == 5)){
+    // CONCENTRIC / RADIAL: edge-thickness slider grows the line weight
+    // as you move away from the center, so outer rings/spokes appear
+    // thicker than inner ones — subtle riso-print "weighted edge" look.
+    // distFromCenter is normalized: 0 at center, ~0.7 at the page corner
+    // for a 4:3 page. Multiplier 1 → 1+1.4*amount at the corner.
+    vec2 cen = lineCenter * u_res;
+    float distFromCenter = length(pix - cen) / length(u_res);
+    thicknessMod = 1.0 + u_lineEdgeThickness * distFromCenter * 2.0;
+  }
+  float w = clamp(val * u_lineWeight * thicknessMod, 0.0, 1.0);
+  float edge = 1.5 / cellPx;
+  return 1.0 - smoothstep(w - edge, w + edge, dist);
+}
+
+// Snap UV to halftone cell center — edges quantize to the dot grid (no pixel-sharp edges)
+vec2 snapToCellCenter(vec2 pix, vec2 layerUV, float cellPx, float angle){
+  if(u_mode != 1 || cellPx < 3.0) return layerUV;
+  float c = cos(angle), s = sin(angle);
+  vec2 rp = vec2(pix.x*c - pix.y*s, pix.x*s + pix.y*c);
+  vec2 cellOffset = mod(rp, cellPx) - cellPx * 0.5;
+  vec2 pixOffset = vec2(cellOffset.x*c + cellOffset.y*s, -cellOffset.x*s + cellOffset.y*c);
+  return layerUV - pixOffset / u_res;
 }
 
 // Reference resolution for resolution-independent textures
@@ -891,15 +1504,81 @@ float screenDither(float val, vec2 pix, float cellPx, float angle){
 const float REF_BASE = 1024.0;
 #define REF (REF_BASE * u_resScale)
 
+// ─── Text-routing override ───────────────────────────────────────────
+// PDF mode: pixels inside vector text regions are routed to a single
+// chosen layer (avoids the misregistration smear you get when a glyph's
+// color decomposes across multiple plates). The text mask comes from
+// pdf.js's getTextContent(); shape comes from a soft-edged rasterized
+// bbox. Source is sampled UN-registered for the text path so the chosen
+// plate prints text at its true position regardless of plate misreg.
+//
+// Coverage at a text pixel is derived from a single-ink NNLS fit (the
+// best amount of the chosen ink that approximates the source color). So
+// red text routed to a Magenta plate prints at ~95% coverage; red text
+// routed to a Yellow plate prints at ~30% coverage (visibly weak —
+// signaling to the user they picked the wrong color).
+float applyTextRouting(float cov, vec2 uv, int thisLayer){
+  if(u_textLayerIdx < 0) return cov;
+  // Mask is laid out in canvas coordinate space (same dims as source
+  // raster), so sample at the raw v_uv with no further remapping.
+  float mask = texture2D(u_textMask, uv).r;
+  // Non-text plates: behavior depends on knockout setting.
+  //  - knockout OFF: u_src has been inpainted (text glyphs replaced with
+  //    bg color), so normal NNLS pipeline renders the bg "behind" each
+  //    glyph. Just return cov as-is.
+  //  - knockout ON: zero out non-text plates inside text region, so paper
+  //    shows through where the glyph is. Useful when bg-reconstruction
+  //    misfires (text over complex/non-flat backgrounds).
+  if(thisLayer != u_textLayerIdx){
+    if(u_textKnockout > 0.5){
+      // Trapping: contract the knockout region by trappingPx pixels
+      // (4-sample erosion via min on a cross). This makes the paper-
+      // showing area smaller than the printed glyph so the text plate's
+      // ink overlaps surrounding ink by trappingPx — covering plate
+      // misregistration without a white halo.
+      float effMask = mask;
+      if(u_trappingPx > 0.5){
+        vec2 px = vec2(u_trappingPx) / u_res;
+        effMask = min(effMask, texture2D(u_textMask, uv + vec2( px.x, 0)).r);
+        effMask = min(effMask, texture2D(u_textMask, uv + vec2(-px.x, 0)).r);
+        effMask = min(effMask, texture2D(u_textMask, uv + vec2(0,  px.y)).r);
+        effMask = min(effMask, texture2D(u_textMask, uv + vec2(0, -px.y)).r);
+      }
+      if(effMask >= 0.05) return 0.0;
+    }
+    return cov;
+  }
+  // Text plate: outside text region, keep image content (cov as-is).
+  // Inside text region, replace with single-ink NNLS fit on the ORIGINAL
+  // (un-inpainted) glyph color, sampled from u_srcOrig.
+  if(mask < 0.05) return cov;
+  vec3 textInk = (u_textLayerIdx == 0) ? u_ink0
+               : (u_textLayerIdx == 1) ? u_ink1
+               : (u_textLayerIdx == 2) ? u_ink2 : u_ink3;
+  // Sample original source at canvas-aligned UV (no per-layer misreg)
+  // so text prints crisp regardless of plate-to-plate registration.
+  vec3 srcText = texture2D(u_srcOrig, srcUV(uv)).rgb;
+  vec2 single = nnls1(srcText - u_paperColor, textInk - u_paperColor);
+  return mix(cov, single.x, mask);
+}
+
 // ─── Print boundary: each layer's stencil edge, slightly offset by misreg ───
-// Creates paper margin where individual color layers' edges become visible
+// Creates paper margin with a sharp-but-frayed edge — the boundary is
+// effectively crisp (sub-pixel feather) but its POSITION is jittered by
+// high-frequency noise so it looks irregular like real riso ink instead
+// of a clean ruler line. Two octaves of noise (coarse + fine) give both
+// "wandering" and "fuzzy" character at the edge.
 float printMask(vec2 uv, vec2 layerOff, vec2 rpx){
   vec2 p = uv + layerOff;
-  // u_printArea = (left, top, 1-right, 1-bottom) — margins from each edge
-  float edgeNoise = texture2D(u_noise, fract(rpx * 0.008 + layerOff * 3.0)).r;
-  float roughness = 0.005; // how jagged the edge is
-  float soft = 0.003;      // very thin feather — real stencil edges are sharp-ish
-  float rough = (edgeNoise - 0.5) * roughness;
+  // Edge fray scales with u_simNoise — at 0 we get a hard rectangle.
+  float n1 = texture2D(u_noise, fract(rpx * 0.008 + layerOff * 3.0)).r;
+  float n2 = texture2D(u_noise, fract(rpx * 0.06  + layerOff * 7.1)).r;
+  float coarse = (n1 - 0.5) * 0.010;
+  float fine   = (n2 - 0.5) * 0.006;
+  float rough = (coarse + fine) * u_simNoise;
+  // Edge softness scales with u_simNoise — clamped to 1e-4 to avoid the
+  // smoothstep degenerate case at u_simNoise=0 (gives effectively step()).
+  float soft = max(0.0001, 0.0015 * u_simNoise);
   float l = smoothstep(u_printArea.x + rough - soft, u_printArea.x + rough + soft, p.x);
   float r = smoothstep(u_printArea.z + rough - soft, u_printArea.z + rough + soft, 1.0 - p.x);
   float t = smoothstep(u_printArea.y + rough - soft, u_printArea.y + rough + soft, p.y);
@@ -944,37 +1623,56 @@ float getCoverage(vec4 cmyk, vec2 rpx, int idx, int ch, float noise1, float dens
   float ink = getChannel(cmyk, ch, u_layers, srcRGB);
   ink *= dens * 0.01;
 
-  // Coverage is passed linearly to the LUT — the LUT encodes the full
-  // ink-on-paper appearance (including real physical dot gain and tonal response).
-  // Only a subtle dot gain effect remains for the user slider.
-  ink = clamp(ink, 0.0, 1.0);
-  float dgSpread = u_dotGain * 0.008;
+  // Per-ink gamma: shapes digital values → coverage mapping (from v8)
+  // Blend toward linear (1.0) by 45% — LUT handles ink-on-paper appearance
+  float calGamma = mix(inkGamma, 1.0, 0.45);
+  ink = pow(clamp(ink, 0.0, 1.0), calGamma);
+
+  // Gentle S-curve: adds midtone contrast (matched to v8)
+  float tc = clamp(ink, 0.0, 1.0);
+  float curved = tc * tc * (3.0 - 2.0 * tc);
+  ink = mix(tc, curved, 0.15);
+
+  // Dot gain — halved since LUT swatch data already includes physical dot gain
+  float inkAbsorb = mix(0.9, 1.2, float(idx) / 3.0);
+  float gainMod = u_dotGain * inkAbsorb * (1.0 + (pf - 1.0) * 3.0) * u_simNoise;
+  float dgSpread = gainMod * 0.005; // halved from v8's 0.01
   ink = clamp(ink + dgSpread * ink * (1.0 - ink) * 4.0, 0.0, 1.0);
 
   // Cross-layer depletion: later layers print on already-wet paper
-  ink *= 1.0 - u_layerDeplete * float(idx);
+  ink *= 1.0 - u_layerDeplete * float(idx) * u_simNoise;
 
   // Temporal ink density flicker: each frame is a separate drum pass
-  float flicker = 1.0 + (hash(vec2(u_frameSeed * 7.3, float(idx) * 1.3)) - 0.5) * u_densFlicker;
+  float flicker = 1.0 + (hash(vec2(u_frameSeed * 7.3, float(idx) * 1.3)) - 0.5) * u_densFlicker * u_simNoise;
   ink *= flicker;
 
-  // Ink absorption modulation: paper fibers trap ink unevenly
-  // Softened (70%) to prevent wash-out in dark areas from asymmetric clamping
+  // Paper fiber modulation: fibers trap ink unevenly
   ink *= pf;
 
-  // Print pressure variation (roller)
-  float pressX = sin(rpx.x * 0.003 + float(idx) * 2.1) * 0.015 * u_pressVar;
-  float pressY = sin(rpx.y * 0.005 + float(idx) * 1.7) * 0.01 * u_pressVar;
-  float drumPhase = hash(vec2(u_frameSeed * 3.7, float(idx) * 2.9)) * 6.283;
-  float drumBand = sin(rpx.y * 0.004 + drumPhase) * 0.018 * u_pressVar;
+  // Print pressure variation (roller) — use noise to avoid visible wave banding
+  float pressX = (texture2D(u_noise, fract(vec2(rpx.x * 0.0003, 0.2 + float(idx) * 0.31))).r - 0.5) * 0.03 * u_pressVar * u_simNoise;
+  float pressY = (texture2D(u_noise, fract(vec2(0.7 + float(idx) * 0.23, rpx.y * 0.0005))).r - 0.5) * 0.02 * u_pressVar * u_simNoise;
+  float drumNoise = texture2D(u_noise, fract(vec2(0.1 + float(idx) * 0.19, rpx.y * 0.0004 + u_frameSeed * 0.01))).r;
+  float drumBand = (drumNoise - 0.5) * 0.036 * u_pressVar * u_simNoise;
   ink *= 1.0 + pressX + pressY + drumBand;
 
-  // Ink starvation in dense areas
-  float starvation = smoothstep(0.6, 1.0, ink) * sin(rpx.y * 0.01) * 0.03;
+  // Ink starvation in dense areas — use noise instead of sine.
+  // Skipped in FLAT and SCREEN-clean: this was the source of the speckle
+  // pattern visible along shape edges (ink>0.6) even when other noise was
+  // bypassed. It's a per-pixel hash NOT gated by any uniform we already
+  // zero, so we have to skip the whole block.
+  // Ink starvation in dense areas — scales with u_simNoise.
+  float starvNoise = texture2D(u_noise, fract(vec2(rpx.x * 0.0002, rpx.y * 0.001))).r;
+  float starvation = smoothstep(0.6, 1.0, ink) * (starvNoise - 0.5) * 0.06 * u_simNoise;
   ink -= starvation;
 
   // Ink noise
-  ink += (noise1 - 0.5) * u_inkNoise * 0.006;
+  ink += (noise1 - 0.5) * u_inkNoise * 0.006 * u_simNoise;
+  ink = clamp(ink, 0.0, 1.0);
+
+  // Ink absorption softening: ink sits on surface before absorbing
+  ink = mix(ink, sqrt(ink), 0.08);
+
   return clamp(ink, 0.0, 1.0);
 }
 
@@ -986,70 +1684,251 @@ float getCoverageApprox(float weight, vec2 rpx, int idx, float noise1, float den
   float ink = weight;
   ink *= dens * 0.01;
   ink = clamp(ink, 0.0, 1.0);
-  float dgSpread = u_dotGain * 0.008;
+  // Gentle S-curve (matched to v8)
+  float tc = clamp(ink, 0.0, 1.0);
+  float curved = tc * tc * (3.0 - 2.0 * tc);
+  ink = mix(tc, curved, 0.15);
+  // Dot gain with paper modulation
+  float inkAbsorb = mix(0.9, 1.2, float(idx) / 3.0);
+  float gainMod = u_dotGain * inkAbsorb * (1.0 + (pf - 1.0) * 3.0) * u_simNoise;
+  float dgSpread = gainMod * 0.005;
   ink = clamp(ink + dgSpread * ink * (1.0 - ink) * 4.0, 0.0, 1.0);
-  ink *= 1.0 - u_layerDeplete * float(idx);
-  float flicker = 1.0 + (hash(vec2(u_frameSeed * 7.3, float(idx) * 1.3)) - 0.5) * u_densFlicker;
+  ink *= 1.0 - u_layerDeplete * float(idx) * u_simNoise;
+  float flicker = 1.0 + (hash(vec2(u_frameSeed * 7.3, float(idx) * 1.3)) - 0.5) * u_densFlicker * u_simNoise;
   ink *= flicker;
-  ink *= pf;
-  float pressX = sin(rpx.x * 0.003 + float(idx) * 2.1) * 0.015 * u_pressVar;
-  float pressY = sin(rpx.y * 0.005 + float(idx) * 1.7) * 0.01 * u_pressVar;
-  float drumPhase = hash(vec2(u_frameSeed * 3.7, float(idx) * 2.9)) * 6.283;
-  float drumBand = sin(rpx.y * 0.004 + drumPhase) * 0.018 * u_pressVar;
+  ink *= pf; // paper fiber modulation
+  // Print pressure variation — use noise to avoid visible wave banding
+  float pressX = (texture2D(u_noise, fract(vec2(rpx.x * 0.0003, 0.2 + float(idx) * 0.31))).r - 0.5) * 0.03 * u_pressVar * u_simNoise;
+  float pressY = (texture2D(u_noise, fract(vec2(0.7 + float(idx) * 0.23, rpx.y * 0.0005))).r - 0.5) * 0.02 * u_pressVar * u_simNoise;
+  float drumNoise = texture2D(u_noise, fract(vec2(0.1 + float(idx) * 0.19, rpx.y * 0.0004 + u_frameSeed * 0.01))).r;
+  float drumBand = (drumNoise - 0.5) * 0.036 * u_pressVar * u_simNoise;
   ink *= 1.0 + pressX + pressY + drumBand;
-  float starvation = smoothstep(0.6, 1.0, ink) * sin(rpx.y * 0.01) * 0.03;
+  // Ink starvation — gated on clean modes (FLAT / SCREEN-clean) because
+  // it produces a per-pixel hash speckle at high-coverage shape edges
+  // that doesn't scale with any uniform we already zero.
+  // Ink starvation in dense areas — scales with u_simNoise.
+  float starvNoise = texture2D(u_noise, fract(vec2(rpx.x * 0.0002, rpx.y * 0.001))).r;
+  float starvation = smoothstep(0.6, 1.0, ink) * (starvNoise - 0.5) * 0.06 * u_simNoise;
   ink -= starvation;
-  ink += (noise1 - 0.5) * u_inkNoise * 0.006;
+  ink += (noise1 - 0.5) * u_inkNoise * 0.006 * u_simNoise;
+  ink = clamp(ink, 0.0, 1.0);
+  ink = mix(ink, sqrt(ink), 0.08); // absorption softening
   return clamp(ink, 0.0, 1.0);
 }
 
 // Compute grain/halftone texture value for visual effect (0-1).
 // This creates the risograph look without affecting tonal accuracy.
 float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, float pf, float grainMul){
-  // Mild tonal lift — the heavy lifting is done in calBlend per-dot intensity.
-  float val = pow(coverage, u_tonalGamma);
+  float val;
+  if(u_useDriverLUT > 0.5){
+    // Driver LUT already encodes full tonal pre-compensation (γ2.65 etc.)
+    // Bypass tonalGamma to avoid double-darkening — the LUT IS the gamma
+    val = clamp(coverage, 0.0, 1.0);
+  } else if(u_dbgTrcSCurve > 0.5){
+    // TRC S-curve: preserves midtone contrast instead of compressing with pow()
+    // Inspired by RISO driver transfer curves — S-shaped for better tonal separation
+    // Uses a quintic Hermite (6t^5-15t^4+10t^3) for smoother S with adjustable strength
+    float t = clamp(coverage, 0.0, 1.0);
+    // Base S-curve (quintic smoothstep — steeper in midtones, gentle at extremes)
+    float s = t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+    // Blend between S-curve and linear based on tonalGamma as strength control
+    // tonalGamma=1.0 → pure S-curve, tonalGamma=1.4 → stronger midtone push
+    float strength = clamp((u_tonalGamma - 0.8) * 1.5, 0.0, 1.0);
+    val = mix(t, s, strength);
+  } else {
+    // Default: coverage passes through (tonal processing now in getCoverage)
+    // tonalGamma only adds additional push when slider is moved from 1.0
+    val = coverage;
+    if(u_tonalGamma > 1.02 || u_tonalGamma < 0.98){
+      val = pow(clamp(val, 0.001, 1.0), u_tonalGamma);
+    }
+  }
 
-  // Paper field perturbs dither threshold — fibers affect where ink lands
-  val += (pf - 1.0) * 0.28;
-  val = clamp(val, 0.0, 1.0);
-
-  // Stencil perforation irregularity
-  float stencilMask = smoothstep(0.7, 1.0, val);
-  float micro = hash(rpx * 0.5 + float(idx) * 17.0);
-  float perfHole = step(0.992, micro);
-  val -= perfHole * 0.12 * stencilMask;
-  val = clamp(val, 0.0, 1.0);
-
-  // Drum transport jitter — use noise for organic variation, avoid sine-wave banding
+  // Drum transport jitter — needed by both RISO master sampling (so dots
+  // slide with drum) and the per-fragment dither path below. Compute first.
   float slipNoise = texture2D(u_noise, fract(vec2(0.1 + float(idx) * 0.17, rpx.y * 0.001))).r;
-  float slip = (slipNoise - 0.5) * 0.8;
+  float slip = (slipNoise - 0.5) * 0.8 * u_simNoise;
   vec2 jitRpx = vec2(rpx.x + slip, rpx.y);
   vec2 jitPix = vec2(pix.x + slip * u_res.x / REF, pix.y);
 
+  // RISO mode (formerly FLAT): sample the pre-computed AMT master texture
+  // for this ink channel. The master was halftoned in JS with the
+  // driver-faithful FS algorithm (Tables A/B/C threshold modulation +
+  // serpentine 7/3/5/1 FS). u_useAmt acts as a "ready" flag.
+  //
+  // STOCHASTIC SUPERSAMPLING: Real RISO at 600 DPI viewed from reading
+  // distance averages 6-8 master cells per visual "pixel" — that's what gives
+  // RISO blacks their smooth-with-grain look (vs the "TV static" look of a
+  // low-DPI master shown 1:1). Even though we prepass at 75-150 DPI for speed,
+  // we mimic the high-DPI averaging here: take 4 samples at pseudo-random
+  // sub-pixel offsets within this fragment's footprint in master UV space and
+  // average them. Result: the dot grain becomes a textured halftone instead
+  // of high-frequency noise, matching the visual character of real RISO output.
+  if(u_mode == 3){
+    if(u_useAmt > 0.5){
+      vec2 uv_riso = srcUV(jitPix / u_res);
+      // Stochastic supersampling: sample the master at 4 pseudo-random offsets
+      // within ±u_amtSuperSample master-texels, then average. Mimics the
+      // many-master-cells-per-eye-pixel averaging that happens when viewing a
+      // real RISO print at reading distance. At u_amtSuperSample = 0, we get
+      // a single sample (the old behavior).
+      float total = 0.0;
+      vec2 radius = u_amtTexel * u_amtSuperSample;
+      for(int s = 0; s < 4; s++){
+        vec2 off = vec2(
+          hash(gl_FragCoord.xy + vec2(float(s) * 7.13, 0.0)) - 0.5,
+          hash(gl_FragCoord.xy + vec2(0.0, float(s) * 11.37)) - 0.5
+        );
+        vec2 sUV = uv_riso + off * radius;
+        float v;
+        if(idx == 0)      v = texture2D(u_amtMaster0, sUV).r;
+        else if(idx == 1) v = texture2D(u_amtMaster1, sUV).r;
+        else if(idx == 2) v = texture2D(u_amtMaster2, sUV).r;
+        else              v = texture2D(u_amtMaster3, sUV).r;
+        total += v;
+      }
+      return total * 0.25;
+    }
+    return clamp(val, 0.0, 1.0);
+  }
+
+  // Paper field perturbs dither threshold — fibers affect where ink lands
+  val += (pf - 1.0) * 0.15;
+  val = clamp(val, 0.0, 1.0);
+
+  // Stencil perforation irregularity — scaled by u_simNoise.
+  float stencilMask = smoothstep(0.7, 1.0, val);
+  float micro = hash(rpx * 0.5 + float(idx) * 17.0);
+  float perfHole = step(0.992, micro);
+  val -= perfHole * 0.12 * stencilMask * u_simNoise;
+  val = clamp(val, 0.0, 1.0);
+
   float adjustedGrain = u_grainSize * grainMul;
   float lo = float(idx)*0.3137;
-  if(u_ditherMode == 1) return stuckiDither(val, jitRpx, lo);
-  if(u_ditherMode == 2) return jjnDither(val, jitRpx, lo);
-  if(u_mode == 0) return grainDither(val, jitRpx, adjustedGrain, lo);
-  return screenDither(val, jitPix, u_screenCell, angle);
+  // Dither scale: divide coordinates so each dither cell covers `scale`
+  // source pixels (chunkier dots). Only applied to GRAIN-mode sub-modes
+  // below — SCREEN and LINES have their own size knobs.
+  float dscale = max(u_ditherScale, 1.0);
+  vec2 sRpx = jitRpx / dscale;
+  vec2 sPix = jitPix / dscale;
+  // Mode dispatch — SCREEN and LINES override the dither sub-modes because
+  // they're independent rendering paths (round dots vs parallel lines vs
+  // grain). The ditherMode sub-modes are conceptually a flavour of GRAIN.
+  if(u_mode == 1) return screenDither(val, jitPix, u_screenCell, angle);
+  if(u_mode == 2) return lineDither(val, jitPix, u_screenCell, angle, idx);
+  // u_mode == 0 → GRAIN. Within grain, ditherMode picks the algorithm.
+  if(u_ditherMode == 1) return stuckiDither(val, sRpx, lo);
+  if(u_ditherMode == 2) return jjnDither(val, sRpx, lo);
+  if(u_ditherMode == 3) return atkinsonDither(val, sRpx, lo);
+  if(u_ditherMode == 4) return fsDither(val, sRpx, lo);
+  if(u_ditherMode == 5) return bayer4Dither(val, sPix);
+  if(u_ditherMode == 6) return bayer8Dither(val, sPix);
+  // AMT (Grain Touch) samples a pre-computed 1-bit master at canvas-space UV.
+  // Pass the original `pix` (layer position, includes only misreg/skew that
+  // the source UV also uses) NOT `sPix` — sPix has dscale division and per-
+  // channel slip jitter baked in, which would shrink/offset the AMT texture
+  // relative to the source content, creating a smaller-ghost artifact.
+  if(u_ditherMode == 7) return risoMatrixDither(val, pix, idx);
+  if(u_dbgFMDots > 0.5) return fmDotDither(val, jitRpx, adjustedGrain, lo);
+  return grainDither(val, jitRpx, adjustedGrain, lo);
 }
 
 // Legacy wrapper for separation mode (needs binary output)
-float processLayer(vec4 cmyk, vec2 rpx, vec2 pix, int idx, int ch, float angle, float noise1, float noise2, float dens, float pf, vec3 srcRGB, float inkGamma, float grainMul){
+float processLayer(vec4 cmyk, vec2 rpx, vec2 pix, int idx, int ch, float angle, float noise1, float noise2, float dens, float pf, vec3 srcRGB, float grainMul, float inkGamma){
   float cov = getCoverage(cmyk, rpx, idx, ch, noise1, dens, pf, srcRGB, inkGamma);
   return getGrainTexture(cov, rpx, pix, idx, angle, pf, grainMul);
 }
 
-// ─── 5-point piecewise linear LUT from scanned swatch data ───
+// ─── 5-point monotone cubic Hermite LUT from scanned swatch data ───
 // Breakpoints: 0% (paper), 10%, 30%, 50%, 70%, 100%
-// Exact at all calibration points, smooth interpolation between
-vec3 lutBlend(float d, vec3 paper, vec3 p10, vec3 p30, vec3 p50, vec3 p70, vec3 p100) {
+// Fritsch-Carlson monotone cubic: exact at calibration points, C1 smooth,
+// no overshoot between points (prevents color oscillation artifacts).
+// Per-channel monotonicity ensures each R/G/B component transitions cleanly.
+
+// Monotone tangent for 3 consecutive points (Fritsch-Carlson)
+// Returns slope at middle point that preserves monotonicity
+vec3 monoTangent(vec3 v0, vec3 v1, vec3 v2, float h0, float h1){
+  vec3 d0 = (v1 - v0) / h0; // slope of left segment
+  vec3 d1 = (v2 - v1) / h1; // slope of right segment
+  // Harmonic mean for equal-sign slopes, zero for sign changes
+  vec3 m;
+  for(int c = 0; c < 3; c++){
+    float s0 = c==0 ? d0.r : (c==1 ? d0.g : d0.b);
+    float s1 = c==0 ? d1.r : (c==1 ? d1.g : d1.b);
+    float val;
+    if(s0 * s1 <= 0.0){
+      val = 0.0; // sign change or zero — flat tangent prevents overshoot
+    } else {
+      // Fritsch-Carlson: harmonic mean keeps slope within 3× of each segment
+      val = 3.0 * (h0 + h1) / ((2.0*h1 + h0)/s0 + (h0 + 2.0*h1)/s1);
+    }
+    if(c==0) m.r = val;
+    else if(c==1) m.g = val;
+    else m.b = val;
+  }
+  return m;
+}
+
+// Cubic Hermite evaluation: p0, p1 = values; m0, m1 = tangents; t in [0,1]; h = segment width
+vec3 cubicHermite(vec3 p0, vec3 p1, vec3 m0, vec3 m1, float t, float h){
+  float t2 = t * t;
+  float t3 = t2 * t;
+  // Hermite basis functions
+  float h00 = 2.0*t3 - 3.0*t2 + 1.0;
+  float h10 = (t3 - 2.0*t2 + t) * h;
+  float h01 = -2.0*t3 + 3.0*t2;
+  float h11 = (t3 - t2) * h;
+  return h00*p0 + h10*m0 + h01*p1 + h11*m1;
+}
+
+// ─── Texture-baked per-ink LUT (T3-F) ───
+// Sample the pre-baked 4×256 RGBA8 LUT (row=layerIdx, col=coverage). Linear
+// texture filtering interpolates between adjacent coverage samples — visually
+// identical to runtime Hermite at 256 sample density.
+vec3 lutBlendTex(float d, float layerIdx) {
+  float u = clamp(d, 0.0, 1.0);
+  float v = (layerIdx + 0.5) / 4.0;
+  return texture2D(u_calLutTex, vec2(u, v)).rgb;
+}
+
+vec3 lutBlend(float d, vec3 paper, vec3 p10, vec3 p30, vec3 p50, vec3 p70, vec3 p100, float layerIdx) {
+  // Fast path: pre-baked texture if enabled (T3-F)
+  if (u_useCalLutTex > 0.5) return lutBlendTex(d, layerIdx);
+
   d = clamp(d, 0.0, 1.0);
-  if (d < 0.10) return mix(paper, p10, d / 0.10);
-  if (d < 0.30) return mix(p10, p30, (d - 0.10) / 0.20);
-  if (d < 0.50) return mix(p30, p50, (d - 0.30) / 0.20);
-  if (d < 0.70) return mix(p50, p70, (d - 0.50) / 0.20);
-  return mix(p70, p100, (d - 0.70) / 0.30);
+
+  // 6 knots: x = [0.0, 0.10, 0.30, 0.50, 0.70, 1.00]
+  // Segment widths: h = [0.10, 0.20, 0.20, 0.20, 0.30]
+
+  // Compute tangents at all 6 knots (Fritsch-Carlson monotone)
+  // Endpoint tangents: simple one-sided difference
+  vec3 m0 = (p10 - paper) / 0.10;
+  vec3 m5 = (p100 - p70) / 0.30;
+  // Interior tangents: monotone harmonic mean of adjacent segment slopes
+  vec3 m1 = monoTangent(paper, p10, p30, 0.10, 0.20);
+  vec3 m2 = monoTangent(p10, p30, p50, 0.20, 0.20);
+  vec3 m3 = monoTangent(p30, p50, p70, 0.20, 0.20);
+  vec3 m4 = monoTangent(p50, p70, p100, 0.20, 0.30);
+
+  // Evaluate cubic Hermite in the correct segment
+  if(d < 0.10){
+    float t = d / 0.10;
+    return cubicHermite(paper, p10, m0, m1, t, 0.10);
+  }
+  if(d < 0.30){
+    float t = (d - 0.10) / 0.20;
+    return cubicHermite(p10, p30, m1, m2, t, 0.20);
+  }
+  if(d < 0.50){
+    float t = (d - 0.30) / 0.20;
+    return cubicHermite(p30, p50, m2, m3, t, 0.20);
+  }
+  if(d < 0.70){
+    float t = (d - 0.50) / 0.20;
+    return cubicHermite(p50, p70, m3, m4, t, 0.20);
+  }
+  float t = (d - 0.70) / 0.30;
+  return cubicHermite(p70, p100, m4, m5, t, 0.30);
 }
 
 // ─── Apply calibrated ink — Beer-Lambert with debug toggles ───
@@ -1071,25 +1950,41 @@ vec3 calBlend(vec3 result, vec3 paper, float coverage, float grain, vec3 p10, ve
     grainRange = min(grainRange, 0.85);
     float grainOffset = (grain - coverage) * grainRange;
     float modCov = clamp(coverage + grainOffset, 0.0, 1.0);
-    modCov = clamp(modCov * u_inkOpacity * 1.136, 0.0, 1.0);
-    vec3 target = lutBlend(modCov, paper, p10, p30, p50, p70, p100);
+    modCov = clamp(modCov * u_inkOpacity, 0.0, 1.0);
+    vec3 target = lutBlend(modCov, paper, p10, p30, p50, p70, p100, layerIdx);
     // Transmission for overprint compatibility
     vec3 safePaper = max(paper, vec3(0.01));
     vec3 transmission = clamp(target / safePaper, vec3(0.001), vec3(1.0));
     return result * transmission;
   }
 
+  // ── Toggle: YN area mixing (replaces Beer-Lambert + opaque crossfade) ──
+  // Treats grain as physical area coverage: dots are 100% ink or 0% (paper).
+  // Single Yule-Nielsen formula — no dotMin, no opaque crossfade, no soft edges.
+  if (u_dbgYNArea > 0.5) {
+    float c = grain > 0.01 ? 1.0 : 0.0;  // binary area mask
+    // Ink color from LUT at this coverage level
+    vec3 ink = lutBlend(coverage, paper, p10, p30, p50, p70, p100, layerIdx);
+    // Yule-Nielsen n=2: convert to sqrt space for light scattering
+    float nf = 2.0;
+    vec3 prevYN = pow(max(result, vec3(0.001)), vec3(1.0 / nf));
+    vec3 inkYN = pow(max(ink, vec3(0.001)), vec3(1.0 / nf));
+    // Area mixing: uncovered = previous layer, covered = ink absorbs through previous
+    // In covered area, light passes through ink, reflects off substrate, passes through ink again
+    vec3 safeP = max(paper, vec3(0.001));
+    vec3 transmit = ink / safeP;  // ink transmission ratio relative to paper
+    vec3 inkOnPrev = prevYN * pow(max(transmit, vec3(0.001)), vec3(1.0 / nf));
+    vec3 blendedYN = mix(prevYN, inkOnPrev, c);
+    return pow(blendedYN, vec3(nf));
+  }
+
   // ── Stage 1: Grain texture → ink density ──
   float d;
   if (u_dbgBinaryGrain > 0.5) {
-    // Binary grain: dot is ON or OFF, all ON dots get same master density
-    // grainDither returns soft values — anything > ~0 means "this dot has ink"
-    d = grain > 0.01 ? 1.0 : 0.0;  // binary on/off
-    // No dotMin — every dot is the same constant density
+    d = grain > 0.01 ? 1.0 : 0.0;
   } else {
-    // Default: soft grain with variable per-dot density
     d = grain;
-    d = clamp(d * u_inkOpacity * 1.136, 0.0, 1.0);
+    d = clamp(d * u_inkOpacity, 0.0, 1.0);
 
     // ── Stage 2: dotMin (toggle-able) ──
     if (u_dbgNoDotMin < 0.5) {
@@ -1100,11 +1995,11 @@ vec3 calBlend(vec3 result, vec3 paper, float coverage, float grain, vec3 p10, ve
   // ── Stage 3: Ink color (toggle-able) ──
   vec3 ink;
   if (u_dbgP100 > 0.5) {
-    ink = p100;  // force p100 always
+    ink = p100;
   } else {
-    // Default: coverage-adaptive (p100 at low cov, LUT at high)
+    // Coverage-adaptive: LUT at high coverage, p100 for sparse dots
     float lutMix = smoothstep(0.3, 0.7, coverage);
-    vec3 lutInk = lutBlend(coverage, paper, p10, p30, p50, p70, p100);
+    vec3 lutInk = lutBlend(coverage, paper, p10, p30, p50, p70, p100, layerIdx);
     ink = mix(p100, lutInk, lutMix);
   }
 
@@ -1116,10 +2011,17 @@ vec3 calBlend(vec3 result, vec3 paper, float coverage, float grain, vec3 p10, ve
   vec3 resultYN = paperYN * absorption;
   vec3 transparent = resultYN * resultYN;
 
-  // ── Stage 5: Opaque crossfade (toggle-able) ──
+  // ── Stage 5: Opaque crossfade (toggle-able + per-layer transparent flag) ──
+  // Per-layer transparent flag: process inks (Process Cyan/Magenta/Yellow/Black)
+  // are fully transparent — skip the opaque crossfade so they overprint
+  // subtractively without each layer pulling the result toward its own RGB.
+  // Without this, blue (C+M) would tint purple from Magenta's RGB.
+  float layerTrans = layerIdx < 0.5 ? u_transparent0 :
+                     layerIdx < 1.5 ? u_transparent1 :
+                     layerIdx < 2.5 ? u_transparent2 : u_transparent3;
   vec3 blended;
-  if (u_dbgNoOpaque > 0.5) {
-    blended = transparent;  // pure transparent mode
+  if (u_dbgNoOpaque > 0.5 || layerTrans > 0.5) {
+    blended = transparent;
   } else {
     vec3 opaque = mix(result, ink, d);
     float opacity = smoothstep(0.3, 0.85, d) * u_opacityCap;
@@ -1136,18 +2038,18 @@ vec3 calBlend(vec3 result, vec3 paper, float coverage, float grain, vec3 p10, ve
 // ─── Opaque ink blend (metallic inks that sit ON the surface) ───
 // Unlike transparent inks (ratio-transfer darkens), opaque inks replace the surface.
 // On dark paper, metallic ink IS BRIGHTER than the paper — this handles that.
-vec3 calBlendOpaque(vec3 result, vec3 paper, float coverage, float grain, vec3 p10, vec3 p30, vec3 p50, vec3 p70, vec3 p100) {
+vec3 calBlendOpaque(vec3 result, vec3 paper, float coverage, float grain, vec3 p10, vec3 p30, vec3 p50, vec3 p70, vec3 p100, float layerIdx) {
   if (coverage < 0.001) return result;
 
   // LUT lookup — get the calibrated ink-on-paper appearance at this coverage
-  vec3 singleInk = lutBlend(coverage, paper, p10, p30, p50, p70, p100);
+  vec3 singleInk = lutBlend(coverage, paper, p10, p30, p50, p70, p100, layerIdx);
 
   // Grain modulation (same as calBlend — adds visual risograph character)
   float grainRange = coverage * (1.0 - coverage) * 3.5;
   grainRange = min(grainRange, 0.85);
   float grainOffset = (grain - coverage) * grainRange;
   float modCov = clamp(coverage + grainOffset, 0.0, 1.0);
-  vec3 modInk = lutBlend(modCov, paper, p10, p30, p50, p70, p100);
+  vec3 modInk = lutBlend(modCov, paper, p10, p30, p50, p70, p100, layerIdx);
 
   // Opacity blend: ink sits on top, replacing rather than filtering
   // Metallic inks are ~80% opaque — some underlying surface shows through
@@ -1161,8 +2063,8 @@ vec3 calBlendOpaque(vec3 result, vec3 paper, float coverage, float grain, vec3 p
 // At high coverage, ink sits ON the surface (opaque overlay, not multiplicative).
 // This prevents dark-on-dark from going to black — stays saturated like real prints.
 vec3 yuBlend(vec3 paper, vec3 ink, float d){
-  // Ink opacity: scale effective coverage (normalized so default 0.88 ≈ 1.0)
-  d = clamp(d * u_inkOpacity * 1.136, 0.0, 1.0);
+  // Ink opacity: scale effective coverage
+  d = clamp(d * u_inkOpacity, 0.0, 1.0);
 
   // White ink: opaque overlay (visible on colored paper, invisible on white)
   float isWhite = step(0.95, ink.r) * step(0.95, ink.g) * step(0.95, ink.b);
@@ -1242,10 +2144,11 @@ float paperField(vec2 pix){
 
 // Paper field with intensity slider: mix(1.0, P, intensity)
 float paperEffect(vec2 pix){
-  float intensity = u_paperTex * 0.04; // slider 0-25 → 0-1 (fixed at 20 → 0.8)
+  // Both intensity and per-print variation scale with u_simNoise — at 0
+  // the function returns exactly 1.0 (no paper-fiber modulation at all).
+  float intensity = u_paperTex * 0.04 * u_simNoise;
   float base = mix(1.0, paperField(pix), intensity);
-  // Temporal paper variation: each "print" has slightly different fiber response
-  float paperVar = (hash(vec2(u_frameSeed * 11.1, 0.5)) - 0.5) * 0.03;
+  float paperVar = (hash(vec2(u_frameSeed * 11.1, 0.5)) - 0.5) * 0.03 * u_simNoise;
   return base * (1.0 + paperVar);
 }
 
@@ -1256,9 +2159,25 @@ void main(){
   if(u_sepMode == 1){
     vec2 pix = uv * u_res;
     vec2 rpx = uv * REF;
-    float pf = paperEffect(rpx);
+    // paperEffect returns 1.0 when u_simNoise=0, so this single call works
+  // for all clean / noisy combinations. FLAT also forces simNoise=0 in JS.
+  float pf = paperEffect(rpx);
     vec3 src = texture2D(u_src, srcUV(uv + u_off0)).rgb;
     src = adjustRGB(src, rpx);
+    // Apply post-processing to the source so separations reflect the user's
+    // full pre+post grading chain (WYSIWYG with the preview).
+    if(abs(u_postExposure) > 0.5) src *= 1.0 + u_postExposure * 0.02;
+    if(abs(u_postContrast) > 0.5){
+      float pc = 1.0 + u_postContrast * 0.025;
+      float paperLum = dot(u_paperColor, vec3(0.299, 0.587, 0.114));
+      src = (src - paperLum) * pc + paperLum;
+    }
+    if(abs(u_postSat) > 0.5){
+      float pl = dot(src, vec3(0.299, 0.587, 0.114));
+      float ps = clamp(1.0 + u_postSat * 0.02, 0.0, 2.0);
+      src = mix(vec3(pl), src, ps);
+    }
+    src = clamp(src, 0.0, 1.0);
     float n1 = hash(rpx * 1.7);
     float d;
     if(u_sepType == 1){
@@ -1270,7 +2189,7 @@ void main(){
     } else {
       vec4 cmyk = toCMYK(src);
       float n2 = hash2(rpx * 3.1);
-      d = processLayer(cmyk, rpx, pix, 0, u_chan0, u_angle0, n1, n2, u_dens0, pf, src, u_inkGamma0, u_grainMul0);
+      d = processLayer(cmyk, rpx, pix, 0, u_chan0, u_angle0, n1, n2, u_dens0, pf, src, u_grainMul0, u_inkGamma0);
     }
     float gray = 1.0 - d; // invert: black=ink for print production
     gl_FragColor = vec4(gray, gray, gray, 1.0);
@@ -1281,6 +2200,8 @@ void main(){
   vec2 rpx = uv * REF;
 
   // Compute paper property field once (spatially fixed to sheet)
+  // paperEffect returns 1.0 when u_simNoise=0, so this single call works
+  // for all clean / noisy combinations. FLAT also forces simNoise=0 in JS.
   float pf = paperEffect(rpx);
 
   // Paper base color with subtle reflectance from fiber structure
@@ -1316,30 +2237,39 @@ void main(){
     vec2 lrpx = (skUV0 * REF) + off0 * REF;
     vec2 lpix = (skUV0 * u_res) + off0 * u_res;
     float n0 = hash(lrpx * 1.7);
+    vec2 snapUV0 = snapToCellCenter(lpix, uv0, u_screenCell, u_angle0);
     float cov;
     if(u_sepType == 1){
-      vec3 src0a = texture2D(u_src, srcUV(uv0)).rgb;
+      vec3 src0a = texture2D(u_src, srcUV(snapUV0)).rgb;
       src0a = adjustRGB(src0a, lrpx);
       vec4 w0 = nnlsDecompose(u_layers, u_paperColor, src0a, u_ink0, u_ink1, u_ink2, u_ink3);
       cov = getCoverageApprox(w0.x, lrpx, 0, n0, u_dens0, pf);
     } else {
-      vec3 src = texture2D(u_src, srcUV(uv0)).rgb;
-      vec3 srcS = texture2D(u_src, srcUV(uv0 + vec2(0.0, 0.0012))).rgb;
+      vec3 src = texture2D(u_src, srcUV(snapUV0)).rgb;
+      vec3 srcS = texture2D(u_src, srcUV(snapUV0 + vec2(0.0, 0.0012))).rgb;
       src = mix(src, srcS, 0.35);
       src = adjustRGB(src, lrpx);
       vec4 cmyk = toCMYK(src);
       cov = getCoverage(cmyk, lrpx, 0, u_chan0, n0, u_dens0, pf, src, u_inkGamma0);
     }
-    float grain = getGrainTexture(cov, lrpx, lpix, 0, u_angle0, pf, u_grainMul0);
+    // Mask applied to COVERAGE (not post-dither) so dots taper naturally
+    // at the edge instead of being sliced. The dither pass produces fewer
+    // / smaller dots where coverage is reduced, giving a soft riso fade.
     float mask = printMask(skUV0, off0, lrpx);
+    cov *= mask;
+    cov = applyTextRouting(cov, uv, 0);
+    float grain = getGrainTexture(cov, lrpx, lpix, 0, u_angle0, pf, u_grainMul0);
+    // Knockout: where this layer has ink, restore paper first so layers below
+    // are cut away (cutout effect). cov drives the depth of the hole.
+    if(u_knockout0 > 0.5) result = mix(result, u_paper, cov);
     if (u_hasCal0 > 0.5) {
       if (u_opaque0 > 0.5) {
-        result = calBlendOpaque(result, u_paper, cov, grain * mask, u_lutA0, u_lutB0, u_lutC0, u_lutD0, u_ink0);
+        result = calBlendOpaque(result, u_paper, cov, grain, u_lutA0, u_lutB0, u_lutC0, u_lutD0, u_ink0, 0.0);
       } else {
-        result = calBlend(result, u_paper, cov, grain * mask, u_lutA0, u_lutB0, u_lutC0, u_lutD0, u_ink0, 0.0);
+        result = calBlend(result, u_paper, cov, grain, u_lutA0, u_lutB0, u_lutC0, u_lutD0, u_ink0, 0.0);
       }
     } else {
-      result = yuBlend(result, u_ink0, grain * mask);
+      result = yuBlend(result, u_ink0, grain);
     }
   }
   if(u_layers >= 2){
@@ -1350,30 +2280,34 @@ void main(){
     vec2 lrpx = (skUV1 * REF) + off1 * REF;
     vec2 lpix = (skUV1 * u_res) + off1 * u_res;
     float n1 = hash(lrpx * 1.7 + 100.0);
+    vec2 snapUV1 = snapToCellCenter(lpix, uv1, u_screenCell, u_angle1);
     float cov;
     if(u_sepType == 1){
-      vec3 src1a = texture2D(u_src, srcUV(uv1)).rgb;
+      vec3 src1a = texture2D(u_src, srcUV(snapUV1)).rgb;
       src1a = adjustRGB(src1a, lrpx);
       vec4 w1 = nnlsDecompose(u_layers, u_paperColor, src1a, u_ink0, u_ink1, u_ink2, u_ink3);
       cov = getCoverageApprox(w1.y, lrpx, 1, n1, u_dens1, pf);
     } else {
-      vec3 src = texture2D(u_src, srcUV(uv1)).rgb;
-      vec3 srcS = texture2D(u_src, srcUV(uv1 + vec2(0.0, 0.0008))).rgb;
+      vec3 src = texture2D(u_src, srcUV(snapUV1)).rgb;
+      vec3 srcS = texture2D(u_src, srcUV(snapUV1 + vec2(0.0, 0.0008))).rgb;
       src = mix(src, srcS, 0.25);
       src = adjustRGB(src, lrpx);
       vec4 cmyk = toCMYK(src);
       cov = getCoverage(cmyk, lrpx, 1, u_chan1, n1, u_dens1, pf, src, u_inkGamma1);
     }
-    float grain = getGrainTexture(cov, lrpx, lpix, 1, u_angle1, pf, u_grainMul1);
     float mask = printMask(skUV1, off1, lrpx);
+    cov *= mask;
+    cov = applyTextRouting(cov, uv, 1);
+    float grain = getGrainTexture(cov, lrpx, lpix, 1, u_angle1, pf, u_grainMul1);
+    if(u_knockout1 > 0.5) result = mix(result, u_paper, cov);
     if (u_hasCal1 > 0.5) {
       if (u_opaque1 > 0.5) {
-        result = calBlendOpaque(result, u_paper, cov, grain * mask, u_lutA1, u_lutB1, u_lutC1, u_lutD1, u_ink1);
+        result = calBlendOpaque(result, u_paper, cov, grain, u_lutA1, u_lutB1, u_lutC1, u_lutD1, u_ink1, 1.0);
       } else {
-        result = calBlend(result, u_paper, cov, grain * mask, u_lutA1, u_lutB1, u_lutC1, u_lutD1, u_ink1, 1.0);
+        result = calBlend(result, u_paper, cov, grain, u_lutA1, u_lutB1, u_lutC1, u_lutD1, u_ink1, 1.0);
       }
     } else {
-      result = yuBlend(result, u_ink1, grain * mask);
+      result = yuBlend(result, u_ink1, grain);
     }
   }
   if(u_layers >= 3){
@@ -1384,30 +2318,34 @@ void main(){
     vec2 lrpx = (skUV2 * REF) + off2 * REF;
     vec2 lpix = (skUV2 * u_res) + off2 * u_res;
     float n2 = hash(lrpx * 1.7 + 200.0);
+    vec2 snapUV2 = snapToCellCenter(lpix, uv2, u_screenCell, u_angle2);
     float cov;
     if(u_sepType == 1){
-      vec3 src2a = texture2D(u_src, srcUV(uv2)).rgb;
+      vec3 src2a = texture2D(u_src, srcUV(snapUV2)).rgb;
       src2a = adjustRGB(src2a, lrpx);
       vec4 w2 = nnlsDecompose(u_layers, u_paperColor, src2a, u_ink0, u_ink1, u_ink2, u_ink3);
       cov = getCoverageApprox(w2.z, lrpx, 2, n2, u_dens2, pf);
     } else {
-      vec3 src = texture2D(u_src, srcUV(uv2)).rgb;
-      vec3 srcS = texture2D(u_src, srcUV(uv2 + vec2(0.0, 0.0004))).rgb;
+      vec3 src = texture2D(u_src, srcUV(snapUV2)).rgb;
+      vec3 srcS = texture2D(u_src, srcUV(snapUV2 + vec2(0.0, 0.0004))).rgb;
       src = mix(src, srcS, 0.15);
       src = adjustRGB(src, lrpx);
       vec4 cmyk = toCMYK(src);
       cov = getCoverage(cmyk, lrpx, 2, u_chan2, n2, u_dens2, pf, src, u_inkGamma2);
     }
-    float grain = getGrainTexture(cov, lrpx, lpix, 2, u_angle2, pf, u_grainMul2);
     float mask = printMask(skUV2, off2, lrpx);
+    cov *= mask;
+    cov = applyTextRouting(cov, uv, 2);
+    float grain = getGrainTexture(cov, lrpx, lpix, 2, u_angle2, pf, u_grainMul2);
+    if(u_knockout2 > 0.5) result = mix(result, u_paper, cov);
     if (u_hasCal2 > 0.5) {
       if (u_opaque2 > 0.5) {
-        result = calBlendOpaque(result, u_paper, cov, grain * mask, u_lutA2, u_lutB2, u_lutC2, u_lutD2, u_ink2);
+        result = calBlendOpaque(result, u_paper, cov, grain, u_lutA2, u_lutB2, u_lutC2, u_lutD2, u_ink2, 2.0);
       } else {
-        result = calBlend(result, u_paper, cov, grain * mask, u_lutA2, u_lutB2, u_lutC2, u_lutD2, u_ink2, 2.0);
+        result = calBlend(result, u_paper, cov, grain, u_lutA2, u_lutB2, u_lutC2, u_lutD2, u_ink2, 2.0);
       }
     } else {
-      result = yuBlend(result, u_ink2, grain * mask);
+      result = yuBlend(result, u_ink2, grain);
     }
   }
   if(u_layers >= 4){
@@ -1417,45 +2355,46 @@ void main(){
     vec2 lrpx = (skUV3 * REF) + off3 * REF;
     vec2 lpix = (skUV3 * u_res) + off3 * u_res;
     float n3 = hash(lrpx * 1.7 + 300.0);
+    vec2 uv3 = skUV3 + off3;
+    vec2 snapUV3 = snapToCellCenter(lpix, uv3, u_screenCell, u_angle3);
     float cov;
     if(u_sepType == 1){
-      vec3 src3a = texture2D(u_src, srcUV(skUV3 + off3)).rgb;
+      vec3 src3a = texture2D(u_src, srcUV(snapUV3)).rgb;
       src3a = adjustRGB(src3a, lrpx);
       vec4 w3 = nnlsDecompose(u_layers, u_paperColor, src3a, u_ink0, u_ink1, u_ink2, u_ink3);
       cov = getCoverageApprox(w3.w, lrpx, 3, n3, u_dens3, pf);
     } else {
-      vec3 src = texture2D(u_src, srcUV(skUV3 + off3)).rgb;
+      vec3 src = texture2D(u_src, srcUV(snapUV3)).rgb;
       src = adjustRGB(src, lrpx);
       vec4 cmyk = toCMYK(src);
       cov = getCoverage(cmyk, lrpx, 3, u_chan3, n3, u_dens3, pf, src, u_inkGamma3);
     }
-    float grain = getGrainTexture(cov, lrpx, lpix, 3, u_angle3, pf, u_grainMul3);
     float mask = printMask(skUV3, off3, lrpx);
+    cov *= mask;
+    cov = applyTextRouting(cov, uv, 3);
+    float grain = getGrainTexture(cov, lrpx, lpix, 3, u_angle3, pf, u_grainMul3);
+    if(u_knockout3 > 0.5) result = mix(result, u_paper, cov);
     if (u_hasCal3 > 0.5) {
       if (u_opaque3 > 0.5) {
-        result = calBlendOpaque(result, u_paper, cov, grain * mask, u_lutA3, u_lutB3, u_lutC3, u_lutD3, u_ink3);
+        result = calBlendOpaque(result, u_paper, cov, grain, u_lutA3, u_lutB3, u_lutC3, u_lutD3, u_ink3, 3.0);
       } else {
-        result = calBlend(result, u_paper, cov, grain * mask, u_lutA3, u_lutB3, u_lutC3, u_lutD3, u_ink3, 3.0);
+        result = calBlend(result, u_paper, cov, grain, u_lutA3, u_lutB3, u_lutC3, u_lutD3, u_ink3, 3.0);
       }
     } else {
-      result = yuBlend(result, u_ink3, grain * mask);
+      result = yuBlend(result, u_ink3, grain);
     }
   }
 
-  // 3. Reflectance modulation: paper fibers scatter light through ink
-  // Visible brightness variation where fibers show through ink
-  float reflectStr = 0.2;
-  float reflectMod = 1.0 + (pf - 1.0) * reflectStr;
-  result *= reflectMod;
-
-  // 4. Dark-ink paper-fiber reflectance: even saturated ink reveals paper texture
-  // Compute how much ink is on this pixel (darker result = more ink)
+  // 3. Paper fiber reflectance: fibers scatter light through ink layers
+  // Single unified pass — stronger on bare paper (0.2), subtler under heavy ink (0.05)
+  // Previously this was two separate pf multiplications (0.2 base + 0.05 dark),
+  // which doubled the paper texture amplitude.
   float paperLum = dot(paper, vec3(0.299, 0.587, 0.114));
   float resultLum = dot(result, vec3(0.299, 0.587, 0.114));
   float inkCoverage = clamp(1.0 - resultLum / (paperLum + 0.001), 0.0, 1.0);
-  float darkInkMask = smoothstep(0.6, 0.95, inkCoverage);
-  float darkReflect = 1.0 + (pf - 1.0) * 0.05 * darkInkMask;
-  result *= darkReflect;
+  float reflectStr = mix(0.2, 0.25, smoothstep(0.6, 0.95, inkCoverage));
+  float reflectMod = 1.0 + (pf - 1.0) * reflectStr;
+  result *= reflectMod;
 
   // Micro scanner noise: breaks last traces of digital perfection
   // Simulates sensor grain in scanned prints (0.4% amplitude)
@@ -1586,6 +2525,51 @@ void main(){
     }
   }
 
+  // ─── Post-processing (final output adjustments, ink only — paper unaffected) ───
+  vec3 prePost = result;
+  vec3 adjusted = result;
+  // Exposure
+  if(abs(u_postExposure) > 0.5){
+    float ev = u_postExposure * 0.02;
+    adjusted *= (1.0 + ev);
+  }
+  // Contrast: pivot around paper luminance
+  if(abs(u_postContrast) > 0.5){
+    float pc = 1.0 + u_postContrast * 0.025;
+    float paperLum = dot(paper, vec3(0.299, 0.587, 0.114));
+    adjusted = (adjusted - paperLum) * pc + paperLum;
+  }
+  // Saturation: -50 → fully desaturated (gray), 0 → unchanged, +50 → double saturation
+  // Uses 0.02 (= 1/50) so the slider range maps cleanly to ps in [0, 2].
+  // (Previous 0.03 produced ps=-0.5 at -50, which inverted colors past gray.)
+  if(abs(u_postSat) > 0.5){
+    float pl = dot(adjusted, vec3(0.299, 0.587, 0.114));
+    float ps = clamp(1.0 + u_postSat * 0.02, 0.0, 2.0);
+    adjusted = mix(vec3(pl), adjusted, ps);
+  }
+  // Ink mask: blend post-processing only where ink is present
+  float inkAmount = clamp(length(prePost - paper) * 4.0, 0.0, 1.0);
+  result = mix(prePost, adjusted, inkAmount);
+
+  // ─── Highlight clamp ───────────────────────────────────────────────
+  // Hard clamp at 1.0. (Earlier soft-clip with knee at 0.92 darkened
+  // legitimate whites by ~4% — pure-white paper rendered as 245/255 grey.
+  // The detail "lost" above 1.0 is rare and not perceivable when grain
+  // is averaging over neighbouring pixels anyway.)
+  result = min(result, vec3(1.0));
+
+  // ─── Output dither ─────────────────────────────────────────────────
+  // Triangular ±0.5 LSB noise breaks up 8-bit banding in smooth gradients.
+  // Pre-mod the pixel coords to keep them within float32's reliable range —
+  // sin/hash precision collapses at coords above ~2 megapixels and would
+  // otherwise create visible wavy banding at export resolutions.
+  vec2 _dpix = mod(gl_FragCoord.xy + vec2(u_frameSeed * 11.0, u_frameSeed * 7.0), 1024.0);
+  float _d1 = hash(_dpix);
+  float _d2 = hash(_dpix + 0.5);
+  float _dith = (_d1 + _d2 - 1.0) / 255.0;
+  result += vec3(_dith);
+  result = clamp(result, 0.0, 1.0);
+
   gl_FragColor = vec4(result, 1.0);
 }
 </script>
@@ -1613,15 +2597,22 @@ void main(){
 })();
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="js/data.js?v=5"></script>
-<script src="js/state.js?v=3"></script>
-<script src="js/undo.js?v=2"></script>
-<script src="js/compare.js?v=4"></script>
-<script src="js/renderer.js?v=6"></script>
-<script src="js/source.js?v=5"></script>
-<script src="js/save.js?v=3"></script>
-<script src="js/ui-controls.js?v=11"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<!-- mp4-muxer for proper MP4 (H.264) output via WebCodecs in Chrome/Edge -->
+<script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.min.js"></script>
+<script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
+<script src="js/data.js?v=12"></script>
+<script src="js/state.js?v=12"></script>
+<script src="js/undo.js?v=3"></script>
+<script src="js/compare.js?v=5"></script>
+<script src="js/riso-amt.js?v=22"></script>
+<script src="js/renderer.js?v=84"></script>
+<script src="js/source.js?v=43"></script>
+<script src="js/save.js?v=43"></script>
+<script src="js/ui-controls.js?v=49"></script>
 <script src="js/ui-paper.js?v=11"></script>
-<script src="js/phone.js?v=12"></script>
+<script src="js/phone.js?v=17"></script>
+<script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');</script>
 </body>
 </html>

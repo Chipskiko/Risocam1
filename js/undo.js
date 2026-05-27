@@ -103,6 +103,18 @@ R.pushUndo = pushUndo;
 R.undo = undo;
 R.redo = redo;
 R.newMisreg = newMisreg;
+
+// Reseed everything: misreg, skew, grain pattern, paper-texture shift.
+// Distinct from newMisreg() (which only re-rolls plate offsets) — this also
+// bumps the noise seed used by the shader's grain hashes and the paper-fiber
+// sample position (paperShift is derived from frameSeed in renderer.js).
+function reseedAll(){
+  newMisreg();
+  frameSeed = Math.random();
+  R.toast && R.toast('Reseeded');
+  markDirty();
+}
+R.reseedAll = reseedAll;
 R.syncSameColorPlates = syncSameColorPlates;
 
 })(window.R);

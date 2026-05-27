@@ -47,7 +47,7 @@ function renderPaperUI(){
   const colorGrid=el('paperColorGrid');
   let ch='';
   PAPER_COLORS.forEach((c,i)=>{
-    const border=c.hex==='#2a2a28'?'border-color:#888;':'';
+    const border=c.hex==='#2a2a28'?'border-color:#888;':c.hex==='#ffffff'?'border-color:#ccc;':'';
     ch+=`<div class="paper-dot${i===0?' active':''}" onclick="R.setPaperColor(${i})" style="background:${c.hex};${border}" title="${c.name}"></div>`;
   });
   colorGrid.innerHTML=ch;

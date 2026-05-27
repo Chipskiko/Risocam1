@@ -7,6 +7,39 @@ let srcImg=null, camStream=null, camOn=false, videoOn=false, hasSrc=false;
 let misreg=[[0,0],[0,0],[0,0],[0,0]], layerSkews=[0,0,0,0], gl, prog, locs={}, frame=0, frameSeed=Math.random();
 let fpsFrames=0, fpsLast=performance.now();
 let layerAngles=[15,75,0,45];
+// Per-channel knockout flag — when true, this layer's ink cuts a hole back
+// to paper, removing layers below where it prints (cutout effect).
+let layerKnockout=[false,false,false,false];
+// Per-channel visibility — toggled by clicking a plate's badge in the UI.
+// When false, the layer's density is multiplied by 0 in the render path
+// (effectively soloing/muting plates without losing their settings). Has
+// no effect on SEPS export — separations always include all plates.
+let layerVisible=[true,true,true,true];
+// Per-channel CONCENTRIC/RADIAL center — independent X/Y per plate.
+// Same-color channels are kept synced (same linkage logic as angles +
+// knockout). Defaults to image center.
+let layerLineCenterX=[0.5,0.5,0.5,0.5];
+let layerLineCenterY=[0.5,0.5,0.5,0.5];
+
+// PDF mode: enables vector-text routing. When on AND the source is a PDF,
+// pdf.js's getTextContent() identifies text regions and the shader sends
+// those pixels to a single chosen plate (avoids text-on-multiple-plates
+// misregistration smear).
+let pdfModeOn=false;
+// Ink color name for the text channel (must match a name in RISO_COLORS).
+// null = no text routing. The chosen color must already be active in one
+// of the four channel slots — the text layer doesn't add a new slot, it
+// piggybacks on whichever existing slot uses the same color.
+let textChannelColor=null;
+// Text knockout: when true, the text plate's glyphs cut a hole through
+// every other plate back to paper. Useful when the rim-bg sampling is
+// inaccurate (text on a complex/non-flat background) — instead of trying
+// to reconstruct what's behind glyphs, just punch through to paper.
+let textKnockout=false;
+// Trapping: contracts knockout regions by N canvas pixels so the printed
+// ink overlaps the underlying inks by N px. Hides white halos caused by
+// plate misregistration. Same UX/labels as Spectrolite. 0 = no trap.
+let trappingPx=0;
 let resScale=6; // always max resolution
 let curPaper=0, curPaperColor=0;
 let cropAspect=[4,3]; // default 4:3
@@ -17,15 +50,17 @@ const cached={
   sepType:0, // 0=CMYK, 1=Approx (NNLS spot color)
   ucrStr:15, balC:150, balM:155, balY:105, balK:165, tac:280,
   inkOpacity:88, layerDeplete:3, pressVar:100, densFlicker:7,
-  tonalGamma:140, dotMin:15, opacityCap:45,
+  tonalGamma:100, dotMin:15, opacityCap:45,
   inkRGB:[[0,0,0],[0,0,0],[0,0,0],[0,0,0]],
   paperColor:[0.96,0.94,0.91],
   layerDens:[88,88,88,88],
-  showCropMarks:true,
+  showCropMarks:false,
   ghosting:0,
   ghostMul:100,
   margin:4,
   skew:0,
+  postExposure:0, postContrast:0, postSat:0,
+  warmCool:0, // -50..50 — channel mixer warm/cool bias
 };
 let needsAspectUpdate=true;
 let videoFrameReady=false;
@@ -41,7 +76,7 @@ function markDirty(){
 
 const inkLocs=new Array(4), offLocs=new Array(4), angLocs=new Array(4), chanLocs=new Array(4), densLocs=new Array(4);
 // Pre-built uniform location arrays (populated in init, avoids per-frame allocation)
-let lutALocs,lutBLocs,lutCLocs,lutDLocs,gammaLocs,grainMulLocs,hasCalLocs,opaqueLocs,skewLocs;
+let lutALocs,lutBLocs,lutCLocs,lutDLocs,grainMulLocs,inkGammaLocs,hasCalLocs,opaqueLocs,skewLocs;
 let $gl,$vf,$vid,$fps,$res,$status,$phCropGuide,$deskCropGuide;
 let cachedVfW=0,cachedVfH=0; // cached viewfinder dimensions, updated on resize
 
@@ -91,6 +126,7 @@ function setAspect(ratio){
 }
 const aspectSteps=['fill','fit',[4,3],[1,1],[5,4],[16,9],[9,16]];
 function cycleAspect(){
+  if(window._pdfDoc){R.toast('Aspect locked to FIT in PDF mode');return;}
   const cur=(typeof cropAspect==='string')?cropAspect:cropAspect.join(':');
   const labels=['fill','fit','4:3','1:1','5:4','16:9','9:16'];
   const i=labels.indexOf(cur);
@@ -143,12 +179,23 @@ function activeLayers(){
     const seen=new Set();
     for(const i of layerOrder){
       const c=channels[i];
-      if(c!==null && !seen.has(c)){ seen.add(c); out.push({ch:i, color:c}); }
+      if(c!==null && !seen.has(c)){ seen.add(c); out.push({ch:i, color:c, knockout:!!layerKnockout[i]}); }
     }
   } else {
-    for(const i of layerOrder) if(channels[i]!==null) out.push({ch:i, color:channels[i]});
+    for(const i of layerOrder) if(channels[i]!==null) out.push({ch:i, color:channels[i], knockout:!!layerKnockout[i]});
   }
   return out;
+}
+
+// Resolve the text channel's layer index in the rendered output.
+// Returns 0..3 (the position in the activeLayers() list) or -1 if no
+// text routing is active. Same-color channels share a layer slot, so this
+// returns the FIRST activeLayers() entry matching textChannelColor.
+function getTextLayerIdx(){
+  if(!pdfModeOn || !textChannelColor) return -1;
+  const ls = activeLayers();
+  for(let i=0;i<ls.length;i++) if(ls[i].color === textChannelColor) return i;
+  return -1; // chosen text color isn't currently in any channel
 }
 
 function cacheInkColors(){

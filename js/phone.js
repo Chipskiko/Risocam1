@@ -399,7 +399,7 @@ function phPopulateOverlay(name){
     html+='<div class="section-header" style="font-size:10px;letter-spacing:1px;padding:6px 4px;margin:12px 0 4px;border-bottom:1px solid #333;color:#888">PAPER</div>';
     html+='<div style="display:flex;gap:6px;flex-wrap:wrap;padding:4px 0">';
     PAPER_COLORS.forEach((c,i)=>{
-      const border=c.hex==='#2a2a28'?'border-color:#888;':'';
+      const border=c.hex==='#2a2a28'?'border-color:#888;':c.hex==='#ffffff'?'border-color:#ccc;':'';
       html+=`<div class="paper-dot${i===curPaperColor?' active':''}" onclick="R.setPaperColor(${i})" style="background:${c.hex};${border};width:28px;height:28px" title="${c.name}"></div>`;
     });
     html+='</div>';
@@ -563,6 +563,11 @@ document.addEventListener('DOMContentLoaded',()=>{
   $fps=el('fps'); $res=el('resBadge'); $status=el('statusBadge');
 
   R.renderColors();R.renderProfiles();R.renderPaperUI();R.bindSliders();R.buildStepGroups();R.initToneCurve();R.updateRegmarkUI();R.setRisoFps(risoFps);initShutter();initOverlaySwipe();
+  // Sync settings-panel layout to current mode (correct primary sub-block
+  // visible, initial shape icons painted, etc).
+  if(R.setMode) R.setMode(mode);
+  R.initDragDrop();
+  R.initViewZoom();
   // Set initial paper background (color + texture scan)
   R.updatePaperBg();
   R.initGL();
@@ -581,8 +586,8 @@ document.addEventListener('DOMContentLoaded',()=>{
   lutBLocs=[locs.u_lutB0,locs.u_lutB1,locs.u_lutB2,locs.u_lutB3];
   lutCLocs=[locs.u_lutC0,locs.u_lutC1,locs.u_lutC2,locs.u_lutC3];
   lutDLocs=[locs.u_lutD0,locs.u_lutD1,locs.u_lutD2,locs.u_lutD3];
-  gammaLocs=[locs.u_inkGamma0,locs.u_inkGamma1,locs.u_inkGamma2,locs.u_inkGamma3];
   grainMulLocs=[locs.u_grainMul0,locs.u_grainMul1,locs.u_grainMul2,locs.u_grainMul3];
+  inkGammaLocs=[locs.u_inkGamma0,locs.u_inkGamma1,locs.u_inkGamma2,locs.u_inkGamma3];
   hasCalLocs=[locs.u_hasCal0,locs.u_hasCal1,locs.u_hasCal2,locs.u_hasCal3];
   opaqueLocs=[locs.u_opaque0,locs.u_opaque1,locs.u_opaque2,locs.u_opaque3];
   skewLocs=[locs.u_skew0,locs.u_skew1,locs.u_skew2,locs.u_skew3];
@@ -590,8 +595,27 @@ document.addEventListener('DOMContentLoaded',()=>{
   R.applyProf(PROFILES[0]);
   R.setPaperColor(0);
 
-  // Load test pattern immediately — no upload overlay needed
-  R.loadSampleImage();
+  // Check for imported image from bark beetle tool
+  const importData = localStorage.getItem('risocam_import');
+  if (importData) {
+    localStorage.removeItem('risocam_import');
+    const img = new Image();
+    img.onload = () => {
+      const flat = R.flattenAlpha(img);
+      srcImg = flat;
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, window._srcTexA);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, flat);
+      gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, window._srcTexB);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, flat);
+      camOn = false; hasSrc = true; needsAspectUpdate = true; computeCrop(); scheduleRender();
+      $status.textContent = '◉ IMPORT';
+      $res.textContent = img.width + '×' + img.height;
+    };
+    img.src = importData;
+  } else {
+    // Load test pattern immediately — no upload overlay needed
+    R.loadSampleImage();
+  }
 
   // Initial layout
   layoutSwitch();
@@ -616,6 +640,13 @@ document.addEventListener('DOMContentLoaded',()=>{
     if(mod && e.key==='z' && !e.shiftKey){e.preventDefault();R.undo();}
     if(mod && (e.key==='Z'||(e.key==='z'&&e.shiftKey))){e.preventDefault();R.redo();}
     if(mod && e.key==='y'){e.preventDefault();R.redo();}
+    // Spacebar: pause/resume the render loop. Skip when typing in inputs.
+    if(e.key===' '||e.code==='Space'){
+      const t=e.target, tag=t&&t.tagName;
+      if(tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT'||(t&&t.isContentEditable))return;
+      e.preventDefault();
+      if(R.togglePause) R.togglePause();
+    }
     // Volume down = shutter (hold for video)
     if(R.isPhone() && (e.key==='VolumeDown'||e.key==='AudioVolumeDown')){
       e.preventDefault();

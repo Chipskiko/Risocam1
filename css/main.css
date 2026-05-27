@@ -38,7 +38,8 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 .header-cycle:hover .header-cycle-val{background:var(--text);color:var(--bg)}
 .header-cycle-label{font-family:'Space Mono',monospace;font-size:7px;letter-spacing:1px;padding:6px 6px;color:var(--text-muted);display:flex;align-items:center;border-right:1px solid var(--border);background:white}
 .header-cycle-val{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:6px 8px;color:var(--text);display:flex;align-items:center;justify-content:center;background:white;transition:all .15s;min-width:20px}
-.header-btn{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:6px 10px;border:1px solid var(--border);background:white;cursor:pointer;transition:all .15s;border-radius:4px;color:var(--text-muted);display:inline-flex;align-items:center;justify-content:center}
+.header-btn{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:6px 10px;border:1px solid var(--border);background:white;cursor:pointer;transition:all .15s;border-radius:4px;color:var(--text-muted);display:inline-flex;align-items:center;justify-content:center;text-decoration:none}
+.header-back{font-size:14px;padding:4px 8px}
 .header-btn:hover{background:var(--text);color:var(--bg);border-color:var(--text)}
 .header-btn.primary{background:var(--text);color:white;border-color:var(--text)}
 .header-btn.primary:hover{background:#333}
@@ -57,7 +58,7 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
   header .header-inner{flex-wrap:wrap;gap:6px}
   .header-btn{padding:5px 10px;font-size:9px}
 }
-.left-col{display:flex;flex-direction:column;gap:12px}
+.left-col{display:flex;flex-direction:column;gap:12px;min-width:0}
 .viewfinder-wrap{z-index:10}
 @media(max-width:900px){.viewfinder-wrap{position:static}}
 @media(max-width:600px){
@@ -65,8 +66,91 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
   .img-slider{min-width:30px}
   .controls-sep{display:none}
 }
-.viewfinder-panel{position:relative;background:transparent;overflow:hidden;display:flex;align-items:center;justify-content:center}
-.viewfinder-panel>#gl{width:100%;display:block;aspect-ratio:1.414/1}
+/* PDF loading progress overlay — fixed centered modal */
+.pdf-progress-overlay{display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.35);align-items:center;justify-content:center;font-family:system-ui,sans-serif}
+.pdf-progress-box{background:#fff;border-radius:8px;padding:20px 28px;box-shadow:0 8px 32px rgba(0,0,0,0.25);min-width:280px;max-width:380px}
+.pdf-progress-label{font-size:13px;font-weight:600;color:#222;margin-bottom:10px;letter-spacing:0.2px}
+.pdf-progress-bar{width:100%;height:6px;background:#eee;border-radius:3px;overflow:hidden}
+.pdf-progress-fill{height:100%;background:#3a7;border-radius:3px;transition:width .15s ease;width:0%}
+.pdf-progress-eta{font-size:11px;color:#888;margin-top:8px;font-family:monospace}
+/* Viewfinder content can be zoomed via Ctrl/Cmd+wheel — hide overflow when scaled */
+.viewfinder-panel{overflow:hidden}
+/* PDF thumbnail strip — single horizontal row that scrolls right.
+   Width is locked to the parent column so a long strip (e.g. 50 thumbs
+   = ~4500px of content) doesn't push the layout wider; instead the strip
+   gets an internal horizontal scrollbar.
+   `min-width:0` is the flex-item escape hatch that lets it shrink below
+   its content's intrinsic width — without it, flex would expand the
+   strip (and its parent) to fit all thumbs. */
+.pdf-thumb-strip{display:none;flex-wrap:nowrap;gap:6px;padding:6px;background:rgba(0,0,0,0.04);border-radius:6px;margin-bottom:8px;overflow-x:auto;overflow-y:hidden;align-items:flex-start;width:100%;max-width:100%;min-width:0;box-sizing:border-box}
+.pdf-thumb-strip>.pdf-thumb{flex:0 0 auto}
+.pdf-thumb-strip::-webkit-scrollbar{height:8px}
+.pdf-thumb-strip::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.25);border-radius:4px}
+.pdf-thumb-strip::-webkit-scrollbar-track{background:transparent}
+.pdf-thumb{position:relative;background:#fff;border:2px solid transparent;border-radius:4px;padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center;width:80px;height:104px;overflow:hidden;transition:border-color .12s}
+.pdf-thumb:hover{border-color:#888}
+.pdf-thumb.active{border-color:#3a7;box-shadow:0 0 0 1px #3a7 inset}
+.pdf-thumb img{width:100%;height:100%;object-fit:contain;display:block}
+.pdf-thumb-num{position:absolute;bottom:2px;right:2px;background:rgba(0,0,0,0.65);color:#fff;font:600 9px/1 system-ui,sans-serif;padding:2px 4px;border-radius:2px;pointer-events:none}
+.pdf-thumb-tag{position:absolute;top:2px;left:2px;color:#fff;font:700 9px/1 system-ui,sans-serif;padding:2px 4px;border-radius:2px;pointer-events:none;letter-spacing:0.5px}
+.pdf-tag-master{background:#3a7}
+.pdf-tag-var{background:#d68}
+/* Inheriting pages — "follows" tag, muted/outlined so it's clearly different
+   from a page that *owns* a variation. */
+.pdf-tag-from{background:rgba(255,255,255,0.85);border:1px dashed rgba(0,0,0,0.4);color:#555;font-weight:600}
+.pdf-tag-from-master{border-color:#3a7;color:#3a7}
+.pdf-tag-from-var{border-color:#d68;color:#d68}
+/* Two-row layout: state (with optional source picker) + actions row.
+   Stacked so the action buttons stay anchored even as the source list grows. */
+.pdf-page-actions{display:none;flex-direction:column;gap:6px;padding:4px 6px;margin-bottom:6px;font:11px/1.4 system-ui,sans-serif}
+.pdf-state-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.pdf-actions-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+/* Source-selector dropdown variant — used when there are >3 source options */
+.pdf-source-dropdown{position:relative;display:inline-block}
+.pdf-source-trigger{padding-right:14px !important}
+.pdf-source-trigger-arrow{margin-left:3px;font-size:8px;opacity:.7}
+.pdf-source-menu{display:none;position:absolute;top:calc(100% + 3px);left:0;min-width:120px;max-height:240px;overflow-y:auto;background:#fff;border:1px solid #ccc;border-radius:3px;box-shadow:0 4px 14px rgba(0,0,0,0.08);z-index:50;padding:3px 0}
+.pdf-source-menu.open{display:block}
+.pdf-source-menu-item{display:flex;justify-content:space-between;align-items:center;width:100%;border:0;background:transparent;padding:6px 10px;font:11px/1.2 system-ui,sans-serif;color:#333;cursor:pointer;text-align:left;gap:10px}
+.pdf-source-menu-item:hover{background:#f0f0f0}
+.pdf-source-menu-item.selected{background:#3a7;color:#fff}
+.pdf-source-menu-item.selected .pdf-source-menu-page{color:rgba(255,255,255,0.8)}
+.pdf-source-menu-label{font-weight:600;letter-spacing:0.5px;min-width:24px}
+.pdf-source-menu-page{font-size:10px;color:#888;text-transform:lowercase}
+.pdf-page-state{font:700 10px/1 system-ui,sans-serif;padding:4px 8px;border-radius:3px;letter-spacing:0.5px;min-width:18px;text-align:center}
+@keyframes pdfStatePulse{0%{box-shadow:0 0 0 0 currentColor;transform:scale(1)}40%{box-shadow:0 0 0 6px transparent;transform:scale(1.18)}100%{box-shadow:0 0 0 0 transparent;transform:scale(1)}}
+.pdf-state-pulse{animation:pdfStatePulse 0.55s ease-out}
+.pdf-state-master{background:#3a7;color:#fff}
+.pdf-state-variation{background:#d68;color:#fff}
+.pdf-state-inherits{background:#bbb;color:#333}
+.pdf-action-btn{font:11px/1 system-ui,sans-serif;padding:5px 10px;border:1px solid #ccc;border-radius:3px;background:#fff;cursor:pointer;color:#333}
+.pdf-action-btn:hover{background:#f0f0f0;border-color:#999}
+.pdf-source-label{font:11px/1 system-ui,sans-serif;color:#888}
+.pdf-source-selector{display:inline-flex;gap:0;border:1px solid #ccc;border-radius:3px;overflow:hidden}
+.pdf-source-opt{font:600 10px/1 system-ui,sans-serif;letter-spacing:0.5px;padding:5px 9px;border:0;background:#fff;cursor:pointer;color:#666;border-right:1px solid #ccc}
+.pdf-source-opt:last-child{border-right:0}
+.pdf-source-opt:hover{background:#f0f0f0;color:#333}
+.pdf-source-opt.selected{background:#3a7;color:#fff}
+/* Disabled state for buttons that don't make sense in PDF mode */
+.header-dl-btn.pdf-disabled,.header-src-btn.pdf-disabled{opacity:0.35;pointer-events:none}
+.viewfinder-panel{position:relative;background:transparent;overflow:hidden;display:flex;align-items:center;justify-content:center;transition:outline-color .15s,background .15s}
+.viewfinder-panel.drag-over{outline:2px dashed #3a7;outline-offset:-8px;background:rgba(58,170,119,0.08)}
+.viewfinder-panel.drag-over::after{content:'Drop image, video, GIF, or PDF';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:600 14px/1 system-ui,sans-serif;letter-spacing:.04em;color:#3a7;background:rgba(255,255,255,.55);pointer-events:none;z-index:50}
+.viewfinder-panel>#gl{width:100%;display:block;aspect-ratio:1.414/1;max-height:75vh;height:auto}
+/* PDF mode: lock the viewfinder to a fixed height so the canvas stays the
+   same size regardless of which page is active (portrait/landscape/square).
+   Each PDF page fits inside the box, with pillarbox/letterbox whitespace
+   as needed to preserve the page's true aspect. */
+body.pdf-mode .viewfinder-panel{
+  height:65vh !important;
+  min-height:400px;
+}
+body.pdf-mode .viewfinder-panel>#gl{
+  width:auto !important;
+  height:auto !important;
+  max-width:100% !important;
+  max-height:100% !important;
+}
 #gl.mirrored{transform:scaleX(-1)}
 .status-bar{position:absolute;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;pointer-events:none}
 .status-badge{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;padding:4px 8px;background:rgba(0,0,0,.6);color:rgba(255,255,255,.8);border-radius:2px;backdrop-filter:blur(4px)}
@@ -116,7 +200,13 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 .toggle-arrow{margin-left:auto;font-size:10px;transition:transform .2s;color:var(--text-muted)}
 .section-toggle.open .toggle-arrow{transform:rotate(90deg)}
 .collapsible{overflow:hidden;transition:max-height .3s ease,opacity .2s ease;max-height:2000px;opacity:1}
-#debugBody.collapsible:not(.collapsed){overflow-y:auto;max-height:calc(100vh - 100px);padding-bottom:40px}
+/* Debug panel: scrollable internally — content rarely fits in the available
+   space below where this panel sits in the column. Bounded max-height +
+   overflow:auto keeps the bottom controls always reachable via internal scroll. */
+#debugBody.collapsible:not(.collapsed){overflow-y:auto;overflow-x:hidden;max-height:50vh;padding-bottom:30px}
+#debugBody::-webkit-scrollbar{width:8px}
+#debugBody::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.3);border-radius:4px}
+#debugBody::-webkit-scrollbar-track{background:rgba(0,0,0,0.04);border-radius:4px}
 .collapsible.collapsed{max-height:0;opacity:0;padding-top:0!important;padding-bottom:0!important;margin-top:0!important;margin-bottom:0!important;border-top:none!important}
 /* Profiles - wrapping grid */
 .profile-list{padding:8px 10px;display:flex;gap:6px;flex-wrap:wrap}
@@ -151,6 +241,18 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 .paper-tex-btn.active{background:var(--text);color:white;border-color:var(--text)}
 /* Channels */
 .channel-list{padding:8px 10px;display:flex;flex-direction:column;gap:6px}
+/* Text channel row (PDF mode only) */
+/* Plate visibility toggle: dimmed badge + faded slot when a plate is muted */
+.ch-badge.dimmed,.ch-mono-label.dimmed{opacity:.25;text-decoration:line-through;text-decoration-thickness:1px}
+.ch-slot.layer-hidden{opacity:.55}
+.ch-slot.layer-hidden .ch-color-btn{filter:grayscale(.6) opacity(.7)}
+.ch-badge,.ch-mono-label{transition:opacity .15s,text-decoration-color .15s}
+.ch-badge:hover,.ch-mono-label:hover{filter:brightness(1.15)}
+.text-channel-row{position:relative;padding:0 10px 10px}
+.text-channel-divider{height:1px;background:var(--border);margin:6px 0 8px;opacity:.6}
+.text-channel-inner{padding:2px 0}
+.ch-badge-text{display:inline-block;width:18px;height:18px;line-height:18px;text-align:center;font-size:10px;font-weight:700;border-radius:3px;background:#f0f0f0;color:#666;border:1px solid var(--border)}
+.ch-text-clear:hover{border-color:var(--text-muted)}
 .ch-slot{position:relative}
 .ch-row{display:flex;align-items:center;gap:5px}
 /* Drag handle for layer reorder */
@@ -175,6 +277,19 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 .ch-angle-btn{font-family:'Space Mono',monospace;font-size:7px;min-width:18px;height:18px;border:1px solid var(--border);background:white;cursor:pointer;border-radius:2px;color:var(--text-muted);display:flex;align-items:center;justify-content:center;padding:0 2px;transition:all .1s}
 .ch-angle-btn.active{background:var(--text);color:white;border-color:var(--text)}
 .ch-angle-btn:hover{border-color:var(--text)}
+/* Per-plate metric drawer (LINES mode). Sits below its plate row when
+   the user clicks an Angle / X / Y button. The drawer flexes to fill
+   the channel-list width so the slider has room to drag precisely.
+   Left border picks up the plate's accent color (passed inline). */
+.ch-line-drawer{display:flex;align-items:center;gap:8px;padding:6px 10px 6px 12px;margin:2px 0 4px;background:var(--bg);border-radius:0 4px 4px 0;border-left:3px solid var(--text)}
+.ch-line-drawer-label{font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text-muted);text-transform:uppercase;flex-shrink:0;min-width:55px}
+.ch-line-drawer-val{font-family:'Space Mono',monospace;font-size:11px;font-weight:700;color:var(--text);min-width:40px;text-align:right;flex-shrink:0}
+/* Slider — full-width inside the drawer, taller thumb for easy drag. */
+.ch-line-slider{flex:1;height:22px;margin:0;cursor:pointer;background:transparent;-webkit-appearance:none;appearance:none}
+.ch-line-slider::-webkit-slider-runnable-track{height:3px;background:var(--border);border-radius:2px}
+.ch-line-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:var(--text);margin-top:-6px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.2)}
+.ch-line-slider::-moz-range-track{height:3px;background:var(--border);border-radius:2px}
+.ch-line-slider::-moz-range-thumb{width:14px;height:14px;border:none;border-radius:50%;background:var(--text);cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.2)}
 /* Dropdown selector */
 .ch-select{display:flex;align-items:center;gap:8px;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;cursor:pointer;transition:all .12s;background:white}
 .ch-select:hover{border-color:var(--text-muted)}
@@ -195,6 +310,14 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 .ch-dropdown-name{font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text)}
 .ch-dropdown-item.selected .ch-dropdown-name{color:#3d6db5;font-weight:500}
 .ch-dropdown-sep{height:1px;background:var(--border);margin:4px 10px}
+.ch-remove-btn{font-size:16px;color:var(--text-muted,#999);opacity:.35;cursor:pointer;padding:0 2px;line-height:1;flex-shrink:0;transition:opacity .12s}
+.ch-remove-btn:hover{opacity:.85;color:#c44}
+.ch-add-row{display:flex;align-items:center;gap:5px;padding:2px 0;cursor:pointer;transition:all .12s;margin-left:22px}
+.ch-add-row:hover .ch-add-swatch{border-color:#5b8fd4;color:#5b8fd4}
+.ch-add-row:hover .ch-add-label{color:var(--text)}
+.ch-add-swatch{width:26px;height:26px;border-radius:6px;border:1.5px dashed var(--border,#ddd);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .12s;color:var(--text-muted,#999);font-size:16px;line-height:1}
+.ch-add-label{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1px;color:var(--text-muted,#999);transition:color .12s}
+.ch-dropdown-group{padding:6px 10px 3px;font-family:'Space Mono',monospace;font-size:8px;font-weight:700;letter-spacing:1px;color:var(--text-muted,#999);text-transform:uppercase}
 /* Settings */
 .settings-body{padding:10px 14px;display:flex;flex-direction:column;gap:8px}
 .mode-row{display:flex;gap:6px}
@@ -328,7 +451,8 @@ body.phone-mode header,body.phone-mode .app-container{display:none!important}
 .ph-backdrop.show{display:block}
 /* ═══════ LANDSCAPE — no layout changes, just safe areas ═══════ */
 /* Regmark icon buttons */
-.regmark-row{display:flex;align-items:center;gap:6px;padding:2px 0}
+.regmark-row{display:flex;align-items:center;gap:6px;padding:2px 0;flex-wrap:wrap}
+#linesSettings{display:flex;gap:6px;flex-wrap:wrap}
 .regmark-btn{display:flex;align-items:center;gap:4px;padding:4px 8px;border:1px solid var(--border);background:white;border-radius:4px;cursor:pointer;transition:all .12s;flex-shrink:0;font-family:'Space Mono',monospace;-webkit-tap-highlight-color:transparent}
 .regmark-btn:hover{border-color:var(--text-muted)}
 .regmark-btn:active{background:var(--bg)}

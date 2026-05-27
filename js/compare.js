@@ -94,6 +94,7 @@ function applyImageAdjustments(ctx, x, y, w, h){
   const hlF=highlights*0.01;
   // Get tone curve LUT if available
   const lut=window._toneCurveLUT; // Uint8Array(256) or null
+  const dlut=window._driverLUTData; // Uint8Array(256) or null — RISO driver transfer curve
   for(let i=0;i<d.length;i+=4){
     let r=d[i]/255, g=d[i+1]/255, b=d[i+2]/255;
     // Brightness
@@ -117,6 +118,12 @@ function applyImageAdjustments(ctx, x, y, w, h){
       r=lut[Math.round(Math.max(0,Math.min(1,r))*255)]/255;
       g=lut[Math.round(Math.max(0,Math.min(1,g))*255)]/255;
       b=lut[Math.round(Math.max(0,Math.min(1,b))*255)]/255;
+    }
+    // RISO driver transfer LUT
+    if(dlut){
+      r=dlut[Math.round(Math.max(0,Math.min(1,r))*255)]/255;
+      g=dlut[Math.round(Math.max(0,Math.min(1,g))*255)]/255;
+      b=dlut[Math.round(Math.max(0,Math.min(1,b))*255)]/255;
     }
     d[i]=Math.max(0,Math.min(255,r*255));
     d[i+1]=Math.max(0,Math.min(255,g*255));
