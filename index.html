@@ -239,7 +239,7 @@
               <span class="slider-label">Ink Spread</span><input type="range" id="risoInkSpread" min="0" max="20" value="5" step="1" oninput="R.setRisoParams({inkSpread:this.value/10}); document.getElementById('risoInkSpreadVal').textContent=(this.value/10).toFixed(1);"><span class="slider-value" id="risoInkSpreadVal">0.5</span>
             </div>
             <div class="slider-row" title="Master resolution (DPI). Real Riso = 600. Higher = finer dots but slower prepass.">
-              <span class="slider-label">DPI</span><input type="range" id="risoDpi" min="100" max="600" value="150" step="50" oninput="R.setRisoParams({dpi:parseInt(this.value)}); document.getElementById('risoDpiVal').textContent=this.value;"><span class="slider-value" id="risoDpiVal">150</span>
+              <span class="slider-label">DPI</span><input type="range" id="risoDpi" min="100" max="600" value="600" step="50" oninput="R.setRisoParams({dpi:parseInt(this.value)}); document.getElementById('risoDpiVal').textContent=this.value;"><span class="slider-value" id="risoDpiVal">600</span>
             </div>
             <div style="margin-top:6px" title="Driver-faithful mode applies the LCG threshold modulation from the real RISO driver (Tables A/B/C) — stochastic dot placement, grainy/noisy look. Plain FS gives clean orderly Floyd-Steinberg dot patterns without the LCG noise — closer to ImageMagick / Photoshop FS output.">
               <label style="display:flex;gap:6px;align-items:center;font-size:10px;cursor:pointer">
@@ -2607,7 +2607,7 @@ void main(){
 <script src="js/undo.js?v=3"></script>
 <script src="js/compare.js?v=5"></script>
 <script src="js/riso-amt.js?v=22"></script>
-<script src="js/renderer.js?v=84"></script>
+<script src="js/renderer.js?v=85"></script>
 <script src="js/source.js?v=43"></script>
 <script src="js/save.js?v=43"></script>
 <script src="js/ui-controls.js?v=49"></script>

@@ -1253,14 +1253,14 @@ async function _runAmtPrepassImpl(){
   // Pick AMT resolution based on a simulated "scan DPI" of an A3 print.
   // Decouples halftone resolution from source image resolution so the dot
   // size is physically meaningful regardless of how big/small the upload is.
-  //   75 dpi  → 1240 px max edge   (DEFAULT — fast preview, ~1-2s prepass)
+  //   75 dpi  → 1240 px max edge   (fastest preview, ~1-2s prepass)
   //   150 dpi → 2481 px max edge   (medium quality, ~6s for 4-color)
   //   300 dpi → 4961 px max edge   (high-res scan; ~25s for 4-color)
-  //   600 dpi → 9921 px max edge   (matches real RISO native res; ~100s)
+  //   600 dpi → 9921 px max edge   (DEFAULT — matches real RISO native res; ~100s for 4-color)
   // Set via console:  R.setAmtScanDpi(300)
-  // Default was lowered from 150 → 75 to keep the live-preview RISO mode
-  // switch under 2 seconds. Higher quality available on demand.
-  const scanDpi = window._amtScanDpi || 75;
+  // Default raised to 600 so the preview matches the real printed output
+  // at the device's native resolution. Lower it for faster iteration.
+  const scanDpi = window._amtScanDpi || 600;
   const A3_LONG_INCHES = 16.54;
   const targetMaxEdge = Math.round(scanDpi * A3_LONG_INCHES);
   const sourceAspect = srcCanvas.width / srcCanvas.height;
@@ -1376,7 +1376,21 @@ async function _runAmtPrepassImpl(){
   try { R.toast && R.toast('RISO ready', 1200); } catch(e){}
 }
 R.runAmtPrepass = runAmtPrepass;
-R.invalidateAmt = function(){ window._amtMasterValid = false; window._amtSeq = (window._amtSeq||0) + 1; };
+// Drops the cached AMT halftone masters. Critical: also flips u_useAmt → 0
+// so the shader stops sampling the now-stale per-channel master textures
+// while the next prepass is in flight (and at 600 dpi the in-flight window
+// can be ~100s). Without this the previous image's halftone composites on
+// top of the new source = "ghost overlay" bug on every fresh upload.
+R.invalidateAmt = function(){
+  window._amtMasterValid = false;
+  window._amtSeq = (window._amtSeq||0) + 1;
+  try {
+    if (gl && locs && locs.u_useAmt) {
+      gl.uniform1f(locs.u_useAmt, 0.0);
+    }
+  } catch(e) {}
+  try { markDirty(); } catch(e) {}
+};
 R.setAmtScanDpi = function(dpi){
   window._amtScanDpi = Math.max(50, Math.min(1200, dpi|0));
   console.log('[RisoAmt] scan DPI =', window._amtScanDpi, '(re-run dither mode to apply)');
@@ -1423,7 +1437,7 @@ R.setRisoParams = function(opts){
     setTimeout(window.R.runAmtPrepass, 0);
   }
   return {
-    dpi: window._amtScanDpi || 150,
+    dpi: window._amtScanDpi || 600,
     inkSpread: window._inkSpread != null ? window._inkSpread : 0.5,
     maxCoverage: window._riso_maxCoverage != null ? window._riso_maxCoverage : 1.7,
     thresholdNoise: window._riso_thresholdNoise != null ? window._riso_thresholdNoise : 0.0
@@ -1431,7 +1445,7 @@ R.setRisoParams = function(opts){
 };
 R.amtInfo = function(){
   return {
-    scanDpi: window._amtScanDpi || 150,
+    scanDpi: window._amtScanDpi || 600,
     rendererVersion: 40,
     module: window.RisoAmt && window.RisoAmt.CALIBRATION
   };
