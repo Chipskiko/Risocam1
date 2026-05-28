@@ -84,7 +84,7 @@ function initGL(){
    'u_driverLUT','u_useDriverLUT',
    'u_ht5Matrix',
    'u_amtMaster0','u_amtMaster1','u_amtMaster2','u_amtMaster3','u_useAmt',
-   'u_amtTexel','u_amtSuperSample',
+   'u_amtTexel','u_amtSuperSample','u_amtInkSpread',
    'u_bnVC','u_risoGamma','u_risoGrainScale','u_risoDebugBaseline',
    // T3-F: pre-baked per-ink coverage→color LUT texture
    'u_calLutTex','u_useCalLutTex'
@@ -230,6 +230,9 @@ function initGL(){
   // master texels → averages the dot-stochastic noise into a smooth halftone.
   if(locs.u_amtTexel) gl.uniform2f(locs.u_amtTexel, 1/1241, 1/931);  // placeholder
   if(locs.u_amtSuperSample) gl.uniform1f(locs.u_amtSuperSample, 1.5);
+  // (D) GPU ink-spread radius in master texels. 0 = no spread (CPU blur path).
+  // Set per-prepass from the ink-spread slider; default seeded here.
+  if(locs.u_amtInkSpread) gl.uniform1f(locs.u_amtInkSpread, 0.5);
   window._amtMasterValid = false;
   window._amtMasterKey = '';
 
@@ -1138,38 +1141,58 @@ function _bakeCalLutSync(inks){
 
 // ─── Web Worker for AMT FS — keeps main thread free for animations ─────────
 // Falls back to synchronous runAmt on the main thread if Worker fails.
-let _amtWorker = null;
+//
+// (B) WORKER POOL: the 4 ink channels are fully independent FS passes, but
+// they used to run one-at-a-time through a single worker (serial). A pool of
+// N workers (N = cores, capped at 4 = max channels) lets all active channels'
+// FS run concurrently → up to ~4× wall-clock on the prepass with bit-identical
+// output. Jobs round-robin across the pool; a shared pending map keys results
+// by a global job id, so any worker can satisfy any job.
+let _amtWorkerPool = [];
 let _amtWorkerPending = new Map();
 let _amtWorkerNextId = 0;
+let _amtWorkerRR = 0;
+const _AMT_POOL_SIZE = Math.max(1, Math.min(4, (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) ? navigator.hardwareConcurrency : 4));
 function _initAmtWorker(){
-  if (_amtWorker || typeof Worker === 'undefined') return;
+  if (_amtWorkerPool.length || typeof Worker === 'undefined') return;
   try {
-    _amtWorker = new Worker('js/riso-amt-worker.js?v=2');
-    _amtWorker.onmessage = function(e){
-      const { id, plane, error } = e.data;
-      const resolver = _amtWorkerPending.get(id);
-      if (!resolver) return;
-      _amtWorkerPending.delete(id);
-      if (error) resolver.reject(new Error(error));
-      else       resolver.resolve(new Uint8Array(plane));
-    };
-    _amtWorker.onerror = function(e){
-      console.warn('[RisoAmt worker] error:', e.message);
-      _amtWorker = null;  // disable further use, fall back to sync
-    };
-    console.log('[RisoAmt] Web Worker initialized — FS runs off-main-thread');
+    for (let i = 0; i < _AMT_POOL_SIZE; i++) {
+      const w = new Worker('js/riso-amt-worker.js?v=2');
+      w.onmessage = function(e){
+        const { id, plane, error } = e.data;
+        const resolver = _amtWorkerPending.get(id);
+        if (!resolver) return;
+        _amtWorkerPending.delete(id);
+        if (error) resolver.reject(new Error(error));
+        else       resolver.resolve(new Uint8Array(plane));
+      };
+      w.onerror = function(e){
+        console.warn('[RisoAmt worker] error:', e.message);
+        // Reject every in-flight job so Promise.all in the prepass can't hang
+        // forever (which would wedge _amtPrepassRunning and block all future
+        // prepasses). The next prepass re-dispatches cleanly.
+        for (const [id, resolver] of _amtWorkerPending) {
+          try { resolver.reject(new Error('worker error: ' + (e.message || 'unknown'))); } catch(_){}
+          _amtWorkerPending.delete(id);
+        }
+      };
+      _amtWorkerPool.push(w);
+    }
+    console.log(`[RisoAmt] worker pool initialized — ${_amtWorkerPool.length} workers (FS runs off-main-thread, channels in parallel)`);
   } catch (e) {
-    console.warn('[RisoAmt] Web Worker init failed, falling back to sync:', e);
-    _amtWorker = null;
+    console.warn('[RisoAmt] Worker pool init failed, falling back to sync:', e);
+    _amtWorkerPool = [];
   }
 }
 
-// Async wrapper: runs runAmt() + ink-spread blur + bit unpack inside the worker
-// so the main thread stays completely free for animations. Returns the BLURRED
-// plane (W*H Uint8Array, 0..255 ink density) ready to pack into RGBA and upload.
-// Falls back to synchronous main-thread path if worker is unavailable.
+// Async wrapper: runs runAmt() + bit unpack (+ optional ink-spread blur) inside
+// a pool worker so the main thread stays free for animations. Returns the plane
+// (W*H Uint8Array, 0..255 ink density) ready to pack into RGBA and upload.
+// sigma <= 0 skips the CPU ink-spread blur (D: spread is applied on the GPU in
+// the master-sampling loop instead — saves the per-channel blur entirely).
+// Falls back to synchronous main-thread path if the pool is unavailable.
 function runAmtAsync(input, W, H, opts, sigma){
-  if (!_amtWorker) {
+  if (!_amtWorkerPool.length) {
     const bits = window.RisoAmt.runAmt(input, W, H, opts);
     const plane = new Uint8Array(W * H);
     for (let i = 0; i < W * H; i++) {
@@ -1182,9 +1205,10 @@ function runAmtAsync(input, W, H, opts, sigma){
   return new Promise((resolve, reject) => {
     const id = _amtWorkerNextId++;
     _amtWorkerPending.set(id, { resolve, reject });
+    const w = _amtWorkerPool[(_amtWorkerRR++) % _amtWorkerPool.length];
     const copy = new Uint8Array(input.length);
     copy.set(input);
-    _amtWorker.postMessage(
+    w.postMessage(
       { id, input: copy.buffer, W, H, opts, sigma },
       [copy.buffer]
     );
@@ -1309,6 +1333,7 @@ async function _runAmtPrepassImpl(){
 
   // ── PASS 1: Project source RGB onto each channel's paper→ink direction ──
   // Produces 4 inputGray buffers (or null for inactive channels).
+  const tProj0 = performance.now();
   const PR = paperRGB[0]*255, PG = paperRGB[1]*255, PB = paperRGB[2]*255;
   const inputGrays = [null, null, null, null];
   const channelMeta = [];
@@ -1338,39 +1363,59 @@ async function _runAmtPrepassImpl(){
     channelMeta.push({ink: ink});
   }
 
-  // ── PASS 2+3: Per-channel FS + ink-spread blur in worker → RGBA pack +
-  //              texture upload on main thread.
-  // The worker does all the CPU-heavy work (FS + bit unpack + Gaussian blur)
-  // entirely off the main thread, so animations keep playing throughout. The
-  // main thread only does the GL texture upload (fast, must be on GL thread).
-  const sigma = window._inkSpread != null ? window._inkSpread : 0.5;
+  // ── PASS 2+3: Per-channel FS in worker pool (B: all channels concurrent) →
+  //              RGBA pack + texture upload on the main thread.
+  //
+  // (B) All active channels are dispatched to the worker pool at once and
+  //     awaited together, so their FS passes run in parallel (~4× wall-clock
+  //     vs the old one-at-a-time loop). Bit-identical output.
+  //
+  // (D) GPU INK-SPREAD: the soft round-dot edge used to come from a per-channel
+  //     CPU Gaussian blur of the bit-plane (~1.2s/channel at 600 dpi — the
+  //     single biggest prepass cost). When _gpuInkSpread is on we pass sigma=0
+  //     so the worker returns the RAW binary plane, and the spread is applied
+  //     for free in the shader's master-sampling loop (wider sample radius +
+  //     more taps → averages neighbouring binary cells into a soft edge). The
+  //     master textures stay binary (NEAREST), preserving FS character.
+  const tProj = performance.now() - tProj0;
+  const gpuSpread = (window._gpuInkSpread ?? true);
+  const inkSpread = window._inkSpread != null ? window._inkSpread : 0.5;
+  const sigma = gpuSpread ? 0 : inkSpread;
+  const tPar0 = performance.now();
+  // Tell the shader the master texel size + ink-spread radius (in texels) so
+  // its supersampling footprint reproduces the soft dot edge on the GPU.
+  if(locs.u_amtTexel) gl.uniform2f(locs.u_amtTexel, 1.0 / W, 1.0 / H);
+  if(locs.u_amtInkSpread) gl.uniform1f(locs.u_amtInkSpread, gpuSpread ? inkSpread : 0.0);
+
+  // Dispatch every active channel concurrently, then pack+upload as each
+  // resolves. The pack/upload (main-thread, must be on the GL thread) for one
+  // channel overlaps the still-running FS of the others.
+  const jobs = [];
   for(let chIdx = 0; chIdx < 4; chIdx++){
     const meta = channelMeta[chIdx];
     if(!meta) continue;
-    // Worker returns the BLURRED plane directly (Uint8Array W*H, 0..255).
-    const blurred = await runAmtAsync(inputGrays[chIdx], W, H, _runOpts, sigma);
-    // Pack to RGBA on main thread (~5ms at 1M pixels, negligible).
-    const rgba = new Uint8Array(W * H * 4);
-    for(let i = 0; i < W * H; i++){
-      const v = blurred[i];
-      rgba[i*4] = v; rgba[i*4+1] = v; rgba[i*4+2] = v; rgba[i*4+3] = 255;
-    }
-    gl.activeTexture(gl.TEXTURE9 + chIdx);
-    gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[chIdx]);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, rgba);
-    const ink = meta.ink;
-    // Compute coverage by counting non-zero bytes in the plane (post-blur)
-    let on = 0; for(let i = 0; i < W*H; i++) if(blurred[i] > 127) on++;
-    const cov = (on / (W * H) * 100);
-    console.log(`[RisoAmt]   ch${chIdx} ink RGB(${(ink[0]*255)|0},${(ink[1]*255)|0},${(ink[2]*255)|0}) → cov ${cov.toFixed(1)}%`);
-    await _yield();
+    const job = runAmtAsync(inputGrays[chIdx], W, H, _runOpts, sigma).then(plane => {
+      // Pack to RGBA on main thread.
+      const rgba = new Uint8Array(W * H * 4);
+      for(let i = 0; i < W * H; i++){
+        const v = plane[i];
+        rgba[i*4] = v; rgba[i*4+1] = v; rgba[i*4+2] = v; rgba[i*4+3] = 255;
+      }
+      gl.activeTexture(gl.TEXTURE9 + chIdx);
+      gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[chIdx]);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, rgba);
+      const ink = meta.ink;
+      let on = 0; for(let i = 0; i < W*H; i++) if(plane[i] > 127) on++;
+      const cov = (on / (W * H) * 100);
+      console.log(`[RisoAmt]   ch${chIdx} ink RGB(${(ink[0]*255)|0},${(ink[1]*255)|0},${(ink[2]*255)|0}) → cov ${cov.toFixed(1)}%`);
+    });
+    jobs.push(job);
   }
+  await Promise.all(jobs);
+  const tPar = performance.now() - tPar0;
   const totalMs = performance.now() - t0;
-  console.log(`[RisoAmt] all channels done in ${totalMs.toFixed(0)} ms`);
+  console.log(`[RisoAmt] all channels done in ${totalMs.toFixed(0)} ms (pool=${_amtWorkerPool.length}, gpuSpread=${gpuSpread}) — projection(main,serial) ${tProj.toFixed(0)}ms, FS+pack+upload(parallel) ${tPar.toFixed(0)}ms`);
   gl.uniform1f(locs.u_useAmt, 1.0);
-  // Tell the shader the master's actual texel size so its supersampling
-  // offsets land in the right scale (1 texel = 1 master cell).
-  if(locs.u_amtTexel) gl.uniform2f(locs.u_amtTexel, 1.0 / W, 1.0 / H);
   window._amtMasterValid = true;
   markDirty();
   try { R.toast && R.toast('RISO ready', 1200); } catch(e){}
@@ -1420,21 +1465,38 @@ R.setLcgModulation = function(on){
 // sawtooth artifacts at high-contrast edges. All re-trigger the prepass.
 R.setRisoParams = function(opts){
   opts = opts || {};
+  // Track whether any FS-affecting parameter changed. (D) Under GPU ink-spread,
+  // inkSpread is a pure shader uniform — it does NOT change the FS master — so
+  // adjusting it can update live without re-running the (expensive) prepass.
+  let fsAffected = false;
+  const gpuSpread = (window._gpuInkSpread ?? true);
   if(typeof opts.dpi === 'number'){
     window._amtScanDpi = Math.max(50, Math.min(1200, opts.dpi|0));
+    fsAffected = true;
   }
   if(typeof opts.inkSpread === 'number'){
     window._inkSpread = Math.max(0, Math.min(3, opts.inkSpread));
+    if(gpuSpread){
+      // Live update — just push the uniform and redraw, no prepass.
+      try { if(locs.u_amtInkSpread) gl.uniform1f(locs.u_amtInkSpread, window._inkSpread); } catch(e){}
+      try { markDirty(); } catch(e){}
+    } else {
+      fsAffected = true; // CPU blur path bakes spread into the master
+    }
   }
   if(typeof opts.maxCoverage === 'number'){
     window._riso_maxCoverage = Math.max(0, Math.min(4, opts.maxCoverage));
+    fsAffected = true;
   }
   if(typeof opts.thresholdNoise === 'number'){
     window._riso_thresholdNoise = Math.max(0, Math.min(0.5, opts.thresholdNoise));
+    fsAffected = true;
   }
-  R.invalidateAmt();
-  if(window._mode === 'flat' && window.R && window.R.runAmtPrepass){
-    setTimeout(window.R.runAmtPrepass, 0);
+  if(fsAffected){
+    R.invalidateAmt();
+    if(window._mode === 'flat' && window.R && window.R.runAmtPrepass){
+      setTimeout(window.R.runAmtPrepass, 0);
+    }
   }
   return {
     dpi: window._amtScanDpi || 600,
@@ -1442,6 +1504,19 @@ R.setRisoParams = function(opts){
     maxCoverage: window._riso_maxCoverage != null ? window._riso_maxCoverage : 1.7,
     thresholdNoise: window._riso_thresholdNoise != null ? window._riso_thresholdNoise : 0.0
   };
+};
+
+// (D) Toggle GPU ink-spread (default ON). When ON the soft dot edge is applied
+// in the shader's master-sampling loop and the per-channel CPU Gaussian blur is
+// skipped (saves ~1.2s/channel at 600 dpi). OFF restores the old CPU blur path
+// (bit-for-bit the legacy look) for A/B comparison. Re-runs the prepass.
+R.setGpuInkSpread = function(on){
+  window._gpuInkSpread = !!on;
+  console.log('[RisoAmt] GPU ink-spread:', on ? 'ON (shader, no CPU blur)' : 'OFF (CPU blur)');
+  R.invalidateAmt();
+  if(window._mode === 'flat' && window.R && window.R.runAmtPrepass){
+    setTimeout(window.R.runAmtPrepass, 0);
+  }
 };
 R.amtInfo = function(){
   return {

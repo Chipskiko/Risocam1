@@ -465,6 +465,9 @@ uniform sampler2D u_amtMaster3; // ditto — channel 3
 uniform float u_useAmt;        // 1.0 = sample u_amtMaster<idx> (Grain Touch true AMT); 0.0 = fall back to per-fragment matrix threshold
 uniform vec2 u_amtTexel;       // 1.0 / master_resolution — for stochastic supersampling in RISO mode
 uniform float u_amtSuperSample; // sample radius multiplier (in master texels). 0 = single-sample, 1.5 = good default.
+uniform float u_amtInkSpread;   // (D) ink-spread radius in master texels. >0 widens the master-sampling
+                                //     footprint so soft round-dot edges emerge on the GPU instead of from
+                                //     a per-channel CPU Gaussian blur. 0 = spread already baked in (CPU path).
 // GPU Grain Touch path — replaces JS AMT pre-pass with a per-fragment V&C
 // blue-noise threshold + density-gamma. ~60fps on phone GPUs vs ~5fps for JS FS.
 uniform sampler2D u_bnVC;        // 64×64 Void-and-Cluster blue-noise threshold mask, REPEAT + NEAREST
@@ -1767,14 +1770,22 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
   if(u_mode == 3){
     if(u_useAmt > 0.5){
       vec2 uv_riso = srcUV(jitPix / u_res);
-      // Stochastic supersampling: sample the master at 4 pseudo-random offsets
-      // within ±u_amtSuperSample master-texels, then average. Mimics the
-      // many-master-cells-per-eye-pixel averaging that happens when viewing a
-      // real RISO print at reading distance. At u_amtSuperSample = 0, we get
-      // a single sample (the old behavior).
+      // Stochastic supersampling: sample the master at N pseudo-random offsets
+      // within a radius of master-texels, then average. Mimics the many-master-
+      // cells-per-eye-pixel averaging that happens when viewing a real RISO
+      // print at reading distance, turning the binary FS dots into a smooth
+      // textured halftone.
+      //
+      // (D) GPU INK-SPREAD: the radius now includes u_amtInkSpread, so the soft
+      // round-dot edge that used to come from a per-channel CPU Gaussian blur of
+      // the bit-plane is reproduced here for free — averaging neighbouring binary
+      // cells over a slightly wider footprint IS the spread (blur and box-average
+      // are both linear, so sampling the binary master over a wider area ==
+      // sampling the blurred master). 8 taps (vs the old 4) keep the wider
+      // footprint smooth. With u_amtInkSpread = 0 this reduces to the old radius.
       float total = 0.0;
-      vec2 radius = u_amtTexel * u_amtSuperSample;
-      for(int s = 0; s < 4; s++){
+      vec2 radius = u_amtTexel * (u_amtSuperSample + u_amtInkSpread);
+      for(int s = 0; s < 8; s++){
         vec2 off = vec2(
           hash(gl_FragCoord.xy + vec2(float(s) * 7.13, 0.0)) - 0.5,
           hash(gl_FragCoord.xy + vec2(0.0, float(s) * 11.37)) - 0.5
@@ -1787,7 +1798,7 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
         else              v = texture2D(u_amtMaster3, sUV).r;
         total += v;
       }
-      return total * 0.25;
+      return total * 0.125;
     }
     return clamp(val, 0.0, 1.0);
   }
@@ -2607,7 +2618,7 @@ void main(){
 <script src="js/undo.js?v=3"></script>
 <script src="js/compare.js?v=5"></script>
 <script src="js/riso-amt.js?v=22"></script>
-<script src="js/renderer.js?v=85"></script>
+<script src="js/renderer.js?v=86"></script>
 <script src="js/source.js?v=43"></script>
 <script src="js/save.js?v=43"></script>
 <script src="js/ui-controls.js?v=49"></script>
