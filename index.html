@@ -2175,18 +2175,32 @@ float paperEffect(vec2 pix){
 // Multiplies the final composite by a height-driven tone (valleys absorb more
 // → darker; raised fibers/specks → lighter) plus a subtle normal-mapped raking
 // light, so the sheet reads as real paper the ink soaked into — visible in bare
-// paper, through translucent ink, and captured in exports. Tiles like paperField.
+// paper, through translucent ink, and captured in exports.
 // Height map mean ≈ 0.14 (Paper002), so we center the tone there to avoid a
 // global darkening — only the local tooth variation modulates the result.
+//
+// DE-TILING: a single tiling sample produces a visible grid (the prominent
+// specks recur on a 256px lattice → "repeating squares"). We blend two samples
+// at incommensurate scales + a rotation; their combined repeat period is the
+// LCM of the two cadences (effectively never within view), so no grid reads.
+// Averaging halves the variance, so we re-expand the deviation (~×1.4) to keep
+// the tooth contrast. Cost: one extra texture tap.
 vec3 applyPaperPBR(vec3 result, vec2 rpx){
   if(u_usePaperPBR < 0.5 || u_paperTex < 0.01) return result;
-  vec2 uvp = (rpx + u_paperShift) / 256.0;   // same tiling cadence as paperField
-  vec4 p = texture2D(u_paperPBR, uvp);
+  vec2 base = rpx + u_paperShift;
+  // Sample A: upright, 256px cadence.
+  vec4 pa = texture2D(u_paperPBR, base / 256.0);
+  // Sample B: rotated ~37°, ~1.37× finer cadence, offset — incommensurate with A.
+  mat2 rot = mat2(0.7986, 0.6018, -0.6018, 0.7986);
+  vec4 pb = texture2D(u_paperPBR, (rot * base) / 187.0 + vec2(0.37, 0.61));
+  // Blend; re-expand height deviation around the map mean to restore contrast.
   float strength = clamp(u_paperTex * 0.04, 0.0, 1.0); // slider 0..25 → 0..1
+  float h = 0.14 + ((pa.r + pb.r) * 0.5 - 0.14) * 1.4;
+  vec2 nxy = ((pa.gb + pb.gb) * 0.5 - 0.5) * 2.0;
   // Tone from height, centered on the map's mean so paper isn't globally darkened.
-  float tone = 1.0 + (p.r - 0.14) * strength * 2.6;
+  float tone = 1.0 + (h - 0.14) * strength * 2.6;
   // Raking-light sheen from the packed normal (z reconstructed).
-  vec3 n = normalize(vec3((p.g - 0.5) * 2.0, (p.b - 0.5) * 2.0, 1.0));
+  vec3 n = normalize(vec3(nxy, 1.0));
   vec3 L = normalize(vec3(-0.35, -0.55, 0.78));
   float sheen = (dot(n, L) - 0.62) * strength * 0.45;
   float pbrMod = clamp(tone + sheen, 0.55, 1.35);
