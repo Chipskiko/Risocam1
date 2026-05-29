@@ -1374,7 +1374,16 @@ float screenDither(float val, vec2 pix, float cellPx, float angle){
   else if(u_stampShape == 3){  dist = dist_plus(centered); }
   else if(u_stampShape == 4){  dist = dist_star(centered); }
   else if(u_stampShape == 5){  dist = dist_heart(centered); }
-  else {                        dist = dist_circle(centered); }
+  else {
+    // Circle → Euclidean (cosine) spot function instead of a disk clipped to
+    // the square cell. The old dist_circle bulged past the cell edges above
+    // ~57% coverage and got clipped to them → square-with-rounded-corner dots
+    // in dark/low-LPI areas. The spot function grows round dots in highlights
+    // and round HOLES in shadows with curved sides throughout — no square
+    // clipping — and gives a true ~50%-area-at-50% response.
+    // Field is 0 at cell centre, 1 at corners; ink where field < val.
+    dist = 0.5 + 0.25 * (cos(6.2831853 * cellPos.x) + cos(6.2831853 * cellPos.y));
+  }
   // Per-cell hash roughness + angular wobble, scaled by u_simNoise.
   vec2 cellID = floor(rp / cellPx);
   float roughness = (hash(cellID * 7.3) - 0.5) * 0.08 * u_simNoise;
