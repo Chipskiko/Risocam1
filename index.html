@@ -1368,30 +1368,44 @@ float screenDither(float val, vec2 pix, float cellPx, float angle){
   vec2 centered = cellPos - 0.5;
   // Drum-pressure asymmetry, scaled by u_simNoise (0 = perfect circles).
   centered.x *= 1.0 + 0.05 * u_simNoise;
+  // Per-cell hash roughness + angular wobble — gives ragged, "printed" dot
+  // edges (and the noisy image boundary). Scaled by u_simNoise.
+  vec2 cellID = floor(rp / cellPx);
+  float roughness = (hash(cellID * 7.3) - 0.5) * 0.08 * u_simNoise;
+  float angp = atan(centered.y, centered.x);
+  float wobble = hash(cellID * 13.1 + floor(angp * 2.0)) * 0.025 * u_simNoise;
+  float rough = roughness + wobble;
+  // Soft edge — narrows when u_simNoise is low so dot edges are crisper.
+  float edge = mix(0.5, 1.5, u_simNoise) / cellPx;
+
+  // ── Circle stamp: ALWAYS-ROUND dots & holes ──
+  // The geometric truth of AM screening is that round dots can't tile past
+  // ~50% without the gaps becoming non-round (squares, or stars for a spot
+  // function). So instead of letting one shape merge, we switch representation
+  // at 50%: round INK dots in highlights, round PAPER holes in shadows. Radii
+  // use πr²=area so tone is preserved. Result: round everywhere, never blocky.
+  if(u_stampShape == 0){
+    float v = clamp(val, 0.0, 1.0);
+    if(v <= 0.5){
+      float rdot = sqrt(v * 0.3183099);            // sqrt(v/π)
+      float dd = length(centered) + rough;         // ragged edge
+      return 1.0 - smoothstep(rdot - edge, rdot + edge, dd);   // ink inside dot
+    } else {
+      float rhole = sqrt((1.0 - v) * 0.3183099);   // sqrt((1-v)/π)
+      vec2 cornerPos = fract(cellPos + 0.5) - 0.5; // holes sit at cell corners
+      float dd = length(cornerPos) + rough;
+      return smoothstep(rhole - edge, rhole + edge, dd);       // paper inside hole
+    }
+  }
+
+  // ── Decorative stamp shapes: distance-field threshold ──
   float dist;
   if(u_stampShape == 1){       dist = dist_square(centered); }
   else if(u_stampShape == 2){  dist = dist_diamond(centered); }
   else if(u_stampShape == 3){  dist = dist_plus(centered); }
   else if(u_stampShape == 4){  dist = dist_star(centered); }
-  else if(u_stampShape == 5){  dist = dist_heart(centered); }
-  else {
-    // Circle → Euclidean (cosine) spot function instead of a disk clipped to
-    // the square cell. The old dist_circle bulged past the cell edges above
-    // ~57% coverage and got clipped to them → square-with-rounded-corner dots
-    // in dark/low-LPI areas. The spot function grows round dots in highlights
-    // and round HOLES in shadows with curved sides throughout — no square
-    // clipping — and gives a true ~50%-area-at-50% response.
-    // Field is 0 at cell centre, 1 at corners; ink where field < val.
-    dist = 0.5 + 0.25 * (cos(6.2831853 * cellPos.x) + cos(6.2831853 * cellPos.y));
-  }
-  // Per-cell hash roughness + angular wobble, scaled by u_simNoise.
-  vec2 cellID = floor(rp / cellPx);
-  float roughness = (hash(cellID * 7.3) - 0.5) * 0.08 * u_simNoise;
-  float ang = atan(centered.y, centered.x);
-  float wobble = hash(cellID * 13.1 + floor(ang * 2.0)) * 0.025 * u_simNoise;
-  dist += roughness + wobble;
-  // Soft edge — narrows when u_simNoise is low so dot edges are crisper.
-  float edge = mix(0.5, 1.5, u_simNoise) / cellPx;
+  else {                        dist = dist_heart(centered); }
+  dist += rough;
   return 1.0 - smoothstep(val - edge, val + edge, dist);
 }
 
