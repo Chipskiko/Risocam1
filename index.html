@@ -1693,6 +1693,13 @@ float getCoverageApprox(float weight, vec2 rpx, int idx, float noise1, float den
   if(dens < 0.5) return 0.0;
   float ink = weight;
   ink *= dens * 0.01;
+  // Per-ink gamma — MUST match getCoverage (CMYK path) or SPOT prints lighter.
+  // Ink gammas are <1, so this boosts coverage to mimic the riso driver's tonal
+  // gain (measured TRCs are concave — ink builds fast in the mid-tones). Without
+  // it the NNLS weight maps straight to the LUT and the print reads too light.
+  float ig = idx==0 ? u_inkGamma0 : (idx==1 ? u_inkGamma1 : (idx==2 ? u_inkGamma2 : u_inkGamma3));
+  float calGamma = mix(ig, 1.0, 0.45);
+  ink = pow(clamp(ink, 0.0, 1.0), calGamma);
   ink = clamp(ink, 0.0, 1.0);
   // Gentle S-curve (matched to v8)
   float tc = clamp(ink, 0.0, 1.0);
