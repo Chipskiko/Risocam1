@@ -532,6 +532,13 @@ uniform vec3 u_paperColor;   // paper base color
 uniform float u_paperTex;    // paper texture intensity 0..1 (from slider 0-25 mapped)
 uniform sampler2D u_paperScan; // scanned paper fiber texture (grayscale, tiling)
 uniform float u_usePaperScan;  // 1.0 = use scanned texture, 0.0 = procedural
+// PBR paper substrate (ambientCG Paper002, CC0): one tiling texture packing
+// R = height (displacement), G = normal.X, B = normal.Y (GL convention).
+// Applied to the final composite in ALL modes (incl. RISO) so the paper's
+// tooth shows in unprinted areas, through ink, and in exports — unlike the
+// legacy pf path which was gated off by u_simNoise in clean/RISO mode.
+uniform sampler2D u_paperPBR;
+uniform float u_usePaperPBR;
 uniform vec2 u_paperShift;    // per-frame paper position offset (simulates different sheet feeds)
 uniform vec4 u_crop;         // UV crop region: x, y, w, h (default 0,0,1,1)
 uniform sampler2D u_toneCurve; // 256×1 tone curve LUT texture
@@ -2154,13 +2161,36 @@ float paperField(vec2 pix){
 }
 
 // Paper field with intensity slider: mix(1.0, P, intensity)
+// Legacy procedural/scan paper path — gated by u_simNoise (off in clean/RISO).
+// When the PBR substrate is active it supersedes this (pf is forced to 1.0 in
+// main), so this is unchanged from the original behaviour for PBR-off.
 float paperEffect(vec2 pix){
-  // Both intensity and per-print variation scale with u_simNoise — at 0
-  // the function returns exactly 1.0 (no paper-fiber modulation at all).
   float intensity = u_paperTex * 0.04 * u_simNoise;
   float base = mix(1.0, paperField(pix), intensity);
   float paperVar = (hash(vec2(u_frameSeed * 11.1, 0.5)) - 0.5) * 0.03 * u_simNoise;
   return base * (1.0 + paperVar);
+}
+
+// ─── PBR paper substrate (height + normal) ───────────────────────────────
+// Multiplies the final composite by a height-driven tone (valleys absorb more
+// → darker; raised fibers/specks → lighter) plus a subtle normal-mapped raking
+// light, so the sheet reads as real paper the ink soaked into — visible in bare
+// paper, through translucent ink, and captured in exports. Tiles like paperField.
+// Height map mean ≈ 0.14 (Paper002), so we center the tone there to avoid a
+// global darkening — only the local tooth variation modulates the result.
+vec3 applyPaperPBR(vec3 result, vec2 rpx){
+  if(u_usePaperPBR < 0.5 || u_paperTex < 0.01) return result;
+  vec2 uvp = (rpx + u_paperShift) / 256.0;   // same tiling cadence as paperField
+  vec4 p = texture2D(u_paperPBR, uvp);
+  float strength = clamp(u_paperTex * 0.04, 0.0, 1.0); // slider 0..25 → 0..1
+  // Tone from height, centered on the map's mean so paper isn't globally darkened.
+  float tone = 1.0 + (p.r - 0.14) * strength * 2.6;
+  // Raking-light sheen from the packed normal (z reconstructed).
+  vec3 n = normalize(vec3((p.g - 0.5) * 2.0, (p.b - 0.5) * 2.0, 1.0));
+  vec3 L = normalize(vec3(-0.35, -0.55, 0.78));
+  float sheen = (dot(n, L) - 0.62) * strength * 0.45;
+  float pbrMod = clamp(tone + sheen, 0.55, 1.35);
+  return result * pbrMod;
 }
 
 void main(){
@@ -2210,10 +2240,12 @@ void main(){
   vec2 pix = uv * u_res;
   vec2 rpx = uv * REF;
 
-  // Compute paper property field once (spatially fixed to sheet)
-  // paperEffect returns 1.0 when u_simNoise=0, so this single call works
-  // for all clean / noisy combinations. FLAT also forces simNoise=0 in JS.
-  float pf = paperEffect(rpx);
+  // Compute paper property field once (spatially fixed to sheet).
+  // When the PBR substrate is active it is the single paper-texture mechanism,
+  // so the legacy pf is neutralised (1.0) to avoid double-applying paper.
+  // Otherwise paperEffect returns 1.0 when u_simNoise=0 (clean/RISO), so this
+  // single call works for all clean / noisy combinations.
+  float pf = (u_usePaperPBR > 0.5) ? 1.0 : paperEffect(rpx);
 
   // Paper base color with subtle reflectance from fiber structure
   vec3 paper = u_paperColor;
@@ -2406,6 +2438,12 @@ void main(){
   float reflectStr = mix(0.2, 0.25, smoothstep(0.6, 0.95, inkCoverage));
   float reflectMod = 1.0 + (pf - 1.0) * reflectStr;
   result *= reflectMod;
+
+  // PBR paper substrate (ambientCG Paper002) — height tooth + normal sheen.
+  // Applied here in the shared tail so it affects every mode incl. RISO and
+  // is captured on export. When off (u_usePaperPBR=0) this is a no-op and the
+  // legacy procedural/scan pf path above handles paper.
+  result = applyPaperPBR(result, rpx);
 
   // Micro scanner noise: breaks last traces of digital perfection
   // Simulates sensor grain in scanned prints (0.4% amplitude)
@@ -2618,11 +2656,11 @@ void main(){
 <script src="js/undo.js?v=3"></script>
 <script src="js/compare.js?v=5"></script>
 <script src="js/riso-amt.js?v=22"></script>
-<script src="js/renderer.js?v=87"></script>
+<script src="js/renderer.js?v=88"></script>
 <script src="js/source.js?v=43"></script>
 <script src="js/save.js?v=43"></script>
 <script src="js/ui-controls.js?v=49"></script>
-<script src="js/ui-paper.js?v=11"></script>
+<script src="js/ui-paper.js?v=12"></script>
 <script src="js/phone.js?v=17"></script>
 <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');</script>
 </body>

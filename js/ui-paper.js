@@ -14,10 +14,14 @@ function updatePaperBg(){
     if(!v) return;
     v.style.backgroundColor=hex;
   });
-  // Paper scan overlay on top of canvas
+  // Paper scan overlay on top of canvas.
+  // When the in-shader PBR paper substrate is active it is the single paper-
+  // texture mechanism (and, unlike this CSS overlay, it's captured on export),
+  // so suppress the overlay to avoid doubling the paper texture.
   const ov=el('paperOverlay');
   const phOv=el('phPaperOverlay');
-  if(activePaperTex!=='procedural' && PAPER_TEXTURES[activePaperTex]){
+  const pbrOn = (window._usePaperPBR ?? true);
+  if(!pbrOn && activePaperTex!=='procedural' && PAPER_TEXTURES[activePaperTex]){
     const bg=`url(${PAPER_TEXTURES[activePaperTex].src})`;
     [ov,phOv].forEach(o=>{
       if(!o) return;

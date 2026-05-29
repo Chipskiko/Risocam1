@@ -67,6 +67,7 @@ function initGL(){
    'u_chan0','u_chan1','u_chan2','u_chan3',
    'u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_useLabResidual','u_useCalChord','u_warmCool','u_stampShape','u_ditherScale','u_screenClean','u_simNoise',
    'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_paperShift','u_crop','u_paper',
+   'u_paperPBR','u_usePaperPBR',
    'u_lutA0','u_lutA1','u_lutA2','u_lutA3',
    'u_lutB0','u_lutB1','u_lutB2','u_lutB3',
    'u_lutC0','u_lutC1','u_lutC2','u_lutC3',
@@ -306,6 +307,40 @@ function initGL(){
   window._calLutTex = calLutTex;
   window._calLutLastKey = '';
   try { _initCalLutWorker(); } catch(e) { console.warn('calLut worker init failed', e); }
+
+  // ── PBR paper substrate (ambientCG Paper002, CC0) — texture unit 15 ──
+  // One tiling RGBA texture: R=height, G=normal.X, B=normal.Y. Sampled by the
+  // shader's applyPaperPBR() to give the sheet real tooth + raking-light sheen
+  // in every mode (incl. RISO) and in exports. Seeded 1×1 neutral until the
+  // PNG loads. REPEAT wrap (it tiles); LINEAR (smooth fiber).
+  var paperPbrTex = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE15); gl.bindTexture(gl.TEXTURE_2D, paperPbrTex);
+  // neutral seed: height=0.14 (map mean → no tone shift), normal flat (0.5,0.5)
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([36,128,128,255]));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  if (locs.u_paperPBR) gl.uniform1i(locs.u_paperPBR, 15);
+  if (locs.u_usePaperPBR) gl.uniform1f(locs.u_usePaperPBR, (window._usePaperPBR ?? true) ? 1.0 : 0.0);
+  window._paperPbrTex = paperPbrTex;
+  // Load the packed texture asynchronously; enable once ready.
+  (function(){
+    var img = new Image();
+    img.onload = function(){
+      gl.activeTexture(gl.TEXTURE15);
+      gl.bindTexture(gl.TEXTURE_2D, window._paperPbrTex);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.activeTexture(gl.TEXTURE0);
+      window._paperPbrReady = true;
+      try { markDirty(); } catch(e){}
+    };
+    img.onerror = function(){ console.warn('[paper] PBR texture failed to load'); };
+    img.src = 'textures/paper002_pbr.png?v=1';
+  })();
 
   // CRITICAL: reset activeTexture to a safe unit so subsequent makeSrcTex()
   // calls (which bind without setting active) don't inherit unit 13 and
@@ -1531,6 +1566,18 @@ R.setRisoParams = function(opts){
     maxCoverage: window._riso_maxCoverage != null ? window._riso_maxCoverage : 1.7,
     thresholdNoise: window._riso_thresholdNoise != null ? window._riso_thresholdNoise : 0.0
   };
+};
+
+// Toggle the PBR paper substrate (ambientCG Paper002 — height tooth + normal
+// sheen). Default ON. When ON it's the single paper-texture mechanism (the
+// legacy procedural/scan pf is neutralised in-shader) and it shows in every
+// mode incl. RISO and in exports. Strength follows the paper-texture slider
+// (u_paperTex). No prepass needed — pure shader uniform, redraw only.
+R.setPaperPBR = function(on){
+  window._usePaperPBR = !!on;
+  try { if(locs.u_usePaperPBR) gl.uniform1f(locs.u_usePaperPBR, on ? 1.0 : 0.0); } catch(e){}
+  try { markDirty(); } catch(e){}
+  console.log('[paper] PBR substrate:', on ? 'ON (Paper002)' : 'OFF (legacy pf)');
 };
 
 // (D) Toggle GPU ink-spread (default ON). When ON the soft dot edge is applied

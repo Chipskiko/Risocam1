@@ -1,0 +1,4 @@
+paper002_pbr.png — derived from "Paper002" by ambientCG (https://ambientcg.com/view?id=Paper002)
+Licensed CC0 1.0 (public domain). Channels packed: R = height (displacement),
+G = normal.X, B = normal.Y (OpenGL convention), A = unused. Source maps resized
+to 512² and combined for use as a single in-shader paper substrate texture.
