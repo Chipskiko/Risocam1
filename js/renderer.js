@@ -579,6 +579,8 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   gl.uniform1f(locs.u_inkNoise,  cached.inkNoise);
   gl.uniform1f(locs.u_screenClean, (mode === 'screen' && window._screenClean) ? 1.0 : 0.0);
   gl.uniform1f(locs.u_paperTex,cached.paperTex);
+  // Set per-frame so a SEPS export (which forces it off) can't leave it stuck.
+  if(locs.u_usePaperPBR) gl.uniform1f(locs.u_usePaperPBR, (window._usePaperPBR ?? true) ? 1.0 : 0.0);
   // Paper shifts per frame — only in animate mode (simulating different sheet feeds)
   var isAnimating = cached.grainStatic > 0 || camOn || videoOn;
   if(isAnimating){

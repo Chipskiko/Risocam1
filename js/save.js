@@ -836,7 +836,11 @@ async function exportSeparations(){
   gl.uniform1f(locs.u_dotGain,   cached.dotGain);
   gl.uniform1f(locs.u_inkNoise,  cached.inkNoise);
   gl.uniform1f(locs.u_screenClean, (mode === 'screen' && window._screenClean) ? 1.0 : 0.0);
-  gl.uniform1f(locs.u_paperTex,cached.paperTex);
+  // Separations are per-ink halftone masters for actual printing — the paper is
+  // the physical sheet, so the plates must be CLEAN of any paper texture
+  // (both the legacy fiber field and the PBR substrate). Force both off.
+  gl.uniform1f(locs.u_paperTex, 0.0);
+  if(locs.u_usePaperPBR) gl.uniform1f(locs.u_usePaperPBR, 0.0);
   gl.uniform1f(locs.u_static,cached.grainStatic);
   gl.uniform1f(locs.u_ghosting,cached.ghosting*0.01*(cached.ghostMul*0.01));
   gl.uniform1f(locs.u_bleed,0.0);
@@ -910,8 +914,13 @@ async function exportSeparations(){
     }
   }
 
-  // Render each separation, collect as data URLs + page metadata
-  const pages=[];
+  // Render each separation, then GROUP BY INK COLOR: a real Riso uses one drum
+  // per ink, so two channel slots that share a color must export as ONE plate
+  // (their halftones combined), not two. We render every layer's plate, then
+  // darken-composite (per-pixel min = ink-present-in-either) all plates of the
+  // same color into a single canvas → one PDF page per unique color.
+  const colorOrder=[];                 // unique colors, first-seen order
+  const colorGroups={};                // color -> {canvas, ctx, channels:[]}
   for(let i=0;i<layers.length;i++){
     const L=layers[i];
     if(cached.sepType!==1){
@@ -945,19 +954,40 @@ async function exportSeparations(){
     gl.uniform1f(densLocs[0],cached.layerDens[L.ch]);
     gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
 
-    // Snapshot canvas to a tmp canvas, then to JPEG dataURL for jsPDF
-    // JPEG at 0.92 quality is ~5x smaller than PNG with minimal print-quality loss
+    // Snapshot this layer's plate to an opaque temp canvas (white bg, no alpha).
     const tmpC=document.createElement('canvas');
     tmpC.width=dw;tmpC.height=dh;
     const ctx=tmpC.getContext('2d');
-    // Fill white first since JPEG has no alpha
     ctx.fillStyle='#fff';ctx.fillRect(0,0,dw,dh);
     ctx.drawImage($gl,0,0);
-    const dataUrl=tmpC.toDataURL('image/jpeg',0.85);
-    const colorName=L.color.replace(/[\s.]/g,'');
-    pages.push({color:L.color, colorName, channel:CH_NAMES[L.ch], dataUrl});
+    // Merge into this color's group canvas. 'darken' keeps the darker pixel
+    // (more ink), i.e. the union of both channels' halftones on one drum.
+    let grp=colorGroups[L.color];
+    if(!grp){
+      const gc=document.createElement('canvas'); gc.width=dw; gc.height=dh;
+      const gx=gc.getContext('2d'); gx.fillStyle='#fff'; gx.fillRect(0,0,dw,dh);
+      grp={canvas:gc, ctx:gx, channels:[]};
+      colorGroups[L.color]=grp; colorOrder.push(L.color);
+    }
+    grp.ctx.globalCompositeOperation='darken';
+    grp.ctx.drawImage(tmpC,0,0);
+    grp.ctx.globalCompositeOperation='source-over';
+    grp.channels.push(CH_NAMES[L.ch]);
     R.toast('Rendered '+(i+1)+'/'+layers.length+' ('+L.color+')');
     await new Promise(r=>requestAnimationFrame(r));
+  }
+
+  // One page per unique color (combined plate). Channel label lists the slots
+  // that share this ink, e.g. "C+M".
+  const pages=[];
+  for(const color of colorOrder){
+    const grp=colorGroups[color];
+    pages.push({
+      color,
+      colorName: color.replace(/[\s.]/g,''),
+      channel: grp.channels.join('+'),
+      dataUrl: grp.canvas.toDataURL('image/jpeg',0.85)
+    });
   }
 
   // Restore normal mode + canvas
@@ -995,7 +1025,7 @@ async function exportSeparations(){
   for(const p of pages) p.dataUrl=null;
   pages.length=0;
   await doSaveBlob(pdfBlob, filename, dw, dh);
-  R.toast(layers.length+' separation'+(layers.length>1?'s':'')+' saved as PDF');
+  R.toast(pages.length+' separation'+(pages.length>1?'s':'')+' saved as PDF');
   }catch(e){
     console.error('Separations export error:',e);
     R.toast('Export failed: '+(e.message||e));
