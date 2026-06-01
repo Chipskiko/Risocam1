@@ -559,6 +559,7 @@ uniform float u_screenClean;    // 1.0 = SCREEN mode without simulation noise (c
 uniform float u_simNoise;       // master noise multiplier — scales every hardcoded noise source (0 = none, 1 = full)
 uniform float u_warmCool;       // -1..1 — bias the CMYK split: <0 cool (more C+K), >0 warm (more M+Y)
 uniform int u_stampShape;       // SCREEN dot shape: 0=circle, 1=square, 2=diamond, 3=plus, 4=star, 5=heart
+uniform float u_screenType;     // SCREEN engine: 0=procedural round-dot (cross-faded), 1=RISO matrix (authentic)
 
 // ─── Hash (no diagonal artifacts) ───
 float hash(vec2 p){
@@ -1386,16 +1387,17 @@ float screenDither(float val, vec2 pix, float cellPx, float angle){
   // use πr²=area so tone is preserved. Result: round everywhere, never blocky.
   if(u_stampShape == 0){
     float v = clamp(val, 0.0, 1.0);
-    if(v <= 0.5){
-      float rdot = sqrt(v * 0.3183099);            // sqrt(v/π)
-      float dd = length(centered) + rough;         // ragged edge
-      return 1.0 - smoothstep(rdot - edge, rdot + edge, dd);   // ink inside dot
-    } else {
-      float rhole = sqrt((1.0 - v) * 0.3183099);   // sqrt((1-v)/π)
-      vec2 cornerPos = fract(cellPos + 0.5) - 0.5; // holes sit at cell corners
-      float dd = length(cornerPos) + rough;
-      return smoothstep(rhole - edge, rhole + edge, dd);       // paper inside hole
-    }
+    // CLEAN round INK dot (highlights) and round PAPER hole (shadows), πr²=area.
+    // No angular roughness here — that 'wobble' notches the circle into a
+    // houndstooth shape at large dot sizes (the "fuzz"). Cross-fade dot↔hole
+    // across 50% so the handoff is smooth instead of an abrupt seam.
+    float rdot = sqrt(v * 0.3183099);              // sqrt(v/π)
+    float dotInk = 1.0 - smoothstep(rdot - edge, rdot + edge, length(centered));
+    float rhole = sqrt((1.0 - v) * 0.3183099);     // sqrt((1-v)/π)
+    vec2 cornerPos = fract(cellPos + 0.5) - 0.5;   // holes sit at cell corners
+    float holeInk = smoothstep(rhole - edge, rhole + edge, length(cornerPos));
+    float w = smoothstep(0.42, 0.58, v);           // 0 = all dots, 1 = all holes
+    return mix(dotInk, holeInk, w);
   }
 
   // ── Decorative stamp shapes: distance-field threshold ──
@@ -1407,6 +1409,22 @@ float screenDither(float val, vec2 pix, float cellPx, float angle){
   else {                        dist = dist_heart(centered); }
   dist += rough;
   return 1.0 - smoothstep(val - edge, val + edge, dist);
+}
+
+// ─── RISO clustered-dot AM screen (matrix-based, authentic) ──────────────
+// Thresholds coverage against RISO's REAL halftone matrix (ht1_6x6_45, bound to
+// u_ht5Matrix in SCREEN mode). The tile holds 2 dots in a 45° rosette (centres
+// 14.14 px apart in a 20px tile), so we tile it at cellPx·√2 → each dot becomes
+// cellPx-sized (fixes the houndstooth from cramming the whole supercell into one
+// cell). The dot shape & growth ARE RISO's own. `angle` rotates per channel.
+float screenMatrix(float coverage, vec2 pix, float cellPx, float angle){
+  float a = angle - 0.7853982;             // matrix dots are baked at 45°
+  float c = cos(a), s = sin(a);
+  vec2 rp = vec2(pix.x*c - pix.y*s, pix.x*s + pix.y*c);
+  float tile = cellPx * 1.4142136;         // √2: 2 dots per tile → 1 dot per cellPx
+  float T = texture2D(u_ht5Matrix, fract(rp / tile)).r;  // 0..1 RISO threshold
+  float e = clamp(1.5 / cellPx, 0.004, 0.25);            // ~1px dot-edge AA
+  return smoothstep(T - e, T + e, coverage);             // ink where coverage > threshold
 }
 
 // ─── Line screens — parallel/curved/radial line patterns ───
@@ -1857,7 +1875,9 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
   // Mode dispatch — SCREEN and LINES override the dither sub-modes because
   // they're independent rendering paths (round dots vs parallel lines vs
   // grain). The ditherMode sub-modes are conceptually a flavour of GRAIN.
-  if(u_mode == 1) return screenDither(val, jitPix, u_screenCell, angle);
+  if(u_mode == 1) return (u_screenType > 0.5)
+    ? screenMatrix(val, jitPix, u_screenCell, angle)   // RISO authentic matrix
+    : screenDither(val, jitPix, u_screenCell, angle);  // procedural round-dot (cross-faded)
   if(u_mode == 2) return lineDither(val, jitPix, u_screenCell, angle, idx);
   // u_mode == 0 → GRAIN. Within grain, ditherMode picks the algorithm.
   if(u_ditherMode == 1) return stuckiDither(val, sRpx, lo);

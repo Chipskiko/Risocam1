@@ -869,6 +869,13 @@ async function exportSeparations(){
   gl.uniform3fv(locs.u_paperColor,cached.paperColor);
   gl.uniform4f(locs.u_crop,cropRect[0],cropRect[1],cropRect[2],cropRect[3]);
   gl.uniform1i(locs.u_mode, ({grain:0, screen:1, lines:2, flat:3})[mode] ?? 0);
+  // SCREEN engine + per-mode unit-8 matrix bind (match live render path).
+  if(locs.u_screenType) gl.uniform1f(locs.u_screenType, (window._screenType ?? 0) ? 1.0 : 0.0);
+  if(window._amScreenTex && window._ht5MatrixTex){
+    gl.activeTexture(gl.TEXTURE8);
+    gl.bindTexture(gl.TEXTURE_2D, (mode==='screen') ? window._amScreenTex : window._ht5MatrixTex);
+    gl.activeTexture(gl.TEXTURE0);
+  }
   gl.uniform1i(locs.u_lineShape, window._lineShape||0);
   gl.uniform1f(locs.u_lineAmount, window._lineAmount ?? 1.0);
   gl.uniform1f(locs.u_lineWeight, window._lineWeight ?? 1.0);

@@ -65,7 +65,7 @@ function initGL(){
    'u_off0','u_off1','u_off2','u_off3',
    'u_angle0','u_angle1','u_angle2','u_angle3','u_screenCell',
    'u_chan0','u_chan1','u_chan2','u_chan3',
-   'u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_useLabResidual','u_useCalChord','u_warmCool','u_stampShape','u_ditherScale','u_screenClean','u_simNoise',
+   'u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_useLabResidual','u_useCalChord','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_screenClean','u_simNoise',
    'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_paperShift','u_crop','u_paper',
    'u_paperPBR','u_usePaperPBR',
    'u_lutA0','u_lutA1','u_lutA2','u_lutA3',
@@ -203,6 +203,39 @@ function initGL(){
   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
   if(locs.u_ht5Matrix) gl.uniform1i(locs.u_ht5Matrix,8);
   window._ht5MatrixTex=ht5Tex;
+
+  // ── RISO clustered-dot AM screen matrix (ht1_6x6_45, 20×20 from the driver) ──
+  // SCREEN mode (when u_screenType=1) thresholds coverage against this. Reuses
+  // texture unit 8 — the Grain-Touch ht5 matrix there is only sampled in
+  // GRAIN/ditherMode-7, never SCREEN, so they share the slot (bound per-mode).
+  // The tile holds 2 dots (45° rosette), so the shader tiles it at cellPx·√2 to
+  // make each dot cellPx-sized. Resampled 20×20 → 64×64 (power-of-2) with
+  // seamless periodic bilinear (REPEAT-safe on WebGL1); LINEAR for smooth dots.
+  var AM_W=20, AM_H=20;
+  var AM_DATA=[254,250,243,227,208,96,60,35,15,4,2,6,16,36,62,97,210,229,244,252,152,248,238,222,203,110,69,44,23,11,7,12,25,45,71,111,205,224,239,155,154,159,233,215,192,120,85,54,31,26,17,27,32,55,86,121,193,216,164,157,156,163,169,198,184,135,99,77,57,46,37,48,58,78,100,136,185,173,168,161,160,166,171,175,179,145,128,101,87,72,63,73,88,102,128,146,177,174,170,165,90,106,116,131,141,151,147,137,123,113,104,114,124,138,149,150,140,129,115,105,59,65,81,92,127,143,180,187,194,206,211,207,196,188,178,142,125,91,79,64,34,40,50,76,95,133,183,199,217,225,230,226,219,197,182,132,93,74,49,39,13,20,30,53,83,119,191,213,234,240,245,241,231,212,189,118,82,51,29,18,3,9,22,43,68,109,202,221,236,249,253,247,235,220,201,107,67,41,21,8,2,6,16,36,62,97,210,229,244,252,254,250,243,227,208,96,60,35,15,4,7,12,25,45,71,111,205,224,239,155,152,248,238,222,203,110,69,44,23,11,17,27,32,55,86,121,193,216,164,157,154,159,233,215,192,120,85,54,31,26,37,48,58,78,100,136,185,173,168,161,156,163,169,198,184,135,99,77,57,46,63,73,88,102,128,146,177,174,170,165,160,166,171,175,179,145,128,101,87,72,104,114,124,138,149,150,140,129,115,105,90,106,116,131,141,151,147,137,123,113,211,207,196,188,178,142,125,91,79,64,59,65,81,92,127,143,180,187,194,206,230,226,219,197,182,132,93,74,49,39,34,40,50,76,95,133,183,199,217,225,245,241,231,212,189,118,82,51,29,18,13,20,30,53,83,119,191,213,234,240,253,247,235,220,201,107,67,41,21,8,3,9,22,43,68,109,202,221,236,249];
+  var AM_N=64;
+  var amBytes=new Uint8Array(AM_N*AM_N*4);
+  for(var ay=0; ay<AM_N; ay++){
+    for(var ax=0; ax<AM_N; ax++){
+      var fx=ax/AM_N*AM_W, fy=ay/AM_N*AM_H;
+      var x0=Math.floor(fx)%AM_W, y0=Math.floor(fy)%AM_H;
+      var x1=(x0+1)%AM_W, y1=(y0+1)%AM_H;
+      var tx=fx-Math.floor(fx), ty=fy-Math.floor(fy);
+      var v00=AM_DATA[y0*AM_W+x0], v10=AM_DATA[y0*AM_W+x1];
+      var v01=AM_DATA[y1*AM_W+x0], v11=AM_DATA[y1*AM_W+x1];
+      var v=(v00*(1-tx)+v10*tx)*(1-ty)+(v01*(1-tx)+v11*tx)*ty;
+      var o=(ay*AM_N+ax)*4; amBytes[o]=v|0; amBytes[o+3]=255;
+    }
+  }
+  var amTex=gl.createTexture();
+  gl.activeTexture(gl.TEXTURE8); gl.bindTexture(gl.TEXTURE_2D, amTex);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,AM_N,AM_N,0,gl.RGBA,gl.UNSIGNED_BYTE,amBytes);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  window._amScreenTex=amTex;
+  gl.activeTexture(gl.TEXTURE8); gl.bindTexture(gl.TEXTURE_2D, ht5Tex); // restore default
 
   // AMT master textures — one per ink channel (tex units 9, 10, 11, 12).
   // Each holds the 1-bit RISO Grain Touch master for ONE ink, halftoned
@@ -578,6 +611,15 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   gl.uniform1f(locs.u_dotGain,   cached.dotGain);
   gl.uniform1f(locs.u_inkNoise,  cached.inkNoise);
   gl.uniform1f(locs.u_screenClean, (mode === 'screen' && window._screenClean) ? 1.0 : 0.0);
+  // SCREEN engine: 1 = RISO authentic matrix (default), 0 = procedural round-dot.
+  if(locs.u_screenType) gl.uniform1f(locs.u_screenType, (window._screenType ?? 0) ? 1.0 : 0.0);
+  // Unit 8 holds the AM matrix in SCREEN mode, the Grain-Touch ht5 matrix
+  // otherwise (never sampled in the same mode).
+  if(window._amScreenTex && window._ht5MatrixTex){
+    gl.activeTexture(gl.TEXTURE8);
+    gl.bindTexture(gl.TEXTURE_2D, (mode==='screen') ? window._amScreenTex : window._ht5MatrixTex);
+    gl.activeTexture(gl.TEXTURE0);
+  }
   gl.uniform1f(locs.u_paperTex,cached.paperTex);
   // Set per-frame so a SEPS export (which forces it off) can't leave it stuck.
   if(locs.u_usePaperPBR) gl.uniform1f(locs.u_usePaperPBR, (window._usePaperPBR ?? true) ? 1.0 : 0.0);
@@ -1580,6 +1622,15 @@ R.setPaperPBR = function(on){
   try { if(locs.u_usePaperPBR) gl.uniform1f(locs.u_usePaperPBR, on ? 1.0 : 0.0); } catch(e){}
   try { markDirty(); } catch(e){}
   console.log('[paper] PBR substrate:', on ? 'ON (Paper002)' : 'OFF (legacy pf)');
+};
+
+// SCREEN engine toggle: 1 = RISO authentic matrix (default), 0 = procedural
+// cross-faded round-dot. Pure uniform — redraw only, no prepass.
+R.setScreenType = function(t){
+  window._screenType = t ? 1 : 0;
+  try { if(locs.u_screenType) gl.uniform1f(locs.u_screenType, window._screenType ? 1.0 : 0.0); } catch(e){}
+  try { markDirty(); } catch(e){}
+  console.log('[screen] engine:', window._screenType ? 'RISO matrix' : 'procedural round-dot');
 };
 
 // (D) Toggle GPU ink-spread (default ON). When ON the soft dot edge is applied
