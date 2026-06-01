@@ -1603,19 +1603,14 @@ float applyTextRouting(float cov, vec2 uv, int thisLayer){
 // "wandering" and "fuzzy" character at the edge.
 float printMask(vec2 uv, vec2 layerOff, vec2 rpx){
   vec2 p = uv + layerOff;
-  // Edge fray scales with u_simNoise — at 0 we get a hard rectangle.
-  float n1 = texture2D(u_noise, fract(rpx * 0.008 + layerOff * 3.0)).r;
-  float n2 = texture2D(u_noise, fract(rpx * 0.06  + layerOff * 7.1)).r;
-  float coarse = (n1 - 0.5) * 0.010;
-  float fine   = (n2 - 0.5) * 0.006;
-  float rough = (coarse + fine) * u_simNoise;
-  // Edge softness scales with u_simNoise — clamped to 1e-4 to avoid the
-  // smoothstep degenerate case at u_simNoise=0 (gives effectively step()).
-  float soft = max(0.0001, 0.0015 * u_simNoise);
-  float l = smoothstep(u_printArea.x + rough - soft, u_printArea.x + rough + soft, p.x);
-  float r = smoothstep(u_printArea.z + rough - soft, u_printArea.z + rough + soft, 1.0 - p.x);
-  float t = smoothstep(u_printArea.y + rough - soft, u_printArea.y + rough + soft, p.y);
-  float b = smoothstep(u_printArea.w + rough - soft, u_printArea.w + rough + soft, 1.0 - p.y);
+  // Clean, hard print boundary — no fray/fuzz. Halftone dots render fully up to
+  // the edge and are simply clipped by the rectangle (a dot is either drawn or
+  // outside the print area). Only a sub-pixel feather for anti-aliasing.
+  float soft = 0.0008;
+  float l = smoothstep(u_printArea.x - soft, u_printArea.x + soft, p.x);
+  float r = smoothstep(u_printArea.z - soft, u_printArea.z + soft, 1.0 - p.x);
+  float t = smoothstep(u_printArea.y - soft, u_printArea.y + soft, p.y);
+  float b = smoothstep(u_printArea.w - soft, u_printArea.w + soft, 1.0 - p.y);
   return l * r * t * b;
 }
 
