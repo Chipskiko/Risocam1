@@ -1422,6 +1422,24 @@ float screenMatrix(float coverage, vec2 pix, float cellPx, float angle){
   return smoothstep(T - e, T + e, coverage);             // ink where coverage > threshold
 }
 
+// Dispatch + 4× supersample the chosen SCREEN engine. The dot grid is a
+// rotated periodic pattern; sampled once per fragment it aliases against the
+// pixel grid → moiré (worst at near-solid, where the tiny corner gaps form a
+// fine lattice). Averaging 4 sub-pixel samples band-limits the pattern before
+// it hits the pixel grid, which removes the moiré.
+float screenEngine(float val, vec2 pix, float cellPx, float angle){
+  return (u_screenType > 0.5) ? screenMatrix(val, pix, cellPx, angle)
+                              : screenDither(val, pix, cellPx, angle);
+}
+float screenSampled(float val, vec2 pix, float cellPx, float angle){
+  float e = 0.375; // sub-pixel offsets (rotated-grid 4-rooks)
+  return 0.25 * (
+    screenEngine(val, pix + vec2(-e, -e*0.5), cellPx, angle) +
+    screenEngine(val, pix + vec2( e*0.5, -e), cellPx, angle) +
+    screenEngine(val, pix + vec2( e,  e*0.5), cellPx, angle) +
+    screenEngine(val, pix + vec2(-e*0.5,  e), cellPx, angle));
+}
+
 // ─── Line screens — parallel/curved/radial line patterns ───
 // 6 shape variants drawn from intaglio/printmaking traditions:
 //   0=STRAIGHT  parallel lines
@@ -1892,9 +1910,7 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
   // Mode dispatch — SCREEN and LINES override the dither sub-modes because
   // they're independent rendering paths (round dots vs parallel lines vs
   // grain). The ditherMode sub-modes are conceptually a flavour of GRAIN.
-  if(u_mode == 1) return (u_screenType > 0.5)
-    ? screenMatrix(val, jitPix, u_screenCell, angle)   // RISO authentic matrix
-    : screenDither(val, jitPix, u_screenCell, angle);  // procedural round-dot (cross-faded)
+  if(u_mode == 1) return screenSampled(val, jitPix, u_screenCell, angle);  // 4× supersampled (anti-moiré)
   if(u_mode == 2) return lineDither(val, jitPix, u_screenCell, angle, idx);
   // u_mode == 0 → GRAIN. Within grain, ditherMode picks the algorithm.
   if(u_ditherMode == 1) return stuckiDither(val, sRpx, lo);
