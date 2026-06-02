@@ -1626,6 +1626,29 @@ float printMask(vec2 uv, vec2 layerOff, vec2 rpx){
   return l * r * t * b;
 }
 
+// Whole-dot print boundary (SCREEN mode). The per-pixel printMask above, applied
+// to coverage, slices any dot straddling the margin in half. Here we snap the
+// boundary test to the halftone CELL centre, so a dot whose cell is inside the
+// print area renders WHOLE and one outside doesn't render at all — a clean
+// round-dot edge instead of sliced halves. Genuine image-content edges still
+// taper/clip naturally through coverage; this only governs the print margin.
+float printMaskCell(vec2 uv, vec2 layerOff, vec2 pix, float cellPx, float angle){
+  vec2 cuv = uv;
+  if(cellPx >= 3.0){
+    float c = cos(angle), s = sin(angle);
+    vec2 rp = vec2(pix.x*c - pix.y*s, pix.x*s + pix.y*c);
+    vec2 cellOffset = mod(rp, cellPx) - cellPx * 0.5;
+    vec2 pixOffset = vec2(cellOffset.x*c + cellOffset.y*s, -cellOffset.x*s + cellOffset.y*c);
+    cuv = uv - pixOffset / u_res;   // snap to this cell's centre
+  }
+  vec2 p = cuv + layerOff;
+  float l = step(u_printArea.x, p.x);
+  float r = step(u_printArea.z, 1.0 - p.x);
+  float t = step(u_printArea.y, p.y);
+  float b = step(u_printArea.w, 1.0 - p.y);
+  return l * r * t * b;
+}
+
 // ─── Plate skew: rigid rotation around bottom-left of print area ───
 // Simulates paper feeding at a slight angle. Each layer can have its own skew.
 // anchor = bottom-left corner of print area
@@ -2357,7 +2380,7 @@ void main(){
     // Mask applied to COVERAGE (not post-dither) so dots taper naturally
     // at the edge instead of being sliced. The dither pass produces fewer
     // / smaller dots where coverage is reduced, giving a soft riso fade.
-    float mask = printMask(skUV0, off0, lrpx);
+    float mask = (u_mode==1) ? printMaskCell(skUV0, off0, lpix, u_screenCell, u_angle0) : printMask(skUV0, off0, lrpx);
     cov *= mask;
     cov = applyTextRouting(cov, uv, 0);
     float grain = getGrainTexture(cov, lrpx, lpix, 0, u_angle0, pf, u_grainMul0);
@@ -2397,7 +2420,7 @@ void main(){
       vec4 cmyk = toCMYK(src);
       cov = getCoverage(cmyk, lrpx, 1, u_chan1, n1, u_dens1, pf, src, u_inkGamma1);
     }
-    float mask = printMask(skUV1, off1, lrpx);
+    float mask = (u_mode==1) ? printMaskCell(skUV1, off1, lpix, u_screenCell, u_angle1) : printMask(skUV1, off1, lrpx);
     cov *= mask;
     cov = applyTextRouting(cov, uv, 1);
     float grain = getGrainTexture(cov, lrpx, lpix, 1, u_angle1, pf, u_grainMul1);
@@ -2435,7 +2458,7 @@ void main(){
       vec4 cmyk = toCMYK(src);
       cov = getCoverage(cmyk, lrpx, 2, u_chan2, n2, u_dens2, pf, src, u_inkGamma2);
     }
-    float mask = printMask(skUV2, off2, lrpx);
+    float mask = (u_mode==1) ? printMaskCell(skUV2, off2, lpix, u_screenCell, u_angle2) : printMask(skUV2, off2, lrpx);
     cov *= mask;
     cov = applyTextRouting(cov, uv, 2);
     float grain = getGrainTexture(cov, lrpx, lpix, 2, u_angle2, pf, u_grainMul2);
@@ -2471,7 +2494,7 @@ void main(){
       vec4 cmyk = toCMYK(src);
       cov = getCoverage(cmyk, lrpx, 3, u_chan3, n3, u_dens3, pf, src, u_inkGamma3);
     }
-    float mask = printMask(skUV3, off3, lrpx);
+    float mask = (u_mode==1) ? printMaskCell(skUV3, off3, lpix, u_screenCell, u_angle3) : printMask(skUV3, off3, lrpx);
     cov *= mask;
     cov = applyTextRouting(cov, uv, 3);
     float grain = getGrainTexture(cov, lrpx, lpix, 3, u_angle3, pf, u_grainMul3);
