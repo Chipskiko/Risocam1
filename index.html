@@ -1386,18 +1386,13 @@ float screenDither(float val, vec2 pix, float cellPx, float angle){
   // at 50%: round INK dots in highlights, round PAPER holes in shadows. Radii
   // use πr²=area so tone is preserved. Result: round everywhere, never blocky.
   if(u_stampShape == 0){
-    float v = clamp(val, 0.0, 1.0);
-    // CLEAN round INK dot (highlights) and round PAPER hole (shadows), πr²=area.
-    // No angular roughness here — that 'wobble' notches the circle into a
-    // houndstooth shape at large dot sizes (the "fuzz"). Cross-fade dot↔hole
-    // across 50% so the handoff is smooth instead of an abrupt seam.
-    float rdot = sqrt(v * 0.3183099);              // sqrt(v/π)
-    float dotInk = 1.0 - smoothstep(rdot - edge, rdot + edge, length(centered));
-    float rhole = sqrt((1.0 - v) * 0.3183099);     // sqrt((1-v)/π)
-    vec2 cornerPos = fract(cellPos + 0.5) - 0.5;   // holes sit at cell corners
-    float holeInk = smoothstep(rhole - edge, rhole + edge, length(cornerPos));
-    float w = smoothstep(0.42, 0.58, v);           // 0 = all dots, 1 = all holes
-    return mix(dotInk, holeInk, w);
+    // Classic round-dot halftone (the standard approach): one circle per cell
+    // whose RADIUS grows with coverage; ink where distance-from-centre < radius.
+    // Dots grow and merge — deep shadow fills to SOLID (no holes, so no square
+    // mesh between holes). radius reaches past the corner (~0.71) at full ink.
+    float d = length(centered);                    // 0 at centre .. 0.707 at corner
+    float radius = clamp(val, 0.0, 1.0) * 0.72;
+    return 1.0 - smoothstep(radius - edge, radius + edge, d);
   }
 
   // ── Decorative stamp shapes: distance-field threshold ──
@@ -1540,14 +1535,13 @@ float lineDither(float val, vec2 pix, float cellPx, float angle, int idx){
   return 1.0 - smoothstep(w - edge, w + edge, dist);
 }
 
-// Snap UV to halftone cell center — edges quantize to the dot grid (no pixel-sharp edges)
+// Sample the source per-pixel (standard halftone). Previously this snapped the
+// source UV to each cell's centre so every cell got one coverage value — which
+// quantised image edges into square cell-steps (visible as blocky boundaries on
+// dark regions at low LPI). Sampling per-pixel lets the dots near an edge be
+// clipped by the actual source contour, so boundaries stay smooth.
 vec2 snapToCellCenter(vec2 pix, vec2 layerUV, float cellPx, float angle){
-  if(u_mode != 1 || cellPx < 3.0) return layerUV;
-  float c = cos(angle), s = sin(angle);
-  vec2 rp = vec2(pix.x*c - pix.y*s, pix.x*s + pix.y*c);
-  vec2 cellOffset = mod(rp, cellPx) - cellPx * 0.5;
-  vec2 pixOffset = vec2(cellOffset.x*c + cellOffset.y*s, -cellOffset.x*s + cellOffset.y*c);
-  return layerUV - pixOffset / u_res;
+  return layerUV;
 }
 
 // Reference resolution for resolution-independent textures
