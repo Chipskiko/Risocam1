@@ -2044,14 +2044,20 @@ vec3 calBlend(vec3 result, vec3 paper, float coverage, float grain, vec3 p10, ve
     d = clamp(d * u_inkOpacity, 0.0, 1.0);
 
     // ── Stage 2: dotMin (toggle-able) ──
-    if (u_dbgNoDotMin < 0.5) {
+    // SCREEN mode: skip this. The clustered dot is SOLID ink — its tone is
+    // carried by the dot SIZE, not by thinning the interior. Multiplying by
+    // mix(dotMin, 1, coverage) here pulls the noisy per-pixel coverage into the
+    // dot interior → the grainy speckle. Grain/RISO modes keep it.
+    if (u_dbgNoDotMin < 0.5 && u_mode != 1) {
       d *= mix(u_dotMin, 1.0, coverage);
     }
   }
 
   // ── Stage 3: Ink color (toggle-able) ──
   vec3 ink;
-  if (u_dbgP100 > 0.5) {
+  if (u_dbgP100 > 0.5 || u_mode == 1) {
+    // SCREEN: solid ink colour (LUT 100%). Using the noisy per-pixel coverage
+    // for the LUT lookup would speckle the dot's colour too.
     ink = p100;
   } else {
     // Coverage-adaptive: LUT at high coverage, p100 for sparse dots
