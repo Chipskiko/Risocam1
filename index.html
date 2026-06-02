@@ -1386,12 +1386,18 @@ float screenDither(float val, vec2 pix, float cellPx, float angle){
   // at 50%: round INK dots in highlights, round PAPER holes in shadows. Radii
   // use πr²=area so tone is preserved. Result: round everywhere, never blocky.
   if(u_stampShape == 0){
-    // Classic round-dot halftone (the standard approach): one circle per cell
-    // whose RADIUS grows with coverage; ink where distance-from-centre < radius.
-    // Dots grow and merge — deep shadow fills to SOLID (no holes, so no square
-    // mesh between holes). radius reaches past the corner (~0.71) at full ink.
+    // Classic round-dot halftone: one circle per cell whose radius grows with
+    // coverage; ink where distance-from-centre < radius. Dots grow and merge —
+    // deep shadow fills SOLID (no holes → no square mesh).
+    // AREA-CORRECT sizing: dot area ≈ coverage so the printed tone matches the
+    // requested ink. A linear radius (r=cov·k) under-inks badly (area∝cov²),
+    // which made low-coverage plates — especially SPOT/NNLS, which uses minimal
+    // ink — collapse to almost nothing. Below the touching point r=sqrt(cov/π);
+    // above it, ramp r out to the corner so it reaches solid at full ink.
     float d = length(centered);                    // 0 at centre .. 0.707 at corner
-    float radius = clamp(val, 0.0, 1.0) * 0.72;
+    float v = clamp(val, 0.0, 1.0);
+    float radius = (v < 0.785) ? sqrt(v * 0.3183099)             // sqrt(cov/π): area=cov
+                               : mix(0.5, 0.72, (v - 0.785) / 0.215);
     return 1.0 - smoothstep(radius - edge, radius + edge, d);
   }
 
