@@ -1810,6 +1810,18 @@ float getCoverageApprox(float weight, vec2 rpx, int idx, float noise1, float den
   return clamp(ink, 0.0, 1.0);
 }
 
+// Real-time GPU Grain-Touch (per-fragment, no prepass). Thresholds the coverage
+// against the Void-and-Cluster blue-noise mask after a density gamma — the same
+// stochastic FM look as the CPU Floyd-Steinberg master, but computed live at
+// 60fps. Used as the RISO-mode fallback for LIVE sources (camera/video), where
+// the CPU master is too slow to rebuild per frame.
+float gpuGrainTouch(float val, vec2 pix){
+  vec2 bnUV = pix * u_risoGrainScale / 128.0;       // 128 = BN_SIZE (renderer.js)
+  float threshold = texture2D(u_bnVC, bnUV).r;
+  float density = pow(clamp(val, 0.0, 1.0), 1.0 / max(u_risoGamma, 0.1));
+  return step(threshold, density);
+}
+
 // Compute grain/halftone texture value for visual effect (0-1).
 // This creates the risograph look without affecting tonal accuracy.
 float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, float pf, float grainMul){
@@ -1891,7 +1903,10 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
       }
       return total * 0.125;
     }
-    return clamp(val, 0.0, 1.0);
+    // No AMT master (u_useAmt=0) → live source (camera/video) or prepass still
+    // running. Use the real-time GPU Grain-Touch instead of flat continuous tone
+    // so live-cam RISO keeps its stochastic grain look at 60fps.
+    return gpuGrainTouch(val, jitPix);
   }
 
   // Paper field perturbs dither threshold — fibers affect where ink lands
