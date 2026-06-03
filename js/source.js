@@ -517,7 +517,9 @@ function handleFile(e){
   if(!f)return;
   // New source — reset rotation state
   window._sourceRotation=0;
-  const isVideo=f.type.startsWith('video/');
+  // MIME can be empty for some containers (notably .mov from Finder), so fall
+  // back to the extension — otherwise a typeless .mov drops into the image path.
+  const isVideo=f.type.startsWith('video/')||/\.(mov|mp4|m4v|webm|avi|mkv|ogv|ogg)$/i.test(f.name);
   const isGif=f.type==='image/gif'||f.name.toLowerCase().endsWith('.gif');
   const isPdf=f.type==='application/pdf'||f.name.toLowerCase().endsWith('.pdf');
   if(isPdf){
@@ -591,7 +593,23 @@ function handleFile(e){
     const url=URL.createObjectURL(f);
     $vid.srcObject=null;
     $vid.src=url;$vid.loop=true;$vid.muted=true;$vid.playsInline=true;
+    // A .mov is a QuickTime CONTAINER — browsers (esp. Chrome/Firefox) often
+    // can't decode its codec (ProRes / HEVC / sometimes H.264-in-mov). When the
+    // codec is unsupported the element fires 'error' and 'loadeddata' never
+    // comes, so without this handler the upload fails silently and looks broken.
+    $vid.onerror=()=>{
+      try{ URL.revokeObjectURL(url); }catch(e){}
+      $vid.onerror=null; $vid.onloadeddata=null;
+      const isMov=/\.mov$/i.test(f.name)||f.type==='video/quicktime';
+      const msg=isMov
+        ? "Can't decode this .mov — browsers reject QuickTime/ProRes/HEVC. Re-export as MP4 (H.264) and try again."
+        : "This video format isn't supported by your browser. Try MP4 (H.264).";
+      console.warn('[video] load error:', f.name, '| type:', f.type||'(none)', '| code:', $vid.error&&$vid.error.code);
+      try{ R.toast && R.toast(msg, 6000); }catch(e){}
+      if($status) $status.textContent='✕ VIDEO';
+    };
     $vid.onloadeddata=()=>{
+      $vid.onerror=null;
       URL.revokeObjectURL(url);
       $vid.play();
       videoOn=true;camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();scheduleRender();
