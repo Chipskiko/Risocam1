@@ -1474,6 +1474,8 @@ float lineDither(float val, vec2 pix, float cellPx, float angle, int idx){
   float c = cos(angle), s = sin(angle);
   vec2 rp = vec2(pix.x*c - pix.y*s, pix.x*s + pix.y*c);
   float dist;
+  float aaFade = 1.0;  // 1 = full lines; <1 where the line period is sub-Nyquist
+                       // (radial/concentric), used to blend toward the flat tone.
   if(u_lineShape == 0){
     // STRAIGHT — parallel lines
     float pos = mod(rp.y, cellPx) / cellPx;
@@ -1502,6 +1504,8 @@ float lineDither(float val, vec2 pix, float cellPx, float angle, int idx){
     float cellPxAdj = cellPx / max(u_lineCount, 0.01);
     float pos = mod(r, cellPxAdj) / cellPxAdj;
     dist = abs(pos - 0.5) * 2.0;
+    // Anti-moiré: fade to flat tone where the ring period is sub-Nyquist.
+    aaFade = smoothstep(2.0, 6.0, cellPxAdj);
     dist += lineRoughness(floor(r / cellPxAdj), 0.0);
   } else if(u_lineShape == 4){
     // RADIAL — spokes emanating from configurable center.
@@ -1517,7 +1521,11 @@ float lineDither(float val, vec2 pix, float cellPx, float angle, int idx){
     dist = abs(pos - 0.5) * 2.0;
     // Falloff near center to avoid the singularity
     float r = length(d);
-    dist = mix(1.0, dist, smoothstep(0.0, cellPx*2.0, r));
+    // Anti-moiré: the spoke spatial period (px) = 2π·r / spokes shrinks toward
+    // the centre. Where it drops below ~Nyquist, fade to the flat tone (below)
+    // so there's no sub-pixel detail left to alias — kills the radial moiré
+    // without losing the tone (unlike fading to white).
+    aaFade = smoothstep(2.0, 6.0, 6.2832 * r / max(spokes, 1.0));
     dist += lineRoughness(floor(ang * spokes / 6.2832), floor(r / cellPx));
   } else if(u_lineShape == 5){
     // SPIRAL — radial spokes that twist as they grow outward. Same as
@@ -1531,7 +1539,11 @@ float lineDither(float val, vec2 pix, float cellPx, float angle, int idx){
     float spokes = max(8.0, u_res.x / cellPx * 0.7) * u_lineCount;
     float pos = mod(ang * spokes / 6.2832, 1.0);
     dist = abs(pos - 0.5) * 2.0;
-    dist = mix(1.0, dist, smoothstep(0.0, cellPx*2.0, r));
+    // Anti-moiré: the spoke spatial period (px) = 2π·r / spokes shrinks toward
+    // the centre. Where it drops below ~Nyquist, fade to the flat tone (below)
+    // so there's no sub-pixel detail left to alias — kills the radial moiré
+    // without losing the tone (unlike fading to white).
+    aaFade = smoothstep(2.0, 6.0, 6.2832 * r / max(spokes, 1.0));
     dist += lineRoughness(floor(ang * spokes / 6.2832), floor(r / cellPx));
   } else {
     // CROSS — two perpendicular line sets max'd together (cross-hatch in one layer)
@@ -1556,7 +1568,11 @@ float lineDither(float val, vec2 pix, float cellPx, float angle, int idx){
   }
   float w = clamp(val * u_lineWeight * thicknessMod, 0.0, 1.0);
   float edge = 1.5 / cellPx;
-  return 1.0 - smoothstep(w - edge, w + edge, dist);
+  float lineOut = 1.0 - smoothstep(w - edge, w + edge, dist);
+  // Where the line pattern is sub-Nyquist (aaFade<1), blend toward the flat
+  // coverage w — the correct average of the unresolvable lines — instead of
+  // showing moiré or fading to white.
+  return mix(w, lineOut, aaFade);
 }
 
 // Sample the source per-pixel (standard halftone). Previously this snapped the
@@ -1822,6 +1838,21 @@ float gpuGrainTouch(float val, vec2 pix){
   return step(threshold, density);
 }
 
+// Supersampled line screen — same anti-moiré band-limiting as the dots, but
+// LINES need more samples because radial/concentric patterns converge and reach
+// very high spatial frequencies over a large area (the worst moiré case). 8 taps
+// in a rotated ring tame it; the per-shape centre-falloff handles the exact
+// singularity at the pivot.
+float lineSampled(float val, vec2 pix, float cellPx, float angle, int idx){
+  float total = 0.0;
+  for(int s = 0; s < 8; s++){
+    float a = float(s) * 0.7853982;                 // 45° steps around a ring
+    vec2 off = vec2(cos(a), sin(a)) * 0.42;
+    total += lineDither(val, pix + off, cellPx, angle, idx);
+  }
+  return total * 0.125;
+}
+
 // Compute grain/halftone texture value for visual effect (0-1).
 // This creates the risograph look without affecting tonal accuracy.
 float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, float pf, float grainMul){
@@ -1932,7 +1963,7 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
   // they're independent rendering paths (round dots vs parallel lines vs
   // grain). The ditherMode sub-modes are conceptually a flavour of GRAIN.
   if(u_mode == 1) return screenSampled(val, jitPix, u_screenCell, angle);  // 4× supersampled (anti-moiré)
-  if(u_mode == 2) return lineDither(val, jitPix, u_screenCell, angle, idx);
+  if(u_mode == 2) return lineSampled(val, jitPix, u_screenCell, angle, idx);  // 8× supersampled (anti-moiré)
   // u_mode == 0 → GRAIN. Within grain, ditherMode picks the algorithm.
   if(u_ditherMode == 1) return stuckiDither(val, sRpx, lo);
   if(u_ditherMode == 2) return jjnDither(val, sRpx, lo);
