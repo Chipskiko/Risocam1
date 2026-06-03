@@ -88,7 +88,7 @@ function initGL(){
    'u_dbgP100','u_dbgLutDirect','u_dbgNoDotMin','u_dbgNoOpaque','u_dbgShowCov','u_dbgFixedCov','u_dbgBinaryGrain','u_dbgFMDots','u_dbgLinearize','u_dbgLumMono','u_dbgYNArea','u_dbgNeutralBypass','u_dbgTrcSCurve','u_ditherMode',
    'u_driverLUT','u_useDriverLUT',
    'u_ht5Matrix',
-   'u_amtMaster0','u_amtMaster1','u_amtMaster2','u_amtMaster3','u_useAmt',
+   'u_amtMaster0','u_amtMaster1','u_amtMaster2','u_amtMaster3','u_useAmt','u_liveSource',
    'u_amtTexel','u_amtSuperSample','u_amtInkSpread',
    'u_bnVC','u_risoGamma','u_risoGrainScale','u_risoDebugBaseline',
    // T3-F: pre-baked per-ink coverage→color LUT texture
@@ -623,6 +623,9 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   gl.uniform1f(locs.u_paperTex,cached.paperTex);
   // Set per-frame so a SEPS export (which forces it off) can't leave it stuck.
   if(locs.u_usePaperPBR) gl.uniform1f(locs.u_usePaperPBR, (window._usePaperPBR ?? true) ? 1.0 : 0.0);
+  // Live source (camera/video): RISO mode uses the real-time GPU grain-touch
+  // fallback. Static sources show smooth tone while the FS master builds.
+  if(locs.u_liveSource) gl.uniform1f(locs.u_liveSource, (camOn || videoOn) ? 1.0 : 0.0);
   // Paper shifts per frame — only in animate mode (simulating different sheet feeds)
   var isAnimating = cached.grainStatic > 0 || camOn || videoOn;
   if(isAnimating){

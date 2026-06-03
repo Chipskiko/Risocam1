@@ -463,6 +463,7 @@ uniform sampler2D u_amtMaster1; // ditto — channel 1
 uniform sampler2D u_amtMaster2; // ditto — channel 2
 uniform sampler2D u_amtMaster3; // ditto — channel 3
 uniform float u_useAmt;        // 1.0 = sample u_amtMaster<idx> (Grain Touch true AMT); 0.0 = fall back to per-fragment matrix threshold
+uniform float u_liveSource;    // 1.0 = camera/video (use real-time GPU grain-touch when no master); 0.0 = static (smooth fallback while master builds)
 uniform vec2 u_amtTexel;       // 1.0 / master_resolution — for stochastic supersampling in RISO mode
 uniform float u_amtSuperSample; // sample radius multiplier (in master texels). 0 = single-sample, 1.5 = good default.
 uniform float u_amtInkSpread;   // (D) ink-spread radius in master texels. >0 widens the master-sampling
@@ -1934,10 +1935,12 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
       }
       return total * 0.125;
     }
-    // No AMT master (u_useAmt=0) → live source (camera/video) or prepass still
-    // running. Use the real-time GPU Grain-Touch instead of flat continuous tone
-    // so live-cam RISO keeps its stochastic grain look at 60fps.
-    return gpuGrainTouch(val, jitPix);
+    // No AMT master (u_useAmt=0). For LIVE sources (camera/video) the master
+    // can't be rebuilt per frame, so use the real-time GPU Grain-Touch. For
+    // STATIC sources this only happens briefly while the fine FS master builds
+    // — show smooth continuous tone (not the coarse grain) so it isn't jarring,
+    // then the master takes over.
+    return (u_liveSource > 0.5) ? gpuGrainTouch(val, jitPix) : clamp(val, 0.0, 1.0);
   }
 
   // Paper field perturbs dither threshold — fibers affect where ink lands
