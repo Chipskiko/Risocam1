@@ -924,7 +924,29 @@ function _renderInner(){
     else cssW=Math.round(cssH*ar);
   }
   const dpr=isPhoneNow?1:Math.min(window.devicePixelRatio||1, 2);
-  const baseScale=Math.max(resScale, dpr);
+  let baseScale=Math.max(resScale, dpr);
+  // ─── High-LPI cell-floor headroom (screen/lines, STATIC only) ───
+  // The halftone cell is min(dw,dh)/(8.267*lpi) px. Below ~2px it hits the
+  // max(1.5,…) floor in setRenderUniforms, so at high LPI on a small canvas the
+  // dot count SATURATES and the dots roughen (density stops tracking LPI). For
+  // static sources, raise the internal render scale just enough to keep the cell
+  // at TARGET_CELL px of headroom before clamping; the existing CSS downscale
+  // shows it at display size. Capped at MAX_SCALE so cost/memory stay bounded.
+  // No effect when LPI is low or the canvas is large (needScale < baseScale).
+  // Live sources (camera/video) keep baseScale — a 4× per-frame render is too
+  // costly — and grain/RISO modes don't use u_screenCell so they're skipped.
+  {
+    const m = window._mode;
+    const isLive = camOn || videoOn;
+    if(!isLive && (m==='screen' || m==='lines')){
+      const minCss = Math.min(cssW, cssH);
+      const TARGET_CELL = 2.0, MAX_SCALE = 4.0;
+      if(minCss > 0 && cached.lpi > 0){
+        const needScale = TARGET_CELL * 8.267 * cached.lpi / minCss;
+        baseScale = Math.min(MAX_SCALE, Math.max(baseScale, needScale));
+      }
+    }
+  }
   const dw=Math.round(cssW*baseScale), dh=Math.round(cssH*baseScale);
   if($gl.width!==dw||$gl.height!==dh){$gl.width=dw;$gl.height=dh;}
   gl.viewport(0,0,dw,dh);
