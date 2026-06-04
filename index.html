@@ -1775,7 +1775,10 @@ float getCoverage(vec4 cmyk, vec2 rpx, int idx, int ch, float noise1, float dens
   ink -= starvation;
 
   // Ink noise
-  ink += (noise1 - 0.5) * u_inkNoise * 0.006 * u_simNoise;
+  // Per-pixel ink hash: GRAIN mode only. In SCREEN/LINES this per-pixel coverage
+  // noise gets screened into white TV-static instead of clean dots/lines, so gate
+  // it to u_mode==0 (clustered/line screens carry their texture in the structure).
+  ink += (noise1 - 0.5) * u_inkNoise * 0.006 * (u_mode == 0 ? u_simNoise : 0.0);
   ink = clamp(ink, 0.0, 1.0);
 
   // Ink absorption softening: ink sits on surface before absorbing
@@ -1825,7 +1828,10 @@ float getCoverageApprox(float weight, vec2 rpx, int idx, float noise1, float den
   float starvNoise = texture2D(u_noise, fract(vec2(rpx.x * 0.0002, rpx.y * 0.001))).r;
   float starvation = smoothstep(0.6, 1.0, ink) * (starvNoise - 0.5) * 0.06 * u_simNoise;
   ink -= starvation;
-  ink += (noise1 - 0.5) * u_inkNoise * 0.006 * u_simNoise;
+  // Per-pixel ink hash: GRAIN mode only. In SCREEN/LINES this per-pixel coverage
+  // noise gets screened into white TV-static instead of clean dots/lines, so gate
+  // it to u_mode==0 (clustered/line screens carry their texture in the structure).
+  ink += (noise1 - 0.5) * u_inkNoise * 0.006 * (u_mode == 0 ? u_simNoise : 0.0);
   ink = clamp(ink, 0.0, 1.0);
   ink = mix(ink, sqrt(ink), 0.08); // absorption softening
   return clamp(ink, 0.0, 1.0);
@@ -1957,7 +1963,9 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
   float stencilMask = smoothstep(0.7, 1.0, val);
   float micro = hash(rpx * 0.5 + float(idx) * 17.0);
   float perfHole = step(0.992, micro);
-  val -= perfHole * 0.12 * stencilMask * u_simNoise;
+  // Stencil pinholes: GRAIN mode only — random white holes punched into the
+  // coverage before SCREEN/LINES screening would read as static, not clean dots.
+  val -= perfHole * 0.12 * stencilMask * (u_mode == 0 ? u_simNoise : 0.0);
   val = clamp(val, 0.0, 1.0);
 
   float adjustedGrain = u_grainSize * grainMul;
