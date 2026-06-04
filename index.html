@@ -2325,24 +2325,22 @@ float paperEffect(vec2 pix){
 // Height map mean ≈ 0.14 (Paper002), so we center the tone there to avoid a
 // global darkening — only the local tooth variation modulates the result.
 //
-// DE-TILING: a single tiling sample produces a visible grid (the prominent
-// specks recur on a 256px lattice → "repeating squares"). We blend two samples
-// at incommensurate scales + a rotation; their combined repeat period is the
-// LCM of the two cadences (effectively never within view), so no grid reads.
-// Averaging halves the variance, so we re-expand the deviation (~×1.4) to keep
-// the tooth contrast. Cost: one extra texture tap.
-vec3 applyPaperPBR(vec3 result, vec2 rpx){
+// SINGLE-SHEET (no tiling): the packed map (ambientCG Paper002, 1588×2048) is
+// mapped ONCE across the whole canvas with a cover-fit, so there is no repeat
+// lattice and therefore no "repeating squares" grid. Cover-fit keeps the fibers
+// isotropic (uniform scale) and crops the overflow on the longer axis. One tap.
+const float PAPER_AR = 1588.0 / 2048.0; // packed-map width/height
+vec3 applyPaperPBR(vec3 result, vec2 uv){
   if(u_usePaperPBR < 0.5 || u_paperTex < 0.01) return result;
-  vec2 base = rpx + u_paperShift;
-  // Sample A: upright, 256px cadence.
-  vec4 pa = texture2D(u_paperPBR, base / 256.0);
-  // Sample B: rotated ~37°, ~1.37× finer cadence, offset — incommensurate with A.
-  mat2 rot = mat2(0.7986, 0.6018, -0.6018, 0.7986);
-  vec4 pb = texture2D(u_paperPBR, (rot * base) / 187.0 + vec2(0.37, 0.61));
-  // Blend; re-expand height deviation around the map mean to restore contrast.
+  // background-size:cover — fill the canvas, crop the longer-relative axis.
+  float boxAR = u_res.x / u_res.y;
+  vec2 vis = (boxAR > PAPER_AR) ? vec2(1.0, PAPER_AR / boxAR)
+                                : vec2(boxAR / PAPER_AR, 1.0);
+  vec2 puv = (uv - 0.5) * vis + 0.5;
+  vec4 p = texture2D(u_paperPBR, puv);
   float strength = clamp(u_paperTex * 0.04, 0.0, 1.0); // slider 0..25 → 0..1
-  float h = 0.14 + ((pa.r + pb.r) * 0.5 - 0.14) * 1.4;
-  vec2 nxy = ((pa.gb + pb.gb) * 0.5 - 0.5) * 2.0;
+  float h = p.r;                       // single sample → full tooth contrast
+  vec2 nxy = (p.gb - 0.5) * 2.0;
   // Tone from height, centered on the map's mean so paper isn't globally darkened.
   float tone = 1.0 + (h - 0.14) * strength * 2.6;
   // Raking-light sheen from the packed normal (z reconstructed).
@@ -2603,7 +2601,7 @@ void main(){
   // Applied here in the shared tail so it affects every mode incl. RISO and
   // is captured on export. When off (u_usePaperPBR=0) this is a no-op and the
   // legacy procedural/scan pf path above handles paper.
-  result = applyPaperPBR(result, rpx);
+  result = applyPaperPBR(result, uv);
 
   // Micro scanner noise: breaks last traces of digital perfection
   // Simulates sensor grain in scanned prints (0.4% amplitude)
@@ -2816,7 +2814,7 @@ void main(){
 <script src="js/undo.js?v=4"></script>
 <script src="js/compare.js?v=5"></script>
 <script src="js/riso-amt.js?v=22"></script>
-<script src="js/renderer.js?v=93"></script>
+<script src="js/renderer.js?v=94"></script>
 <script src="js/source.js?v=45"></script>
 <script src="js/save.js?v=45"></script>
 <script src="js/ui-controls.js?v=50"></script>

@@ -1,4 +1,8 @@
-paper002_pbr.png — derived from "Paper002" by ambientCG (https://ambientcg.com/view?id=Paper002)
-Licensed CC0 1.0 (public domain). Channels packed: R = height (displacement),
-G = normal.X, B = normal.Y (OpenGL convention), A = unused. Source maps resized
-to 512² and combined for use as a single in-shader paper substrate texture.
+paper002_pbr_2k.png — derived from "Paper002" by ambientCG (https://ambientcg.com/view?id=Paper002)
+Licensed CC0 1.0 (public domain). Source: Paper002 2K-JPG bundle.
+Channels packed (RGBA): R = height (Displacement map), G = normal.X, B = normal.Y
+(from NormalGL, OpenGL convention), A = unused. Native resolution 1588×2048 — the
+sheet is mapped ONCE across the canvas (cover-fit) so it does not tile.
+
+(Previous 512² tiling version paper002_pbr.png removed; superseded by the 2K
+single-sheet substrate.)
