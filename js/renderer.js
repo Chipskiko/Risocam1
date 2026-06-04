@@ -66,7 +66,7 @@ function initGL(){
    'u_angle0','u_angle1','u_angle2','u_angle3','u_screenCell',
    'u_chan0','u_chan1','u_chan2','u_chan3',
    'u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_useLabResidual','u_useCalChord','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_screenClean','u_simNoise',
-   'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_paperShift','u_crop','u_paper',
+   'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_paperShift','u_paperPbrShift','u_crop','u_paper',
    'u_paperPBR','u_usePaperPBR',
    'u_lutA0','u_lutA1','u_lutA2','u_lutA3',
    'u_lutB0','u_lutB1','u_lutB2','u_lutB3',
@@ -637,10 +637,19 @@ function setRenderUniforms(dw, dh, scale, isPhone){
     gl.uniform2f(locs.u_paperShift, psx, psy);
     cached._lastPaperShiftX = psx;
     cached._lastPaperShiftY = psy;
+    // PBR single-sheet: a SLIGHT normalized UV jitter so each printed frame sits
+    // on a slightly different patch of the sheet (different feed). Kept within
+    // the ±4% margin left by PAPER_ZOOM so it never reaches the clamped edge.
+    if(locs.u_paperPbrShift){
+      var ppx = (Math.abs((Math.sin(frameSeed * 311.7) * 43758.5453) % 1) - 0.5) * 0.05; // ±0.025
+      var ppy = (Math.abs((Math.sin(frameSeed * 521.3) * 43758.5453) % 1) - 0.5) * 0.05;
+      gl.uniform2f(locs.u_paperPbrShift, ppx, ppy);
+    }
   } else {
     gl.uniform2f(locs.u_paperShift, 0.0, 0.0);
     cached._lastPaperShiftX = 0;
     cached._lastPaperShiftY = 0;
+    if(locs.u_paperPbrShift) gl.uniform2f(locs.u_paperPbrShift, 0.0, 0.0);
   }
   gl.uniform1f(locs.u_static,cached.grainStatic);
   gl.uniform1f(locs.u_bright,cached.imgBright);

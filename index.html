@@ -541,6 +541,7 @@ uniform float u_usePaperScan;  // 1.0 = use scanned texture, 0.0 = procedural
 uniform sampler2D u_paperPBR;
 uniform float u_usePaperPBR;
 uniform vec2 u_paperShift;    // per-frame paper position offset (simulates different sheet feeds)
+uniform vec2 u_paperPbrShift; // per-frame PBR-sheet UV jitter (normalized, ~±0.03; 0 when static)
 uniform vec4 u_crop;         // UV crop region: x, y, w, h (default 0,0,1,1)
 uniform sampler2D u_toneCurve; // 256×1 tone curve LUT texture
 uniform float u_useToneCurve;  // 1.0 when curve is non-identity
@@ -2336,7 +2337,11 @@ vec3 applyPaperPBR(vec3 result, vec2 uv){
   float boxAR = u_res.x / u_res.y;
   vec2 vis = (boxAR > PAPER_AR) ? vec2(1.0, PAPER_AR / boxAR)
                                 : vec2(boxAR / PAPER_AR, 1.0);
-  vec2 puv = (uv - 0.5) * vis + 0.5;
+  // PAPER_ZOOM (<1) samples a sub-region, leaving a margin on BOTH axes so the
+  // per-frame sheet-feed jitter (u_paperPbrShift, ~±0.03) can move the sheet
+  // without ever reaching the clamped edge. Zoom is uniform → fibers stay round.
+  const float PAPER_ZOOM = 0.92;        // ~4% margin per side
+  vec2 puv = (uv - 0.5) * vis * PAPER_ZOOM + 0.5 + u_paperPbrShift;
   vec4 p = texture2D(u_paperPBR, puv);
   float strength = clamp(u_paperTex * 0.04, 0.0, 1.0); // slider 0..25 → 0..1
   float h = p.r;                       // single sample → full tooth contrast
@@ -2814,7 +2819,7 @@ void main(){
 <script src="js/undo.js?v=4"></script>
 <script src="js/compare.js?v=5"></script>
 <script src="js/riso-amt.js?v=22"></script>
-<script src="js/renderer.js?v=94"></script>
+<script src="js/renderer.js?v=95"></script>
 <script src="js/source.js?v=45"></script>
 <script src="js/save.js?v=45"></script>
 <script src="js/ui-controls.js?v=50"></script>
