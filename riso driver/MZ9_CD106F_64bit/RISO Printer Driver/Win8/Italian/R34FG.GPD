@@ -1,0 +1,796 @@
+*%%% Copyright (c) 2006-12  RISO KAGAKU Corporation
+*%%% RISO UI feature names
+
+*%******************************************************************************************
+*%                           Main Tab Dialog
+*%******************************************************************************************
+
+*%******************************************************************************
+*%              出力印刷用紙サイズ
+*%******************************************************************************
+*Feature: OutPutPaperSize
+{
+    *Name: "Output Paper Size"
+    *DefaultOption: SameAsOriginal
+    *PrintSchemaKeywordMap: "JobOutputPaperSize"
+
+    *Option: SameAsOriginal
+    {
+        *Name: "Same as original"
+        *PrintSchemaKeywordMap: "SameAsOriginal"
+    }
+    *Option: A3
+    {
+        *Name: "A3 297 x 420 mm"
+        *PrintSchemaKeywordMap: "A3"
+    }
+    *Option: A4
+    {
+        *Name: "A4 210 x 297 mm"
+        *PrintSchemaKeywordMap: "A4"
+    }
+    *Option: A4_R
+    {
+        *Name: "A4-R 297 x 210 mm"
+        *PrintSchemaKeywordMap: "A4_R"
+    }
+    *Option: A5
+    {
+        *Name: "A5 148 x 210 mm"
+        *PrintSchemaKeywordMap: "A5"
+    }    
+    *Option: A5_R
+    {
+        *Name: "A5-R 210 x 148 mm"
+        *PrintSchemaKeywordMap: "A5_R"
+    }    
+    *Option: A6
+    {
+        *Name: "A6 105 x 148 mm"
+        *PrintSchemaKeywordMap: "A6"
+    }    
+    *Option: B4
+    {
+        *Name: "B4 257 x 364 mm"
+        *PrintSchemaKeywordMap: "B4"
+    }
+    *Option: B5
+    {
+        *Name: "B5 182 x 257 mm"
+        *PrintSchemaKeywordMap: "B5"
+    }    
+    *Option: B5_R
+    {
+        *Name: "B5-R 257 x 182 mm"
+        *PrintSchemaKeywordMap: "B5_R"
+    }    
+    *Option: B6
+    {
+        *Name: "B6 128 x 182 mm"
+        *PrintSchemaKeywordMap: "B6"
+    }    
+    *Option: B6_R
+    {
+        *Name: "B6-R 182 x 128 mm"
+        *PrintSchemaKeywordMap: "B6_R"
+    }    
+    *Option: Foolscap
+    {
+        *Name: "Foolscap 216 x 340 mm"
+        *PrintSchemaKeywordMap: "Foolscap"
+    }    
+    *Option: Tabloid
+    {
+        *Name: "Tabloid 11 x 17 inch"
+        *PrintSchemaKeywordMap: "Tabloid"
+    }
+    *Option: Legal
+    {
+        *Name: "Legal  8 1/2 x 14 inch"
+        *PrintSchemaKeywordMap: "Legal"
+    }
+    *Option: Letter
+    {
+        *Name: "Letter  8 1/2 x 11 inch"
+        *PrintSchemaKeywordMap: "Letter"
+    }
+    *Option: Letter_R
+    {
+        *Name: "Letter-R  11 x 8 1/2 inch"
+        *PrintSchemaKeywordMap: "Letter_R"
+    }
+    *Option: Statement
+    {
+        *Name: "Statement 5 1/2 x 8 1/2 inch"
+        *PrintSchemaKeywordMap: "Statement"
+    }
+    *Option: Statement_R
+    {
+        *Name: "Statement-R 8 1/2 x 5 1/2 inch"
+        *PrintSchemaKeywordMap: "Statement_R"
+    }
+}
+*%******************************************************************************************
+*%               給紙トレイ
+*%******************************************************************************************
+*Feature: PaperSource
+{
+    *Name: "Paper Source"
+    *DefaultOption: LargeCapacity
+    *PrintSchemaKeywordMap: "JobPaperSource"
+    *Option: LargeCapacity
+    {
+        *Name: "Large Capacity"
+        *PrintSchemaKeywordMap: "LargeCapacity"
+    }
+}
+*%******************************************************************************************
+*%               周囲余白
+*%******************************************************************************************
+*Feature: MarginPlus
+{
+    *Name: "Margin-plus"
+    *DefaultOption: OFF
+    *PrintSchemaKeywordMap: "JobMarginPlus"
+
+    *Option: ON
+    {
+        *Name: "ON"
+        *PrintSchemaKeywordMap: "ON"
+    }
+    *Option: OFF
+    {
+        *Name: "OFF"
+        *PrintSchemaKeywordMap: "OFF"
+    }
+}
+*%******************************************************************************************
+*%               180-degree Rotation
+*%******************************************************************************************
+*Feature: Rotation180
+{
+    *Name: "180-degree Rotation"
+    *DefaultOption: OFF
+    *PrintSchemaKeywordMap: "JobRotation180"
+
+    *Option: ON
+    {
+        *Name: "ON"
+        *PrintSchemaKeywordMap: "ON"
+    }
+    *Option: OFF
+    {
+        *Name: "OFF"
+        *PrintSchemaKeywordMap: "OFF"
+    }
+}
+*%******************************************************************************************
+*%               RISO Layout
+*%******************************************************************************************
+*Feature: PageLayout
+{
+    *Name: "Page Layout"
+    *DefaultOption: Standard
+    *PrintSchemaKeywordMap: "JobPageLayout"
+
+    *Option: Standard
+    {
+        *Name: "Standard"
+        *PrintSchemaKeywordMap: "Standard"
+    }
+    *Option: 2UP
+    {
+        *Name: "2 in 1"
+        *PrintSchemaKeywordMap: "2UP"
+    }
+    *Option: 4UP
+    {
+        *Name: "4 in 1"
+        *PrintSchemaKeywordMap: "4UP"
+    }
+    *Option: 2RENSYA
+    {
+        *Name: "2 UP"
+        *PrintSchemaKeywordMap: "2COPY"
+    }
+    *Option: 4RENSYA
+    {
+        *Name: "4 UP"
+        *PrintSchemaKeywordMap: "4COPY"
+    }
+}
+*Feature: PageOrder
+{
+    *Name: "Page Order"
+    *DefaultOption: Ascending
+    *PrintSchemaKeywordMap: "JobPageOrder"
+
+    *Option: Ascending
+    {
+        *Name: "Ascending"
+        *PrintSchemaKeywordMap: "Ascending"
+    }
+    *Option: Descending
+    {
+        *Name: "Descending"
+        *PrintSchemaKeywordMap: "Descending"
+    }
+    *Option: HorizontalAscending
+    {
+        *Name: "Horizontal-Ascending"
+        *PrintSchemaKeywordMap: "HorizontalAscending"
+    }
+    *Option: VerticalAscending
+    {
+        *Name: "Vertical-Ascending"
+        *PrintSchemaKeywordMap: "VerticalAscending"
+    }
+    *Option: HorizontalDescending
+    {
+        *Name: "Horizontal-Descending"
+        *PrintSchemaKeywordMap: "HorizontalDescending"
+    }
+    *Option: VerticalDescending
+    {
+        *Name: "Vertical-Descending"
+        *PrintSchemaKeywordMap: "VerticalDescending"
+    }
+}
+*%******************************************************************************************
+*%               プログラム印刷
+*%******************************************************************************************
+*Feature: ProgramPrinting
+{
+    *Name: "Program Printing"
+    *PrintSchemaKeywordMap: "JobProgramPrinting"
+    *DefaultOption: OFF
+
+    *Option: ON
+    {
+        *Name: "ON"
+        *PrintSchemaKeywordMap: "ON"
+    }
+    *Option: OFF
+    {
+        *Name: "OFF"
+        *PrintSchemaKeywordMap: "OFF"
+    }
+}
+*%******************************************************************************************
+*%              連続モード
+*%******************************************************************************************
+*Feature: Process
+{
+    *Name: "Process"
+    *PrintSchemaKeywordMap: "JobProcess"
+    *DefaultOption: ON
+
+    *Option: ON
+    {
+        *Name: "ON"
+        *PrintSchemaKeywordMap: "ON"
+    }
+    *Option: SemiAutoPrint
+    {
+        *Name: "Semi-Auto(Print)"
+        *PrintSchemaKeywordMap: "SemiAutoPrint"
+    }
+    *Option: SemiAutoMaster
+    {
+        *Name: "Semi-Auto(Master)"
+        *PrintSchemaKeywordMap: "SemiAutoMaster"
+    }
+    *Option: Manual
+    {
+        *Name: "Manual"
+        *PrintSchemaKeywordMap: "Manual"
+    }
+}
+*%******************************************************************************************
+*%               出力方法
+*%******************************************************************************************
+*Feature: Destination
+{
+    *Name: "Destination"
+    *PrintSchemaKeywordMap: "JobDestination"
+    *DefaultOption: PrintOnly
+
+    *Option: PrintOnly
+    {
+        *Name: "Print Only"
+        *PrintSchemaKeywordMap: "PrintOnly"
+    }
+    *Option: PrintAndStorage
+    {
+        *Name: "Print & Storage"
+        *PrintSchemaKeywordMap: "PrintAndStorage"
+    }
+    *Option: StorageOnly
+    {
+        *Name: "Storage Only"
+        *PrintSchemaKeywordMap: "StorageOnly"
+    }
+}
+
+*%******************************************************************************************
+*%               イメージ画面
+*%******************************************************************************************
+*%******************************************************************************************
+*%               写真処理：網点、誤差拡散
+*%******************************************************************************************
+*Feature: PhotoImage
+{
+    *Name: "Photo Image"
+    *PrintSchemaKeywordMap: "JobPhotoImage"
+    *DefaultOption: ScreenCovered
+
+    *Option: GrainTouch
+    {
+        *Name: "Grain-touch"
+        *PrintSchemaKeywordMap: "GrainTouch"
+    }
+    *Option: ScreenCovered
+    {
+        *Name: "Screen-covered"
+        *PrintSchemaKeywordMap: "ScreenCovered"
+    }
+}
+*%******************************************************************************************
+*%              画像処理種類
+*%******************************************************************************************
+*Feature: ImageRetouching
+{
+    *Name: "Image Retouching"
+    *PrintSchemaKeywordMap: "JobImageRetouching"
+    *DefaultOption: StandardImage
+
+    *Option: StandardImage
+    {
+        *Name: "Standard Image"
+        *PrintSchemaKeywordMap: "StandardImage"
+    }
+    *Option: FaceImage
+    {
+        *Name: "Face Image"
+        *PrintSchemaKeywordMap: "FaceImage"
+    }
+    *Option: SetsImage
+    {
+        *Name: "Sets Image"
+        *PrintSchemaKeywordMap: "SetsImage"
+    }
+}
+*%******************************************************************************************
+*%              画像調整
+*%******************************************************************************************
+*Feature: ToneLevel
+{
+    *Name: "Tone Level"
+    *PrintSchemaKeywordMap: "JobToneLevel"
+    *DefaultOption: Level4
+    *Option: Level1
+    {
+        *Name: "Level1"
+        *PrintSchemaKeywordMap: "Level1"
+    }
+    *Option: Level2
+    {
+        *Name: "Level2"
+        *PrintSchemaKeywordMap: "Level2"
+    }
+    *Option: Level3
+    {
+        *Name: "Level3"
+        *PrintSchemaKeywordMap: "Level3"
+    }
+    *Option: Level4
+    {
+        *Name: "Level4"
+        *PrintSchemaKeywordMap: "Level4"
+    }
+    *Option: Level5
+    {
+        *Name: "Level5"
+        *PrintSchemaKeywordMap: "Level5"
+    }
+    *Option: Level6
+    {
+        *Name: "Level6"
+        *PrintSchemaKeywordMap: "Level6"
+    }
+    *Option: Level7
+    {
+        *Name: "Level7"
+        *PrintSchemaKeywordMap: "Level7"
+    }
+}
+*Feature: Contrast
+{
+    *Name: "Contrast"
+    *PrintSchemaKeywordMap: "JobContrast"
+    *DefaultOption: Level4
+    *Option: Level1
+    {
+        *Name: "Level1"
+        *PrintSchemaKeywordMap: "Level1"
+    }
+    *Option: Level2
+    {
+        *Name: "Level2"
+        *PrintSchemaKeywordMap: "Level2"
+    }
+    *Option: Level3
+    {
+        *Name: "Level3"
+        *PrintSchemaKeywordMap: "Level3"
+    }
+    *Option: Level4
+    {
+        *Name: "Level4"
+        *PrintSchemaKeywordMap: "Level4"
+    }
+    *Option: Level5
+    {
+        *Name: "Level5"
+        *PrintSchemaKeywordMap: "Level5"
+    }
+    *Option: Level6
+    {
+        *Name: "Level6"
+        *PrintSchemaKeywordMap: "Level6"
+    }
+    *Option: Level7
+    {
+        *Name: "Level7"
+        *PrintSchemaKeywordMap: "Level7"
+    }
+}
+*Feature: BacklightCorrection
+{
+    *Name: "Backlight Correction"
+    *PrintSchemaKeywordMap: "JobBacklightCorrection"
+    *DefaultOption: ON
+    *Option: OFF
+    {
+        *Name: "OFF"
+        *PrintSchemaKeywordMap: "OFF"
+    }
+    *Option: ON
+    {
+        *Name: "ON"
+        *PrintSchemaKeywordMap: "ON"
+    }
+}
+*Feature: BacklightCorrectionLevel
+{
+    *Name: "Backlight Correction Level"
+    *PrintSchemaKeywordMap: "JobBacklightCorrectionLevel"
+    *DefaultOption: Level4
+    *Option: Level1
+    {
+        *Name: "Level1"
+        *PrintSchemaKeywordMap: "Level1"
+    }
+    *Option: Level2
+    {
+        *Name: "Level2"
+        *PrintSchemaKeywordMap: "Level2"
+    }
+    *Option: Level3
+    {
+        *Name: "Level3"
+        *PrintSchemaKeywordMap: "Level3"
+    }
+    *Option: Level4
+    {
+        *Name: "Level4"
+        *PrintSchemaKeywordMap: "Level4"
+    }
+    *Option: Level5
+    {
+        *Name: "Level5"
+        *PrintSchemaKeywordMap: "Level5"
+    }
+    *Option: Level6
+    {
+        *Name: "Level6"
+        *PrintSchemaKeywordMap: "Level6"
+    }
+    *Option: Level7
+    {
+        *Name: "Level7"
+        *PrintSchemaKeywordMap: "Level7"
+    }
+}
+*Feature: EdgeEnhancement
+{
+    *Name: "Edge Enhancement"
+    *PrintSchemaKeywordMap: "JobEdgeEnhancement"
+    *DefaultOption: OFF
+    *Option: OFF
+    {
+        *Name: "OFF"
+        *PrintSchemaKeywordMap: "OFF"
+    }
+    *Option: ON
+    {
+        *Name: "ON"
+        *PrintSchemaKeywordMap: "ON"
+    }
+}
+*%******************************************************************************************
+*%              文字処理
+*%******************************************************************************************
+*Feature: Text
+{
+    *Name: "Text"
+    *PrintSchemaKeywordMap: "JobText"
+    *DefaultOption: GrainTouch
+
+    *Option: GrainTouch
+    {
+        *Name: "Grain-touch"
+        *PrintSchemaKeywordMap: "GrainTouch"
+    }
+    *Option: ScreenCovered
+    {
+        *Name: "Screen-covered"
+        *PrintSchemaKeywordMap: "ScreenCovered"
+    }
+    *Option: SolidLook
+    {
+        *Name: "Solid-look"
+        *PrintSchemaKeywordMap: "SolidLook"
+    }
+}
+*%******************************************************************************************
+*%              文字ボリューム調整
+*%******************************************************************************************
+*Feature: TextVolume
+{
+    *Name: "Text volume"
+    *PrintSchemaKeywordMap: "JobTextVolume"
+    *DefaultOption: Off
+
+    *Option: Bold
+    {
+        *Name: "Bold"
+        *PrintSchemaKeywordMap: "Bold"
+    }
+    *Option: Slim
+    {
+        *Name: "Slim"
+        *PrintSchemaKeywordMap: "Slim"
+    }
+    *Option: Off
+    {
+        *Name: "Off"
+        *PrintSchemaKeywordMap: "Off"
+    }
+}
+*%******************************************************************************************
+*%               その他画面
+*%******************************************************************************************
+*%******************************************************************************************
+*%               ソーターモード
+*%******************************************************************************************
+*Feature: SorterControl
+{
+    *Name: "Sorter Control"
+    *PrintSchemaKeywordMap: "JobSorterControl"
+    *DefaultOption: NonSort
+
+    *Option: NonSort
+    {
+        *Name: "NonSort"
+        *PrintSchemaKeywordMap: "NonSort"
+    }
+    *Option: Sort
+    {
+        *Name: "Sort"
+        *PrintSchemaKeywordMap: "Sort"
+    }
+    *Option: Group
+    {
+        *Name: "Group"
+        *PrintSchemaKeywordMap: "Group"
+    }
+    *Option: Stack
+    {
+        *Name: "Stack"
+        *PrintSchemaKeywordMap: "Stack"
+    }
+}
+*%******************************************************************************************
+*%              オートステープルモード
+*%******************************************************************************************
+*Feature: Stapler
+{
+    *Name: "Stapler"
+    *PrintSchemaKeywordMap: "JobStapler"
+    *DefaultOption: OFF
+
+    *Option: OFF
+    {
+        *Name: "OFF"
+        *PrintSchemaKeywordMap: "OFF"
+    }
+    *Option: ON1
+    {
+        *Name: "ON-At Fornt Corner"
+        *PrintSchemaKeywordMap: "ON1"
+    }
+    *Option: ON2
+    {
+        *Name: "ON-At 2 Points in Centre"
+        *PrintSchemaKeywordMap: "ON2"
+    }
+    *Option: ON3
+    {
+        *Name: "ON-At Rear Corner"
+        *PrintSchemaKeywordMap: "ON3"
+    }
+}
+*%******************************************************************************************
+*%              テープ仕分けモード
+*%******************************************************************************************
+*Feature: JobSeparator
+{
+    *Name: "Job Separator"
+    *PrintSchemaKeywordMap: "JobSeparator"
+    *DefaultOption: OFF
+
+    *Option: OFF
+    {
+        *Name: "OFF"
+        *PrintSchemaKeywordMap: "OFF"
+    }
+    *Option: Job
+    {
+        *Name: "Job"
+        *PrintSchemaKeywordMap: "Job"
+    }
+    *Option: Page
+    {
+        *Name: "Page"
+        *PrintSchemaKeywordMap: "Page"
+    }
+}
+
+*%******************************************************************************************
+*%              仕分けモード
+*%******************************************************************************************
+*Feature: PaperInterposal
+{
+    *Name: "Paper Interposal"
+    *PrintSchemaKeywordMap: "JobPaperInterposal"
+    *DefaultOption: OFF
+
+    *Option: OFF
+    {
+        *Name: "OFF"
+        *PrintSchemaKeywordMap: "OFF"
+    }
+    *Option: Job
+    {
+        *Name: "Job"
+        *PrintSchemaKeywordMap: "Job"
+    }
+    *Option: Page
+    {
+        *Name: "Page"
+        *PrintSchemaKeywordMap: "Page"
+    }
+}
+
+*%******************************************************************************************
+*%              印刷速度
+*%******************************************************************************************
+*Feature: PrintSpeed
+{
+    *Name: "Print Speed"
+    *PrintSchemaKeywordMap: "JobPrintSpeed"
+    *DefaultOption: OFF
+
+    *Option: OFF
+    {
+        *Name: "OFF"
+        *PrintSchemaKeywordMap: "OFF"
+    }
+    *Option: Speed1
+    {
+        *Name: "Speed1"
+        *PrintSchemaKeywordMap: "Speed1"
+    }
+    *Option: Speed2
+    {
+        *Name: "Speed2"
+        *PrintSchemaKeywordMap: "Speed2"
+    }
+}
+*%******************************************************************************************
+*%              印刷濃度
+*%******************************************************************************************
+*Feature: PrintDensityColour
+{
+    *Name: "Print Density-Colour"
+    *PrintSchemaKeywordMap: "JobPrintDensityColour"
+    *DefaultOption: OFF
+
+    *Option: OFF
+    {
+        *Name: "OFF"
+        *PrintSchemaKeywordMap: "OFF"
+    }
+    *Option: DensityColour1
+    {
+        *Name: "DensityColour1"
+        *PrintSchemaKeywordMap: "DensityColour1"
+    }
+    *Option: DensityColour2
+    {
+        *Name: "DensityColour2"
+        *PrintSchemaKeywordMap: "DensityColour2"
+    }
+}
+*%******************************************************************************************
+*%              印刷機側の設定をリセットしてから出力する
+*%******************************************************************************************
+*Feature: ResetToPrint
+{
+    *Name: "Output data after initializing printer"
+    *PrintSchemaKeywordMap: "JobResetToPrint"
+    *DefaultOption: ON
+
+    *Option: OFF
+    {
+        *Name: "OFF"
+        *PrintSchemaKeywordMap: "OFF"
+    }
+    *Option: ON
+    {
+        *Name: "ON"
+        *PrintSchemaKeywordMap: "ON"
+    }
+}
+*%******************************************************************************************
+*%              ハイスピード
+*%******************************************************************************************
+*Feature: HightSpeed
+{
+    *Name: "150ppm"
+    *PrintSchemaKeywordMap: "JobHightSpeed"
+    *DefaultOption: OFF
+
+    *Option: OFF
+    {
+        *Name: "OFF"
+        *PrintSchemaKeywordMap: "OFF"
+    }
+    *Option: ON
+    {
+        *Name: "ON"
+        *PrintSchemaKeywordMap: "ON"
+    }
+}
+
+*%******************************************************************************************
+*%              インターバル印刷
+*%******************************************************************************************
+*Feature: IntervalPrinting
+{
+    *Name: "Interval printing"
+    *PrintSchemaKeywordMap: "JobIntervalPrinting"
+    *DefaultOption: OFF
+
+    *Option: OFF
+    {
+        *Name: "OFF"
+        *PrintSchemaKeywordMap: "OFF"
+    }
+    *Option: ON
+    {
+        *Name: "ON"
+        *PrintSchemaKeywordMap: "ON"
+    }
+}

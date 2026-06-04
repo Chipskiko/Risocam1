@@ -221,6 +221,13 @@ function applyPdfSourceForMode(){
     gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
     gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,srcImg);
   }
+  // The visible source texture just changed (original ⇄ inpainted). In RISO mode
+  // the AMT master was baked from the OLD source, so without invalidation the
+  // halftone still carries the removed text (ghost glyphs). Drop it and rebake.
+  if(window._mode === 'flat' && window.R){
+    if(window.R.invalidateAmt) window.R.invalidateAmt();
+    if(window.R.runAmtPrepass) setTimeout(window.R.runAmtPrepass, 0);
+  }
   markDirty();
 }
 R.applyPdfSourceForMode = applyPdfSourceForMode;
@@ -525,6 +532,11 @@ function handleFile(e){
   if(isPdf){
     stopVideo();
     if(camOn){if(camStream)camStream.getTracks().forEach(t=>t.stop());camOn=false;}
+    // Reset per-PDF mode state before loading a NEW PDF. Without this, loading
+    // PDF-B while PDF-A had PDF-mode ON leaves pdfModeOn/textChannelColor stuck,
+    // so B's source gets swapped to its inpainted raster on first render with
+    // A's text-channel assumptions. The non-PDF branch already does this reset.
+    pdfModeOn=false; textChannelColor=null;
     pdfCacheClear(); // new PDF — drop old cached page rasters
     R.toast('Loading PDF…');
     loadPdfAllPages(f).then(res=>{
@@ -623,7 +635,7 @@ function handleFile(e){
         try { R.toast && R.toast('RISO mode: video shows preview only, mode is static-source.', 3000); } catch(e) {}
       }
       if($vid.requestVideoFrameCallback){
-        $vid.requestVideoFrameCallback(R.onVideoFrame);
+        R.onVideoFrame(); // start the generation-guarded rVFC loop (once)
       }else{
         window._vidFallback=setInterval(()=>{if(videoOn&&$vid.readyState>=2){videoFrameReady=true;scheduleRender();}else if(!videoOn)clearInterval(window._vidFallback);},50);
       }
@@ -716,6 +728,11 @@ function handleFile(e){
   }else{
     // Image: load as before
     stopVideo();
+    // stopVideo() pauses the <video> but does NOT stop a live camera stream, and
+    // the image path sets camOn=false below without stopping tracks — leaving the
+    // webcam physically on (indicator light stays lit). Stop it here, matching the
+    // video/gif/pdf branches.
+    if(camOn){if(camStream)camStream.getTracks().forEach(t=>t.stop());camOn=false;}
     const r=new FileReader();
     r.onload=ev=>{
       const img=new Image();
@@ -849,7 +866,7 @@ async function toggleCam(){
     hideOnboarding();
     // Use requestVideoFrameCallback if available (Chrome/Edge)
     if($vid.requestVideoFrameCallback){
-      $vid.requestVideoFrameCallback(R.onVideoFrame);
+      R.onVideoFrame(); // start the generation-guarded rVFC loop (once)
     }else{
       // Fallback: check video readiness at 20fps instead of every RAF
       if(window._camFallback)clearInterval(window._camFallback);
@@ -1314,7 +1331,11 @@ function renderPdfThumbStrip(){
     return varNums[srcIdx] ? 'V'+varNums[srcIdx] : null;
   };
   strip.innerHTML=thumbs.map((c,i)=>{
-    const dataUrl=c.toDataURL('image/jpeg',0.8);
+    // Cache the encoded thumbnail on the canvas. The thumb canvases are stable
+    // objects, but this strip rebuilds on every page switch / variation / rotate
+    // — re-running toDataURL (a synchronous JPEG encode) for all N pages each
+    // time was a real CPU cost on multi-page PDFs. Encode once, reuse.
+    const dataUrl = c._thumbDataUrl || (c._thumbDataUrl = c.toDataURL('image/jpeg',0.8));
     const active=i===window._pdfActiveIdx;
     const isMaster=i===masterIdx;
     const varN=varNums[i];

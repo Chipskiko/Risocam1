@@ -1,0 +1,786 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Layered Dizzy Dither — GPU test</title>
+<style>
+  body { margin: 0; background: #111; color: #eee; font: 14px/1.4 ui-monospace, Menlo, monospace; }
+  #app { max-width: 1400px; margin: 0 auto; padding: 20px; }
+  h1 { font-size: 18px; margin: 0 0 4px; letter-spacing: 0.04em; }
+  .sub { color: #888; margin-bottom: 14px; font-size: 12px; }
+  #row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+  .panel { background: #1a1a1a; border: 1px solid #333; padding: 10px; }
+  .panel h2 { margin: 0 0 6px; font-size: 12px; color: #aaa; letter-spacing: 0.05em; }
+  canvas { image-rendering: pixelated; background: #000; display: block; }
+  .stats { font-size: 11px; color: #888; margin-top: 6px; min-height: 14px; }
+  button { padding: 8px 14px; background: #222; color: #ddd; border: 1px solid #444; cursor: pointer; font: inherit; }
+  button:hover { background: #2a2a2a; }
+  button.primary { background: #d44; border-color: #d44; color: #fff; }
+  #ctrls { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+  label { display: flex; gap: 6px; align-items: center; font-size: 12px; color: #aaa; }
+  select, input { background: #222; color: #ddd; border: 1px solid #444; padding: 4px 6px; font: inherit; }
+  #log { background: #0a0a0a; border: 1px solid #222; padding: 10px; font-size: 11px; color: #888; white-space: pre-wrap; max-height: 180px; overflow: auto; }
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>LAYERED DIZZY DITHER — GPU vs CPU FS</h1>
+  <div class="sub">Per-channel GPU error diffusion via 8-layer non-overlapping passes (Peterme.net technique). Compare against vanilla CPU FS at the same resolution.</div>
+
+  <div id="ctrls">
+    <label>Image: <select id="srcSel">
+      <option value="testpattern">Test pattern (640×480)</option>
+      <option value="gradient">Horizontal gradient (1024×128)</option>
+      <option value="block">Solid-block edge (512×512)</option>
+      <option value="balloon">Balloon photo (if available)</option>
+    </select></label>
+    <button id="goBtn" class="primary">Run both</button>
+    <label>Resolution: <select id="resSel">
+      <option value="1">native</option>
+      <option value="2">2× upscale</option>
+      <option value="4">4× upscale</option>
+    </select></label>
+    <label><input type="checkbox" id="fsWeightsCk" checked> FS-style weights (orderly look)</label>
+    <label><input type="checkbox" id="renormCk" checked> Energy conservation (renorm coefs)</label>
+    <label>Layers: <select id="layerSel">
+      <option value="vc8">V&amp;C blue-noise (8)</option>
+      <option value="causal8">Causal spatial (8) — (1x+3y)</option>
+      <option value="causal16" selected>Causal spatial (16) — (2x+5y)</option>
+      <option value="causal16j">Causal spatial (16) + Bayer4 jitter</option>
+      <option value="causal32">Causal spatial (32) — (3x+7y)</option>
+    </select></label>
+  </div>
+
+  <div id="row">
+    <div class="panel">
+      <h2>SOURCE (grayscale)</h2>
+      <canvas id="srcCanvas" width="640" height="480"></canvas>
+      <div class="stats" id="srcStats">–</div>
+    </div>
+    <div class="panel">
+      <h2>CPU FLOYD-STEINBERG (reference)</h2>
+      <canvas id="fsCanvas" width="640" height="480"></canvas>
+      <div class="stats" id="fsStats">–</div>
+    </div>
+    <div class="panel">
+      <h2>GPU LAYERED DIZZY (8 passes)</h2>
+      <canvas id="dzCanvas" width="640" height="480"></canvas>
+      <div class="stats" id="dzStats">–</div>
+    </div>
+    <div class="panel">
+      <h2>GPU WAVEFRONT FS (Metaxas, exact)</h2>
+      <canvas id="wfCanvas" width="640" height="480"></canvas>
+      <div class="stats" id="wfStats">–</div>
+    </div>
+  </div>
+
+  <div id="log">log…</div>
+</div>
+
+<script>
+'use strict';
+
+const log = (m) => {
+  const el = document.getElementById('log');
+  el.textContent += '\n' + m;
+  el.scrollTop = el.scrollHeight;
+};
+
+// ─── TEST PATTERN GEN (640×480, similar to risocam's) ───────────────────
+function makeTestPattern() {
+  const W = 640, H = 480;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  // Sky-to-ground gradient bg
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#222'); bg.addColorStop(0.5, '#888'); bg.addColorStop(1, '#fff');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  // Color block row at middle
+  const grays = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+  grays.forEach((g, i) => {
+    const v = (g * 255) | 0;
+    ctx.fillStyle = `rgb(${v},${v},${v})`;
+    ctx.fillRect(20 + i * 60, 200, 50, 60);
+  });
+  // Sharp dark block (for sawtooth comparison)
+  ctx.fillStyle = '#222';
+  ctx.fillRect(50, 320, 540, 100);
+  return c;
+}
+function makeGradient() {
+  const W = 1024, H = 128;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, W, 0);
+  g.addColorStop(0, '#000'); g.addColorStop(1, '#fff');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  return c;
+}
+function makeBlock() {
+  const W = 512, H = 512;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#888'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#222'; ctx.fillRect(100, 100, 312, 312);
+  return c;
+}
+
+function imgToGray(canvas) {
+  const ctx = canvas.getContext('2d');
+  const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  const out = new Float32Array(canvas.width * canvas.height);
+  for (let i = 0, j = 0; i < d.length; i += 4, j++) {
+    out[j] = (54 * d[i] + 183 * d[i+1] + 19 * d[i+2]) / (255 * 256);
+  }
+  return { gray: out, W: canvas.width, H: canvas.height };
+}
+
+function grayToCanvas(canvas, bits) {
+  const W = canvas.width, H = canvas.height;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(W, H);
+  for (let i = 0; i < W * H; i++) {
+    const v = bits[i] >= 0.5 ? 255 : 0;
+    img.data[i*4] = v; img.data[i*4+1] = v; img.data[i*4+2] = v; img.data[i*4+3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+// ─── CPU FLOYD-STEINBERG (reference) ───────────────────────────────────
+// Standard left-to-right FS (non-serpentine) — matches what wavefront GPU does.
+function fsCPU(gray, W, H) {
+  const buf = new Float32Array(gray);
+  const out = new Uint8Array(W * H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x;
+      const v = buf[i];
+      const q = v >= 0.5 ? 1 : 0;
+      out[i] = q;
+      const err = v - q;
+      if (err === 0) continue;
+      if (x + 1 < W) buf[y*W + x + 1] += err * (7/16);
+      if (y + 1 < H) {
+        const ny = y + 1;
+        if (x - 1 >= 0) buf[ny*W + x - 1] += err * (3/16);
+                         buf[ny*W + x    ] += err * (5/16);
+        if (x + 1 < W)  buf[ny*W + x + 1] += err * (1/16);
+      }
+    }
+  }
+  return out;
+}
+
+// ─── LAYER MASK (multiple strategies) ──────────────────────────────────
+// Bayer-4 ordered dispersal for phase jitter
+const BAYER4 = new Uint8Array([
+   0,  8,  2, 10,
+  12,  4, 14,  6,
+   3, 11,  1,  9,
+  15,  7, 13,  5
+]);
+
+// Spatial-causal layer assignment: layer = (a*x + b*y) % N.
+// Forward FS neighbors land at predictable positive offsets, restoring the
+// causal chain Dizzy normally loses to random V&C blue-noise.
+function generateSpatialMask(W, H, N, a, b, jitter) {
+  const mask = new Int8Array(W * H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      let v = a * x + b * y;
+      if (jitter) {
+        // Bayer-4 → 0..15 → scale to 0..(N/4-1) so jitter is smaller than spatial gradient
+        const j = BAYER4[(y & 3) * 4 + (x & 3)] >> 2;  // 0..3
+        v += j;
+      }
+      mask[y * W + x] = ((v % N) + N) % N;
+    }
+  }
+  return { mask, fallback: 0 };
+}
+
+function generateLayerMask(W, H, numLayers = 8) {
+  const N = W * H;
+  const mask = new Int8Array(N).fill(-1);
+  // Manhattan radius 2 offsets, excluding (0,0)
+  const offsets = [];
+  for (let dy = -2; dy <= 2; dy++)
+    for (let dx = -2; dx <= 2; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      if (Math.abs(dx) + Math.abs(dy) > 2) continue;
+      offsets.push([dx, dy]);
+    }
+  const layerOrder = new Uint8Array(numLayers);
+  for (let i = 0; i < numLayers; i++) layerOrder[i] = i;
+  let fallback = 0;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      // Fisher-Yates shuffle layerOrder
+      for (let i = numLayers - 1; i > 0; i--) {
+        const j = (Math.random() * (i + 1)) | 0;
+        const t = layerOrder[i]; layerOrder[i] = layerOrder[j]; layerOrder[j] = t;
+      }
+      let assigned = -1;
+      outer: for (let li = 0; li < numLayers; li++) {
+        const L = layerOrder[li];
+        for (const [dx, dy] of offsets) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+          if (mask[ny * W + nx] === L) continue outer;
+        }
+        assigned = L; break;
+      }
+      if (assigned === -1) {
+        // Fall back to least-used layer in neighborhood
+        const conflict = new Uint16Array(numLayers);
+        for (const [dx, dy] of offsets) {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+          const m = mask[ny * W + nx];
+          if (m >= 0) conflict[m]++;
+        }
+        let bestL = 0, bestC = conflict[0];
+        for (let i = 1; i < numLayers; i++) if (conflict[i] < bestC) { bestC = conflict[i]; bestL = i; }
+        assigned = bestL; fallback++;
+      }
+      mask[y * W + x] = assigned;
+    }
+  }
+  return { mask, fallback };
+}
+
+// ─── GPU LAYERED DIZZY (WebGL2) ─────────────────────────────────────────
+// One R32F FBO per ping/pong, layer-mask R8 texture.
+// 8 fragment passes, each frag:
+//   if layer == currentLayer: quantize, write bit (and zero err)
+//   else if layer > currentLayer: receive err contributions from ortho neighbors that ARE currentLayer
+//   else (layer < currentLayer): pass through (already done)
+function runDizzyGPU(gray, W, H, layerMask, numLayers) {
+  const off = document.createElement('canvas');
+  off.width = W; off.height = H;
+  const gl = off.getContext('webgl2', { preserveDrawingBuffer: true, antialias: false });
+  if (!gl) throw new Error('WebGL2 not supported');
+  const ext = gl.getExtension('EXT_color_buffer_float');
+  if (!ext) throw new Error('EXT_color_buffer_float not supported');
+
+  // Vertex: full-screen quad
+  const vs = `#version 300 es
+    in vec2 a_pos;
+    out vec2 v_uv;
+    void main(){ v_uv = a_pos * 0.5 + 0.5; gl_Position = vec4(a_pos, 0.0, 1.0); }`;
+
+  // Fragment: one Layered Dizzy pass
+  const fs = `#version 300 es
+    precision highp float;
+    in vec2 v_uv;
+    out vec4 outColor;
+    uniform sampler2D u_acc;     // RGBA32F R: current accumulator (or 0/1 if processed)
+    uniform sampler2D u_layer;   // R8: layer index in [0..7]
+    uniform float u_currentLayer;
+    uniform vec2 u_texel;        // 1.0 / texSize
+    uniform float u_fsWeights;   // 1.0 = use FS 7/3/5/1, 0.0 = equal-ortho-split (Dizzy)
+    uniform float u_renorm;      // 1.0 = renormalize coefs to waiting fwd neighbors (energy conservation)
+
+    int layerAt(vec2 uv){ return int(texture(u_layer, uv).r * 255.0 + 0.5); }
+
+    void main(){
+      int myLayer = layerAt(v_uv);
+      float myAcc = texture(u_acc, v_uv).r;
+      int cur = int(u_currentLayer + 0.5);
+
+      if(myLayer == cur){
+        // It's my turn — quantize. Write the bit (0 or 1).
+        float bit = step(0.5, myAcc);
+        outColor = vec4(bit, 0.0, 0.0, 1.0);
+        return;
+      }
+      if(myLayer < cur){
+        // Already processed — pass through.
+        outColor = vec4(myAcc, 0.0, 0.0, 1.0);
+        return;
+      }
+      // myLayer > cur: I'm waiting. Receive error from layer==cur neighbors.
+      // u_fsWeights == 1.0: use FS 7/3/5/1 coefficients — produces FS's
+      //   characteristic "orderly" directional pattern (right + downward bias).
+      // u_fsWeights == 0.0: equal split across unprocessed ortho neighbors —
+      //   isotropic / classic Dizzy character.
+      float val = myAcc;
+      if(u_fsWeights > 0.5){
+        // FS-coefficient receive. Check 4 specific FS-backward positions:
+        // ( -1, 0): N is to my LEFT  → N's right (7/16) lands on me
+        // ( +1,-1): N is above-right → N's below-left (3/16) lands on me
+        // (  0,-1): N is directly above → N's below (5/16) lands on me
+        // ( -1,-1): N is above-left  → N's below-right (1/16) lands on me
+        for(int i = 0; i < 4; i++){
+          vec2 off2;  float coefToMe;
+          if(i == 0){ off2 = vec2(-1.0, 0.0); coefToMe = 7.0/16.0; }
+          else if(i == 1){ off2 = vec2(1.0, -1.0); coefToMe = 3.0/16.0; }
+          else if(i == 2){ off2 = vec2(0.0, -1.0); coefToMe = 5.0/16.0; }
+          else { off2 = vec2(-1.0, -1.0); coefToMe = 1.0/16.0; }
+          vec2 nUV = v_uv + off2 * u_texel;
+          if(nUV.x < 0.0 || nUV.x > 1.0 || nUV.y < 0.0 || nUV.y > 1.0) continue;
+          if(layerAt(nUV) != cur) continue;
+          float nAcc = texture(u_acc, nUV).r;
+          float nBit = step(0.5, nAcc);
+          float nErr = nAcc - nBit;
+          float share = coefToMe;
+          if(u_renorm > 0.5){
+            // Check N's 4 FS-forward neighbors. Sum coefs of those still waiting
+            // (layer > cur). Renormalize so 100% of N's error is consumed by
+            // its waiting forward neighbors (energy conservation).
+            float sumActive = 0.0;
+            for(int j = 0; j < 4; j++){
+              vec2 fwdN;  float fcoef;
+              if(j == 0){ fwdN = vec2(1.0, 0.0);  fcoef = 7.0/16.0; }
+              else if(j == 1){ fwdN = vec2(-1.0, 1.0); fcoef = 3.0/16.0; }
+              else if(j == 2){ fwdN = vec2(0.0, 1.0);  fcoef = 5.0/16.0; }
+              else { fwdN = vec2(1.0, 1.0); fcoef = 1.0/16.0; }
+              vec2 fUV = nUV + fwdN * u_texel;
+              if(fUV.x < 0.0 || fUV.x > 1.0 || fUV.y < 0.0 || fUV.y > 1.0) continue;
+              if(layerAt(fUV) > cur) sumActive += fcoef;
+            }
+            if(sumActive > 0.0001) share = coefToMe / sumActive;
+            else share = 0.0;
+          }
+          val += nErr * share;
+        }
+      } else {
+        // Equal-split across unprocessed ortho neighbors (original Dizzy)
+        for(int dir = 0; dir < 4; dir++){
+          vec2 off2;
+          if(dir == 0) off2 = vec2(-1.0, 0.0);
+          else if(dir == 1) off2 = vec2(1.0, 0.0);
+          else if(dir == 2) off2 = vec2(0.0, -1.0);
+          else off2 = vec2(0.0, 1.0);
+          vec2 nUV = v_uv + off2 * u_texel;
+          if(nUV.x < 0.0 || nUV.x > 1.0 || nUV.y < 0.0 || nUV.y > 1.0) continue;
+          int nLayer = layerAt(nUV);
+          if(nLayer != cur) continue;
+          float nAcc = texture(u_acc, nUV).r;
+          float nBit = step(0.5, nAcc);
+          float nErr = nAcc - nBit;
+          int unpro = 0;
+          for(int d2 = 0; d2 < 4; d2++){
+            vec2 off3;
+            if(d2 == 0) off3 = vec2(-1.0, 0.0);
+            else if(d2 == 1) off3 = vec2(1.0, 0.0);
+            else if(d2 == 2) off3 = vec2(0.0, -1.0);
+            else off3 = vec2(0.0, 1.0);
+            vec2 nnUV = nUV + off3 * u_texel;
+            if(nnUV.x < 0.0 || nnUV.x > 1.0 || nnUV.y < 0.0 || nnUV.y > 1.0) continue;
+            if(layerAt(nnUV) > cur) unpro++;
+          }
+          if(unpro > 0) val += nErr / float(unpro);
+        }
+      }
+      outColor = vec4(val, 0.0, 0.0, 1.0);
+    }`;
+
+  function compileProg(vsSrc, fsSrc){
+    function shader(type, src){
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src); gl.compileShader(s);
+      if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+      return s;
+    }
+    const p = gl.createProgram();
+    gl.attachShader(p, shader(gl.VERTEX_SHADER, vsSrc));
+    gl.attachShader(p, shader(gl.FRAGMENT_SHADER, fsSrc));
+    gl.linkProgram(p);
+    if(!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    return p;
+  }
+  const prog = compileProg(vs, fs);
+  gl.useProgram(prog);
+
+  // Quad
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1,  -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+  const aPos = gl.getAttribLocation(prog, 'a_pos');
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+  // Acc ping-pong textures (RGBA32F). Create FIRST on TEXTURE2 (a scratch
+  // unit) so subsequent bindings don't clobber TEXTURE0/1 which the shader
+  // expects for u_acc and u_layer.
+  function makeAccTex(initFloat32){
+    const t = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE2);  // scratch unit — won't conflict with u_acc(0)/u_layer(1)
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    let rgba = null;
+    if(initFloat32){
+      rgba = new Float32Array(W * H * 4);
+      for(let i = 0; i < W * H; i++) rgba[i*4] = initFloat32[i];
+    }
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, W, H, 0, gl.RGBA, gl.FLOAT, rgba);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    return t;
+  }
+  let texA = makeAccTex(gray);
+  let texB = makeAccTex(null);
+
+  // Layer texture — bind to TEXTURE1 explicitly, AFTER acc tex creation
+  // (so this unit-1 binding sticks).
+  const layerTex = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, layerTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, W, H, 0, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array(layerMask.buffer));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.uniform1i(gl.getUniformLocation(prog, 'u_layer'), 1);
+
+  function makeFBO(tex){
+    const f = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    if(gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE){
+      throw new Error('FBO incomplete');
+    }
+    return f;
+  }
+  let fboA = makeFBO(texA);
+  let fboB = makeFBO(texB);
+
+  const uAcc = gl.getUniformLocation(prog, 'u_acc');
+  const uLayer = gl.getUniformLocation(prog, 'u_currentLayer');
+  const uTexel = gl.getUniformLocation(prog, 'u_texel');
+  const uFsWeights = gl.getUniformLocation(prog, 'u_fsWeights');
+  const uRenorm = gl.getUniformLocation(prog, 'u_renorm');
+  gl.uniform2f(uTexel, 1.0 / W, 1.0 / H);
+  gl.uniform1f(uFsWeights, window._useFsWeights ? 1.0 : 0.0);
+  gl.uniform1f(uRenorm, window._useRenorm ? 1.0 : 0.0);
+
+  gl.viewport(0, 0, W, H);
+
+  const t0 = performance.now();
+  // N passes; ping-pong
+  for(let pass = 0; pass < numLayers; pass++){
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fboB); // write to B
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texA);       // read from A
+    gl.uniform1i(uAcc, 0);
+    gl.uniform1f(uLayer, pass);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    // Swap
+    let tt = texA; texA = texB; texB = tt;
+    let ft = fboA; fboA = fboB; fboB = ft;
+  }
+  gl.finish && gl.finish();
+  const tMs = performance.now() - t0;
+
+  // Read back result (now in texA after final swap)
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fboA);
+  const out = new Float32Array(W * H * 4);  // RGBA32F readback
+  gl.readPixels(0, 0, W, H, gl.RGBA, gl.FLOAT, out);
+
+  // Pull R channel
+  const r = new Float32Array(W * H);
+  for(let i = 0; i < W * H; i++) r[i] = out[i*4];
+  return { bits: r, timeMs: tMs };
+}
+
+// ─── GPU WAVEFRONT FS (Metaxas 2000 — bit-identical to sequential FS) ──
+// Schedule: pixel (x, y) is processed at time t = 2y + x.
+// Proven: all FS backward deps are at t' < t, no two same-t pixels are FS-dep.
+// Implementation: RGBA32F accumulator texture, initialized with source values.
+// Each pass quantizes one diagonal d = 2y + x. Non-diagonal pixels pass through.
+// Pull-based: when my turn, I read my 4 backward FS neighbors' stored acc values,
+// compute their errors (acc - step(0.5, acc)) and accumulate into my source value.
+function runWavefrontGPU(gray, W, H) {
+  const off = document.createElement('canvas');
+  off.width = W; off.height = H;
+  const gl = off.getContext('webgl2', { preserveDrawingBuffer: true, antialias: false });
+  if (!gl) throw new Error('WebGL2 not supported');
+  const ext = gl.getExtension('EXT_color_buffer_float');
+  if (!ext) throw new Error('EXT_color_buffer_float not supported');
+
+  const vs = `#version 300 es
+    in vec2 a_pos;
+    out vec2 v_uv;
+    void main(){ v_uv = a_pos * 0.5 + 0.5; gl_Position = vec4(a_pos, 0.0, 1.0); }`;
+
+  // Fragment: one wavefront pass.
+  // - Compute my pixel coords (x, y) and myT = 2y + x.
+  // - If myT != passT: pass through (preserve my stored acc).
+  // - If myT == passT: pull from 4 backward FS neighbors, compute my final acc.
+  const fs = `#version 300 es
+    precision highp float;
+    precision highp int;
+    precision highp sampler2D;
+    in vec2 v_uv;
+    out vec4 outColor;
+    uniform sampler2D u_acc;
+    uniform sampler2D u_src;   // original source values (read-only)
+    uniform int u_passT;
+    uniform ivec2 u_size;      // (W, H)
+
+    void main(){
+      ivec2 sz = u_size;
+      // Use integer pixel coords via gl_FragCoord (no float UV arithmetic)
+      ivec2 myPx = ivec2(gl_FragCoord.xy);
+      int x = myPx.x;
+      int y = myPx.y;
+      int myT = 2 * y + x;
+
+      float storedAcc = texelFetch(u_acc, myPx, 0).r;
+
+      if(myT != u_passT){
+        outColor = vec4(storedAcc, 0.0, 0.0, 1.0);
+        return;
+      }
+
+      // My turn — pull from 4 backward FS neighbors via integer texelFetch.
+      float v = texelFetch(u_src, myPx, 0).r;  // original source value
+
+      // West (x-1, y): coef 7/16
+      if(x - 1 >= 0){
+        float nAcc = texelFetch(u_acc, ivec2(x - 1, y), 0).r;
+        float nBit = step(0.5, nAcc);
+        v += (nAcc - nBit) * (7.0/16.0);
+      }
+      // NE (x+1, y-1): coef 3/16
+      if(y - 1 >= 0 && x + 1 < sz.x){
+        float nAcc = texelFetch(u_acc, ivec2(x + 1, y - 1), 0).r;
+        float nBit = step(0.5, nAcc);
+        v += (nAcc - nBit) * (3.0/16.0);
+      }
+      // N (x, y-1): coef 5/16
+      if(y - 1 >= 0){
+        float nAcc = texelFetch(u_acc, ivec2(x, y - 1), 0).r;
+        float nBit = step(0.5, nAcc);
+        v += (nAcc - nBit) * (5.0/16.0);
+      }
+      // NW (x-1, y-1): coef 1/16
+      if(y - 1 >= 0 && x - 1 >= 0){
+        float nAcc = texelFetch(u_acc, ivec2(x - 1, y - 1), 0).r;
+        float nBit = step(0.5, nAcc);
+        v += (nAcc - nBit) * (1.0/16.0);
+      }
+
+      outColor = vec4(v, 0.0, 0.0, 1.0);
+    }`;
+
+  function shader(type, src){
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  }
+  const prog = gl.createProgram();
+  gl.attachShader(prog, shader(gl.VERTEX_SHADER, vs));
+  gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(prog);
+  if(!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+  gl.useProgram(prog);
+
+  // Quad
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1,  -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+  const aPos = gl.getAttribLocation(prog, 'a_pos');
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+  function makeAccTex(unit, initFloat32){
+    const t = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE0 + unit);
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    let rgba = null;
+    if(initFloat32){
+      rgba = new Float32Array(W * H * 4);
+      for(let i = 0; i < W * H; i++) rgba[i*4] = initFloat32[i];
+    }
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, W, H, 0, gl.RGBA, gl.FLOAT, rgba);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    return t;
+  }
+  // Source texture (read-only) on TEXTURE2
+  const srcTex = makeAccTex(2, gray);
+  gl.uniform1i(gl.getUniformLocation(prog, 'u_src'), 2);
+
+  // Accumulator ping-pong on TEXTURE3, TEXTURE4 (use distinct units to avoid clobbering src)
+  // Initialize both with source so pass-through works correctly.
+  let texA = makeAccTex(3, gray);
+  let texB = makeAccTex(4, gray);
+
+  function makeFBO(tex){
+    const f = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    if(gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE){
+      throw new Error('FBO incomplete');
+    }
+    return f;
+  }
+  let fboA = makeFBO(texA);
+  let fboB = makeFBO(texB);
+
+  const uAcc = gl.getUniformLocation(prog, 'u_acc');
+  const uPassT = gl.getUniformLocation(prog, 'u_passT');
+  const uSize = gl.getUniformLocation(prog, 'u_size');
+  gl.uniform2i(uSize, W, H);
+
+  gl.viewport(0, 0, W, H);
+
+  const maxT = 2 * (H - 1) + (W - 1);
+  const t0 = performance.now();
+  for(let t = 0; t <= maxT; t++){
+    // Read from texA, write to texB
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fboB);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texA);
+    gl.uniform1i(uAcc, 0);
+    gl.uniform1i(uPassT, t);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    // Swap
+    let tt = texA; texA = texB; texB = tt;
+    let ft = fboA; fboA = fboB; fboB = ft;
+  }
+  gl.finish && gl.finish();
+  const tMs = performance.now() - t0;
+
+  // Read back
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fboA);
+  const out = new Float32Array(W * H * 4);
+  gl.readPixels(0, 0, W, H, gl.RGBA, gl.FLOAT, out);
+  const r = new Float32Array(W * H);
+  for(let i = 0; i < W * H; i++) r[i] = out[i*4];
+  return { bits: r, timeMs: tMs, numPasses: maxT + 1 };
+}
+
+// ─── DRIVER ─────────────────────────────────────────────────────────────
+function getSourceCanvas(){
+  const sel = document.getElementById('srcSel').value;
+  if(sel === 'testpattern') return makeTestPattern();
+  if(sel === 'gradient') return makeGradient();
+  if(sel === 'block') return makeBlock();
+  return makeTestPattern();
+}
+
+async function runComparison(){
+  log('--- run ---');
+  window._useFsWeights = document.getElementById('fsWeightsCk').checked;
+  window._useRenorm = document.getElementById('renormCk').checked;
+  log('FS weights: ' + (window._useFsWeights ? 'ON (7/3/5/1)' : 'OFF (equal-split Dizzy)') + ' | renorm: ' + (window._useRenorm ? 'ON' : 'OFF'));
+  const scale = parseInt(document.getElementById('resSel').value, 10) || 1;
+  const src = getSourceCanvas();
+  // Resize source canvas to scale
+  let canvas = src;
+  if(scale !== 1){
+    const c2 = document.createElement('canvas');
+    c2.width = src.width * scale; c2.height = src.height * scale;
+    const ctx2 = c2.getContext('2d');
+    ctx2.imageSmoothingEnabled = false;
+    ctx2.drawImage(src, 0, 0, c2.width, c2.height);
+    canvas = c2;
+  }
+  const { gray, W, H } = imgToGray(canvas);
+  log(`source ${W}×${H}`);
+
+  // Display source
+  const srcCv = document.getElementById('srcCanvas');
+  srcCv.width = W; srcCv.height = H;
+  const sCtx = srcCv.getContext('2d');
+  sCtx.drawImage(canvas, 0, 0);
+  document.getElementById('srcStats').textContent = `${W}×${H}`;
+
+  // CPU FS
+  const fsT0 = performance.now();
+  const fsBits = fsCPU(gray, W, H);
+  const fsMs = performance.now() - fsT0;
+  const fsCv = document.getElementById('fsCanvas');
+  fsCv.width = W; fsCv.height = H;
+  grayToCanvas(fsCv, fsBits);
+  document.getElementById('fsStats').textContent = `CPU FS: ${fsMs.toFixed(0)} ms`;
+  log(`CPU FS: ${fsMs.toFixed(0)} ms`);
+
+  // Layer mask generation (mode selectable)
+  const layerMode = document.getElementById('layerSel').value;
+  log('generating layer mask: ' + layerMode);
+  await new Promise(r => setTimeout(r, 10));  // yield to update UI
+  const maskT0 = performance.now();
+  let mask, fallback = 0, numLayers = 8;
+  if (layerMode === 'vc8') {
+    ({ mask, fallback } = generateLayerMask(W, H, 8));
+    numLayers = 8;
+  } else if (layerMode === 'causal8') {
+    ({ mask } = generateSpatialMask(W, H, 8, 1, 3, false));
+    numLayers = 8;
+  } else if (layerMode === 'causal16') {
+    ({ mask } = generateSpatialMask(W, H, 16, 2, 5, false));
+    numLayers = 16;
+  } else if (layerMode === 'causal16j') {
+    ({ mask } = generateSpatialMask(W, H, 16, 2, 5, true));
+    numLayers = 16;
+  } else if (layerMode === 'causal32') {
+    ({ mask } = generateSpatialMask(W, H, 32, 3, 7, false));
+    numLayers = 32;
+  }
+  const maskMs = performance.now() - maskT0;
+  log(`mask: ${maskMs.toFixed(0)} ms (${fallback} fallbacks, N=${numLayers})`);
+
+  // GPU Layered Dizzy
+  await new Promise(r => setTimeout(r, 10));
+  try {
+    const { bits: dzBits, timeMs: dzMs } = runDizzyGPU(gray, W, H, mask, numLayers);
+    const dzCv = document.getElementById('dzCanvas');
+    dzCv.width = W; dzCv.height = H;
+    grayToCanvas(dzCv, dzBits);
+    document.getElementById('dzStats').textContent = `GPU Dizzy: ${dzMs.toFixed(1)} ms (${(fsMs / dzMs).toFixed(1)}× faster than CPU FS) — mask ${maskMs.toFixed(0)} ms one-time`;
+    log(`GPU Dizzy: ${dzMs.toFixed(1)} ms — ${(fsMs / dzMs).toFixed(1)}× faster than CPU FS`);
+    // Coverage compare
+    let fsOn = 0, dzOn = 0;
+    for(let i = 0; i < W * H; i++){
+      if(fsBits[i] >= 0.5) fsOn++;
+      if(dzBits[i] >= 0.5) dzOn++;
+    }
+    log(`coverage: FS ${(fsOn / (W*H) * 100).toFixed(2)}%  Dizzy ${(dzOn / (W*H) * 100).toFixed(2)}%`);
+  } catch(e){
+    log('GPU Dizzy ERROR: ' + e.message);
+    document.getElementById('dzStats').textContent = 'ERROR: ' + e.message;
+  }
+
+  // GPU Wavefront FS (Metaxas — bit-identical to sequential FS)
+  await new Promise(r => setTimeout(r, 10));
+  try {
+    const { bits: wfAcc, timeMs: wfMs, numPasses } = runWavefrontGPU(gray, W, H);
+    // Threshold accumulator → bits
+    const wfBits = new Uint8Array(W * H);
+    for(let i = 0; i < W * H; i++) wfBits[i] = wfAcc[i] >= 0.5 ? 1 : 0;
+    const wfCv = document.getElementById('wfCanvas');
+    wfCv.width = W; wfCv.height = H;
+    grayToCanvas(wfCv, wfBits);
+    // Compare bit-for-bit with CPU FS
+    let diff = 0, wfOn = 0;
+    for(let i = 0; i < W * H; i++){
+      if(wfBits[i] !== fsBits[i]) diff++;
+      if(wfBits[i]) wfOn++;
+    }
+    const diffPct = (diff / (W * H) * 100).toFixed(3);
+    document.getElementById('wfStats').textContent = `GPU Wavefront: ${wfMs.toFixed(0)} ms (${numPasses} passes) — diff vs CPU FS: ${diff} pixels (${diffPct}%)`;
+    log(`GPU Wavefront FS: ${wfMs.toFixed(0)} ms (${numPasses} passes, ${(fsMs / wfMs).toFixed(2)}× vs CPU FS)`);
+    log(`bit diff vs CPU FS: ${diff} / ${W*H} (${diffPct}%)  coverage: ${(wfOn/(W*H)*100).toFixed(2)}%`);
+  } catch(e){
+    log('GPU Wavefront ERROR: ' + e.message);
+    document.getElementById('wfStats').textContent = 'ERROR: ' + e.message;
+  }
+}
+
+document.getElementById('goBtn').addEventListener('click', runComparison);
+window.addEventListener('load', () => setTimeout(runComparison, 100));
+</script>
+</body>
+</html>

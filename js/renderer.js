@@ -990,11 +990,24 @@ function swapSrcTextures(){
 }
 
 // Video frame callback — marks when a new video frame is available
+// Start (or restart) the requestVideoFrameCallback loop. Each call bumps a
+// generation token; the in-flight tick bails as soon as a newer loop supersedes
+// it, so camera↔video switches can't stack multiple rVFC chains (which used to
+// double/triple per-frame texture uploads for the rest of the session).
+// NOTE: call this ONCE to start the loop — do NOT pass it to
+// requestVideoFrameCallback as the per-frame callback (that would spawn a new
+// generation every frame). The internal `tick` is the per-frame callback.
 function onVideoFrame(){
-  videoFrameReady=true;
-  if((camOn||videoOn)&&$vid.requestVideoFrameCallback){
-    $vid.requestVideoFrameCallback(onVideoFrame);
+  const gen = (window._vidGen = (window._vidGen||0) + 1);
+  function tick(){
+    if((window._vidGen||0)!==gen) return; // a newer loop took over — stop
+    videoFrameReady=true;
+    if((camOn||videoOn)&&$vid.requestVideoFrameCallback){
+      $vid.requestVideoFrameCallback(tick);
+    }
   }
+  videoFrameReady=true;
+  if($vid.requestVideoFrameCallback) $vid.requestVideoFrameCallback(tick);
 }
 
 
@@ -1350,6 +1363,12 @@ async function runAmtPrepass(){
     return;
   }
   window._amtPrepassRunning = true;
+  // Capture the staleness token at start. invalidateAmt() bumps _amtSeq on every
+  // source/ink/mode change; if it advances while this prepass is in flight, the
+  // master we're baking is for an OLD source — so requeue a fresh prepass in the
+  // finally. Without this, a second upload arriving mid-prepass gets dropped by
+  // the re-entry guard and the FIRST image's halftone composites over it.
+  const startSeq = window._amtSeq || 0;
   try {
     await _runAmtPrepassImpl();
   } catch(e) {
@@ -1360,6 +1379,11 @@ async function runAmtPrepass(){
     // false, schedule a fresh draw so the canvas updates with the new masters.
     try { markDirty(); } catch(e) {}
     try { scheduleRender(); } catch(e) {}
+    // Source/ink/mode changed during the bake → this master is stale. Re-run.
+    if ((window._amtSeq || 0) !== startSeq) {
+      console.log('[RisoAmt] source changed during prepass — requeuing');
+      setTimeout(runAmtPrepass, 0);
+    }
   }
 }
 

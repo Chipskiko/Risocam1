@@ -599,6 +599,11 @@ function setMode(m){
   // Static-source-only; the prepass takes ~200ms at 300dpi.
   if(m === 'flat' && window.R && window.R.runAmtPrepass){
     setTimeout(window.R.runAmtPrepass, 0);
+  } else if(m !== 'flat' && window.R && window.R.invalidateAmt){
+    // Leaving RISO (or entering a non-RISO mode): normalize u_useAmt → 0 so a
+    // stale "master ready" flag (from flat, or grain Grain-Touch) can't leak
+    // into the new mode's render path.
+    window.R.invalidateAmt();
   }
   // Three-row settings layout:
   //   Row 1 — primary mode controls (size knob + shape selector + pressure)

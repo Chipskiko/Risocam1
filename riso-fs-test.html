@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RISO driver-faithful FS — A3 @ chosen DPI</title>
+<style>
+  body { margin: 0; background: #1a1a1a; color: #ddd; font: 14px/1.4 ui-monospace, Menlo, monospace; }
+  #app { max-width: 1800px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 16px; margin: 0 0 6px; letter-spacing: 0.04em; }
+  .sub { color: #888; margin-bottom: 14px; font-size: 12px; }
+  #ctrls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 14px; padding: 10px; background: #222; border: 1px solid #333; }
+  #ctrls label { display: flex; gap: 6px; align-items: center; font-size: 12px; color: #aaa; }
+  #ctrls select, #ctrls input { background: #1a1a1a; color: #ddd; border: 1px solid #444; padding: 4px 6px; font: inherit; }
+  button { padding: 7px 14px; background: #2a2a2a; color: #ddd; border: 1px solid #444; cursor: pointer; font: inherit; }
+  button:hover { background: #333; }
+  button.primary { background: #d44; border-color: #d44; color: #fff; }
+  #drop { border: 2px dashed #555; padding: 24px; text-align: center; color: #888; cursor: pointer; margin-bottom: 12px; transition: 0.15s; }
+  #drop.over { border-color: #d44; background: #2a1010; color: #d44; }
+  #stats { color: #888; font-size: 12px; margin: 10px 0; padding: 8px; background: #0a0a0a; }
+  #panels { display: flex; gap: 12px; flex-wrap: wrap; }
+  .panel { flex: 1; min-width: 350px; background: #111; border: 1px solid #333; padding: 8px; overflow: auto; }
+  .panel h2 { margin: 0 0 6px; font-size: 12px; color: #aaa; letter-spacing: 0.05em; }
+  .panel .meta { font-size: 10px; color: #666; margin-bottom: 4px; }
+  canvas { image-rendering: pixelated; background: #fff; max-width: 100%; height: auto; display: block; }
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>RISO DRIVER-FAITHFUL FS — direct port of rastertoRISO04A's FUN_0x608b</h1>
+  <div class="sub">
+    Pure FS (standard 7/3/5/1, threshold 0.5) vs the driver's exact path
+    (Table C envelope + Table A/B position modulation + FS, threshold 254).
+    Both serpentine. Image scales to fit A3 (297×420mm) at the chosen DPI.
+  </div>
+
+  <div id="drop">📥 Drop your image (PNG / JPG) here, or click to pick</div>
+
+  <div id="ctrls">
+    <button id="goBtn" class="primary">Re-dither</button>
+    <label>DPI: <select id="dpiSel">
+      <option value="150">150</option>
+      <option value="300" selected>300</option>
+      <option value="600">600 (RISO native, slow)</option>
+    </select></label>
+    <label>Algorithm: <select id="algoSel">
+      <option value="pure">Pure FS (threshold 0.5)</option>
+      <option value="driver" selected>Driver-faithful (Table C + LCG)</option>
+      <option value="both">BOTH (side by side)</option>
+    </select></label>
+    <label><input type="checkbox" id="serpCk" checked> Serpentine</label>
+    <label><input type="checkbox" id="lcgCk" checked> Position LCG modulation</label>
+    <label><input type="checkbox" id="toneCk" checked> Empirical tone curve (~46% cap)</label>
+  </div>
+
+  <div id="stats">Drop an image to begin.</div>
+
+  <div id="panels">
+    <div class="panel">
+      <h2>SOURCE (grayscale, scaled to A3 @ DPI)</h2>
+      <div class="meta" id="srcMeta">—</div>
+      <canvas id="srcCanvas"></canvas>
+    </div>
+    <div class="panel" id="pureCol" style="display:none">
+      <h2>PURE FS — standard 7/3/5/1, threshold 0.5</h2>
+      <div class="meta" id="pureMeta">—</div>
+      <canvas id="pureCanvas"></canvas>
+    </div>
+    <div class="panel" id="driverCol">
+      <h2>DRIVER-FAITHFUL — Table C envelope + position LCG + FS, threshold 254</h2>
+      <div class="meta" id="driverMeta">—</div>
+      <canvas id="driverCanvas"></canvas>
+    </div>
+  </div>
+
+  <input type="file" id="fileInput" accept="image/*" style="display:none">
+</div>
+
+<script>
+'use strict';
+
+// ─── EMPIRICAL TONE CURVE (measured from real prints) ──────────────────────
+// The driver's FS function does NOT do tone-mapping itself — its input is
+// already-converted "ink density per pixel". The color conversion + density
+// cap happens earlier (in the OCM bundle's RGBto2colorForPhoto etc).
+//
+// This curve maps source gray (0=black, 255=white) to "ink density target"
+// (0=no ink, ~117 = max ≈ 0.456 of 255). After running through this curve,
+// the result is what the driver's FS function actually sees.
+//
+// Source: calibration measurements stored in risocam's existing riso-amt.js.
+const EMP_CURVE = (function() {
+  const EMP = [
+    0.0110559,0.0700000,0.0700000,0.0700000,0.0700000,0.0700000,0.0700000,0.0700000,
+    0.0700000,0.0700000,0.0700000,0.0700000,0.0700000,0.0886167,0.0886167,0.0886167,
+    0.0886167,0.0886167,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,
+    0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,
+    0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,
+    0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,
+    0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,
+    0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,
+    0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,
+    0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,
+    0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.0957564,0.1001695,0.1001695,
+    0.1001695,0.1001695,0.1063264,0.1063264,0.1063264,0.1063264,0.1063264,0.1063264,
+    0.1077551,0.1090620,0.1137845,0.1137845,0.1153249,0.1153249,0.1206280,0.1206280,
+    0.1206280,0.1246375,0.1331781,0.1331781,0.1331781,0.1331781,0.1331781,0.1331781,
+    0.1331781,0.1331781,0.1331781,0.1331781,0.1340802,0.1393082,0.1398573,0.1421473,
+    0.1440372,0.1445922,0.1466032,0.1487573,0.1503714,0.1523593,0.1523593,0.1544590,
+    0.1559716,0.1576874,0.1580578,0.1604974,0.1623853,0.1639875,0.1641392,0.1672820,
+    0.1672820,0.1676126,0.1703947,0.1709295,0.1712648,0.1720540,0.1724069,0.1758845,
+    0.1758845,0.1781346,0.1822090,0.1840663,0.1866284,0.1891869,0.1891869,0.1908972,
+    0.1908972,0.1962696,0.1962696,0.1962696,0.1962696,0.2003712,0.2003712,0.2064288,
+    0.2064288,0.2127594,0.2127594,0.2127594,0.2127594,0.2207977,0.2207977,0.2207977,
+    0.2207977,0.2251686,0.2271374,0.2294038,0.2294038,0.2294038,0.2319198,0.2326775,
+    0.2326775,0.2326775,0.2368933,0.2393902,0.2393902,0.2393902,0.2393902,0.2504478,
+    0.2504478,0.2563173,0.2593419,0.2626389,0.2626389,0.2651650,0.2651650,0.2739327,
+    0.2739327,0.2751925,0.2751925,0.2752993,0.2818013,0.2858748,0.2858748,0.2877155,
+    0.2955009,0.2955009,0.2955009,0.2955009,0.2982328,0.3045601,0.3064525,0.3130633,
+    0.3280358,0.3280358,0.3307579,0.3437911,0.3486735,0.3569260,0.3634491,0.3634491,
+    0.3634491,0.3685065,0.3685065,0.3685065,0.3721503,0.3865867,0.3865867,0.3951766,
+    0.3984932,0.4005761,0.4185877,0.4215793,0.4269589,0.4269589,0.4269589,0.4282309,
+    0.4282309,0.4342049,0.4342049,0.4342049,0.4342049,0.4342049,0.4426082,0.4562500,
+    0.4562500,0.4562500,0.4562500,0.4562500,0.4562500,0.4562500,0.4562500,0.4562500,
+    0.4562500,0.4562500,0.4562500,0.4562500,0.4562500,0.4562500,0.4562500,0.4562500
+  ];
+  // EMP is indexed source-convention (0=black, 255=white). Returns coverage 0..1.
+  return EMP;  // direct access by source luminance (0=black, 255=white)
+})();
+
+// ─── BUILD THE THREE DRIVER LUTs ────────────────────────────────────────────
+// These are reproduced from the disassembly of _ImxErrDiffConfigure (0x5c2e)
+// in /Library/Printers/RISO/Filters/04A/rastertoRISO04A i386 slice.
+
+// Table A: chained LCG — pseudo-random position-index permutation.
+// Generation:
+//   raw[k] = (3041 + 967*k) mod 14406    (block at 0x5db1)
+//   chained[0] = raw[0]; chained[k+1] = raw[ chained[k] ]   (block at 0x5dfe)
+const TABLE_A = (function() {
+  const N_RAW = 14406, N_CHAIN = 14405;
+  const raw = new Int32Array(N_RAW);
+  let c = 0xbe1;
+  for (let k = 0; k < N_RAW; k++) {
+    raw[k] = c % N_RAW;
+    c += 0x3c7;
+  }
+  const chain = new Int32Array(N_CHAIN);
+  chain[0] = raw[0];
+  for (let k = 0; k < N_CHAIN - 1; k++) chain[k + 1] = raw[ chain[k] ];
+  return chain;
+})();
+
+// Table B: per-LCG-index tone scaling, 0..353. Formula: t[i] = floor(i*128 / 5223).
+// Generated from the loop at 0x5e58 via magic-constant fast-division.
+const TABLE_B = (function() {
+  const arr = new Int16Array(14406);
+  for (let i = 0; i < 14406; i++) {
+    // The driver uses a magic-multiply that computes ~ i*128 / 5223.
+    // We just reproduce the result directly.
+    arr[i] = Math.floor((i * 128) / 5223);
+  }
+  return arr;
+})();
+
+// Table C: 256-entry threshold envelope (the "RISO tone curve" in algorithmic form).
+// Tent shape: 0 for lightest 13%, ramps up over next 19%, saturated 256 in middle 50%,
+// ramps down over 19%, then 0 for darkest 12%.
+const TABLE_C = (function() {
+  const arr = new Int16Array(256);
+  let ebx = -16, esi = -32768;
+  for (let i = 0; i < 256; i++) {
+    let v;
+    const ebxU = ebx >>> 0;  // unsigned
+    if (ebxU > 0xe0) {
+      v = 0;
+    } else if ((ebx - 0x31) >= 0 && (ebx - 0x31) <= 0x7e) {
+      v = 0x100;
+    } else {
+      v = (0x7000 - Math.abs(esi)) / 48 | 0;
+    }
+    arr[i] = v;
+    ebx += 1;
+    esi += 0x100;
+  }
+  return arr;
+})();
+
+// ─── PURE FLOYD-STEINBERG (serpentine) ──────────────────────────────────────
+// Input: gray Uint8Array (0=white, 255=full ink target)
+// Output: Uint8Array of bits (0/1, 1=ink ON)
+function fsPure(gray, W, H, serpentine, threshold) {
+  const N = W * H;
+  const buf = new Float32Array(N);
+  for (let i = 0; i < N; i++) buf[i] = gray[i] / 255;
+  const bits = new Uint8Array(N);
+  const t = threshold;
+  for (let y = 0; y < H; y++) {
+    const goingRight = !serpentine || (y & 1) === 0;
+    const xStart = goingRight ? 0 : W - 1;
+    const xEnd   = goingRight ? W : -1;
+    const xStep  = goingRight ? 1 : -1;
+    const xDir   = goingRight ? 1 : -1;
+    for (let x = xStart; x !== xEnd; x += xStep) {
+      const i = y * W + x;
+      const v = buf[i];
+      const out = v >= t ? 1 : 0;
+      bits[i] = out;
+      const err = v - out;
+      if (err === 0) continue;
+      const nx1 = x + xDir;
+      if (nx1 >= 0 && nx1 < W) buf[y*W + nx1] += err * (7/16);
+      if (y + 1 < H) {
+        const ny = y + 1;
+        const nxA = x - xDir;
+        if (nxA >= 0 && nxA < W) buf[ny*W + nxA] += err * (3/16);
+                                  buf[ny*W + x]   += err * (5/16);
+        const nxB = x + xDir;
+        if (nxB >= 0 && nxB < W) buf[ny*W + nxB] += err * (1/16);
+      }
+    }
+  }
+  return bits;
+}
+
+// ─── DRIVER-FAITHFUL FS ─────────────────────────────────────────────────────
+// Direct port of FUN_0x608b. Uses fixed-point error buffer (×256) and applies
+// Table C envelope + Table A/B position modulation as a *threshold dither*
+// before comparison against 254. Pre-applies the empirical tone curve so the
+// FS input is in the same "ink density" range the driver actually sees after
+// its color conversion step (capped at ~46% by EMP_CURVE).
+function fsDriver(gray, W, H, serpentine, useLCG, useToneCurve) {
+  const N = W * H;
+  // Error buffers — int32 fixed-point (×256). +2 padding for safe neighbor writes.
+  let errCur = new Int32Array(W + 2);
+  let errNext = new Int32Array(W + 2);
+  const bits = new Uint8Array(N);
+
+  let colCounter = 0;
+  const TA_LEN = TABLE_A.length;
+
+  for (let y = 0; y < H; y++) {
+    const goingRight = !serpentine || (y & 1) === 0;
+    const xStart = goingRight ? 0 : W - 1;
+    const xEnd   = goingRight ? W : -1;
+    const xStep  = goingRight ? 1 : -1;
+    const xDir   = goingRight ? 1 : -1;
+
+    for (let x = xStart; x !== xEnd; x += xStep) {
+      // gray[i] is in ink-coverage convention (0=white, 255=black).
+      // Driver's FS sees DENSITY (0..255 scale) after color conversion.
+      // Without tone curve: feed raw → FS produces ~70% coverage at solid black.
+      // With tone curve: source 0..255 → density 0..117 → matches real driver
+      // output (capped at ~46% coverage).
+      let pInv;
+      if (useToneCurve) {
+        // gray = 255 - source_luminance. Recover source idx and apply EMP.
+        const srcIdx = 255 - gray[y * W + x];  // 0=black source, 255=white source
+        const cov = EMP_CURVE[srcIdx] || 0;     // 0..0.456
+        pInv = Math.round(cov * 255);           // back to 0..117 range
+      } else {
+        pInv = gray[y * W + x];  // raw ink-coverage 0..255
+      }
+
+      // Dither perturbation from Table A → Table B → Table C
+      let ditherAdj = 0;
+      if (useLCG) {
+        const colIdx = TABLE_A[colCounter % TA_LEN];
+        const scale = TABLE_B[colIdx];       // 0..353
+        const env = TABLE_C[pInv];           // 0..256
+        ditherAdj = (scale * env) >> 8;      // 0..353
+      } else {
+        // Without LCG: use just the envelope shape modulating a fixed scale.
+        // Use TABLE_C[pInv] directly as the perturbation scaled to ~0..125.
+        ditherAdj = TABLE_C[pInv] >> 1;
+      }
+
+      // err from buffer (fixed-point /256)
+      const errFx = errCur[x + 1];
+      const err = errFx >> 8;             // signed shift
+      const base = err + pInv;            // base accumulated value
+      const total = base + ditherAdj;
+
+      let ink, newErr;
+      if (total > 254) {
+        ink = 1;
+        newErr = base - 255;              // NOTE: error excludes ditherAdj
+      } else {
+        ink = 0;
+        newErr = base;
+      }
+      bits[y * W + x] = ink;
+
+      if (newErr !== 0) {
+        // Distribute newErr*256 in fixed-point (×256).
+        // Coefficients are stored as 7/16 → 112, 5/16 → 80, 3/16 → 48, 1/16 → 16.
+        const c7 = newErr * 112;
+        const c5 = newErr * 80;
+        const c3 = newErr * 48;
+        const c1 = newErr * 16;
+        // Forward neighbor on same row (7/16)
+        const nx1 = x + xDir;
+        if (nx1 >= 0 && nx1 < W) errCur[nx1 + 1] += c7;
+        // Below row
+        const nxA = x - xDir;   // 3/16 destination (flipped on reverse row)
+        if (nxA >= 0 && nxA < W) errNext[nxA + 1] += c3;
+                                 errNext[x + 1]   += c5;
+        const nxB = x + xDir;   // 1/16 destination
+        if (nxB >= 0 && nxB < W) errNext[nxB + 1] += c1;
+      }
+
+      colCounter++;
+    }
+
+    // Advance to next row
+    const tmp = errCur; errCur = errNext; errNext = tmp;
+    errNext.fill(0);
+  }
+
+  return bits;
+}
+
+// ─── UI ─────────────────────────────────────────────────────────────────────
+const drop = document.getElementById('drop');
+const fileInput = document.getElementById('fileInput');
+const goBtn = document.getElementById('goBtn');
+const srcCanvas = document.getElementById('srcCanvas');
+const pureCanvas = document.getElementById('pureCanvas');
+const driverCanvas = document.getElementById('driverCanvas');
+const pureCol = document.getElementById('pureCol');
+const driverCol = document.getElementById('driverCol');
+const stats = document.getElementById('stats');
+const srcMeta = document.getElementById('srcMeta');
+const pureMeta = document.getElementById('pureMeta');
+const driverMeta = document.getElementById('driverMeta');
+
+let _sourceImg = null;
+
+drop.addEventListener('click', () => fileInput.click());
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', e => {
+  e.preventDefault();
+  drop.classList.remove('over');
+  const f = e.dataTransfer.files[0];
+  if (f) loadFile(f);
+});
+fileInput.addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (f) loadFile(f);
+});
+goBtn.addEventListener('click', run);
+
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      _sourceImg = img;
+      stats.textContent = `Loaded ${file.name} — original ${img.width}×${img.height}`;
+      run();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function renderBitsToCanvas(canvas, bits, W, H) {
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(W, H);
+  for (let i = 0; i < W * H; i++) {
+    const v = bits[i] ? 0 : 255;
+    img.data[i*4] = v; img.data[i*4+1] = v; img.data[i*4+2] = v; img.data[i*4+3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+async function run() {
+  if (!_sourceImg) { stats.textContent = 'No source loaded yet.'; return; }
+  const dpi = parseInt(document.getElementById('dpiSel').value, 10);
+  const algo = document.getElementById('algoSel').value;
+  const serpentine = document.getElementById('serpCk').checked;
+  const useLCG = document.getElementById('lcgCk').checked;
+  const useTone = document.getElementById('toneCk').checked;
+
+  // Fit to A3 at chosen DPI
+  const A3_SHORT = 11.69, A3_LONG = 16.54;
+  const srcAspect = _sourceImg.width / _sourceImg.height;
+  let widthIn, heightIn;
+  if (srcAspect >= 1) {
+    widthIn = A3_LONG;
+    heightIn = Math.min(A3_SHORT, widthIn / srcAspect);
+    if (heightIn === A3_SHORT) widthIn = heightIn * srcAspect;
+  } else {
+    heightIn = A3_LONG;
+    widthIn = Math.min(A3_SHORT, heightIn * srcAspect);
+    if (widthIn === A3_SHORT) heightIn = widthIn / srcAspect;
+  }
+  const W = Math.round(widthIn * dpi);
+  const H = Math.round(heightIn * dpi);
+
+  stats.textContent = `Processing ${W}×${H} (${widthIn.toFixed(1)}″×${heightIn.toFixed(1)}″ @ ${dpi}dpi)…`;
+  await new Promise(r => setTimeout(r, 20));
+
+  srcCanvas.width = W; srcCanvas.height = H;
+  const sCtx = srcCanvas.getContext('2d');
+  sCtx.imageSmoothingEnabled = true;
+  sCtx.imageSmoothingQuality = 'high';
+  sCtx.drawImage(_sourceImg, 0, 0, W, H);
+  const id = sCtx.getImageData(0, 0, W, H);
+  const d = id.data;
+  const gray = new Uint8Array(W * H);
+  for (let i = 0, j = 0; i < d.length; i += 4, j++) {
+    const y = (54 * d[i] + 183 * d[i+1] + 19 * d[i+2]) >> 8;
+    gray[j] = 255 - y;  // INVERT to ink-coverage form
+  }
+  srcMeta.textContent = `${W}×${H}`;
+
+  await new Promise(r => setTimeout(r, 20));
+
+  // Show/hide columns
+  pureCol.style.display = (algo === 'pure' || algo === 'both') ? '' : 'none';
+  driverCol.style.display = (algo === 'driver' || algo === 'both') ? '' : 'none';
+
+  // Run selected algorithms
+  if (algo === 'pure' || algo === 'both') {
+    const t0 = performance.now();
+    const bits = fsPure(gray, W, H, serpentine, 0.5);
+    const dt = performance.now() - t0;
+    let on = 0; for (let i = 0; i < W*H; i++) if (bits[i]) on++;
+    renderBitsToCanvas(pureCanvas, bits, W, H);
+    pureMeta.textContent = `coverage ${(on/(W*H)*100).toFixed(2)}% | ${dt.toFixed(0)} ms`;
+    await new Promise(r => setTimeout(r, 20));
+  }
+  if (algo === 'driver' || algo === 'both') {
+    const t0 = performance.now();
+    const bits = fsDriver(gray, W, H, serpentine, useLCG, useTone);
+    const dt = performance.now() - t0;
+    let on = 0; for (let i = 0; i < W*H; i++) if (bits[i]) on++;
+    renderBitsToCanvas(driverCanvas, bits, W, H);
+    driverMeta.textContent = `coverage ${(on/(W*H)*100).toFixed(2)}% | ${dt.toFixed(0)} ms | LCG: ${useLCG ? 'ON' : 'OFF'} | tone: ${useTone ? 'ON' : 'OFF'}`;
+  }
+
+  stats.textContent =
+    `${W}×${H} (${widthIn.toFixed(1)}″×${heightIn.toFixed(1)}″ A3 @ ${dpi}dpi) | ` +
+    `serpentine: ${serpentine ? 'ON' : 'OFF'} | algorithm: ${algo}`;
+}
+
+stats.textContent = 'Drop the Secret Riso Club test page to dither.';
+</script>
+</body>
+</html>

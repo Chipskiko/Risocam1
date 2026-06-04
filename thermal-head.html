@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RISO Thermal Head Simulator</title>
+<style>
+  :root{
+    --bg:#0b0b0b; --fg:#e6e6e6; --panel:#151515; --line:#262626;
+    --accent:#ff5a36; --muted:#888;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,system-ui,sans-serif;
+    font-size:13px;line-height:1.4}
+  header{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:12px}
+  header h1{margin:0;font-size:14px;font-weight:600;letter-spacing:.02em}
+  header .tag{font-size:11px;color:var(--muted)}
+  main{display:grid;grid-template-columns:280px 1fr;gap:0;min-height:calc(100vh - 49px)}
+  aside{padding:16px;border-right:1px solid var(--line);background:var(--panel);overflow-y:auto}
+  section.canvas-area{padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+  .group{margin-bottom:18px}
+  .group h3{margin:0 0 8px;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  label{display:block;margin-bottom:8px;font-size:12px}
+  label .lbl{display:flex;justify-content:space-between;margin-bottom:3px;color:#bbb}
+  label .lbl .v{color:var(--accent);font-variant-numeric:tabular-nums}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  select,button{background:#1f1f1f;color:var(--fg);border:1px solid #333;border-radius:4px;padding:6px 10px;font-size:12px;width:100%;cursor:pointer;font-family:inherit}
+  select:hover,button:hover{border-color:#555}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#000;font-weight:600}
+  button.primary:hover{background:#ff6e4e;border-color:#ff6e4e}
+  .file-drop{border:1.5px dashed #333;border-radius:6px;padding:18px;text-align:center;cursor:pointer;color:var(--muted);transition:.15s}
+  .file-drop:hover,.file-drop.drag{border-color:var(--accent);color:var(--accent)}
+  .file-drop input{display:none}
+  .row{display:flex;gap:8px}
+  .row > *{flex:1}
+  .canvas-wrap{flex:1;display:flex;align-items:center;justify-content:center;background:
+    linear-gradient(45deg,#1a1a1a 25%,transparent 25%),
+    linear-gradient(-45deg,#1a1a1a 25%,transparent 25%),
+    linear-gradient(45deg,transparent 75%,#1a1a1a 75%),
+    linear-gradient(-45deg,transparent 75%,#1a1a1a 75%);
+    background-size:16px 16px;
+    background-position:0 0,0 8px,8px -8px,-8px 0;
+    background-color:#111;
+    border:1px solid var(--line);border-radius:6px;overflow:auto;padding:20px}
+  canvas{image-rendering:pixelated;image-rendering:crisp-edges;background:#fff;display:block;box-shadow:0 4px 20px rgba(0,0,0,.5)}
+  .stats{display:flex;gap:16px;font-size:11px;color:var(--muted);padding:6px 4px}
+  .stats span b{color:var(--fg);font-weight:500}
+  .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .toolbar .spacer{flex:1}
+  .pill{display:inline-block;padding:2px 8px;background:#222;border:1px solid #333;border-radius:10px;font-size:10px;color:#bbb;letter-spacing:.05em;text-transform:uppercase}
+  .pill.driver{background:#2a1b16;border-color:#5a3527;color:#ffaa90}
+  details{margin-top:8px}
+  details summary{cursor:pointer;font-size:11px;color:var(--muted);user-select:none;padding:4px 0}
+  details summary:hover{color:var(--fg)}
+  details .body{font-size:11px;color:#aaa;padding:6px 0 0;line-height:1.5}
+  details .body code{background:#222;padding:1px 4px;border-radius:3px;font-size:10px}
+  .checkrow{display:flex;align-items:center;gap:6px;margin:6px 0}
+  .checkrow input[type=checkbox]{accent-color:var(--accent);margin:0}
+  .checkrow label{margin:0}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>RISO Thermal Head Simulator</h1>
+  <span class="tag">— what the printer sees, 1‑bit binary master</span>
+</header>
+
+<main>
+<aside>
+
+  <div class="group">
+    <h3>Input</h3>
+    <label class="file-drop" id="drop">
+      <input type="file" id="file" accept="image/*">
+      <div id="dropText">Drop image · click to browse</div>
+    </label>
+    <div class="checkrow"><input type="checkbox" id="invertSrc"><label for="invertSrc">Invert input</label></div>
+  </div>
+
+  <div class="group">
+    <h3>Halftone Mode <span class="pill driver">from GPD</span></h3>
+    <label>
+      <select id="mode">
+        <option value="auto">HT_PATSIZE_AUTO — auto select</option>
+        <option value="supercell" selected>HT_PATSIZE_SUPERCELL_M — stochastic cluster</option>
+        <option value="bayer6">HT_PATSIZE_6x6_M — 6×6 cluster</option>
+        <option value="bayer8">HT_PATSIZE_8x8_M — 8×8 Bayer (default)</option>
+        <option value="grain">GRAIN TOUCH — FM stochastic</option>
+        <option value="fs">Floyd–Steinberg error diffusion</option>
+        <option value="atkinson">Atkinson error diffusion</option>
+        <option value="threshold">Pure threshold (no dither)</option>
+      </select>
+    </label>
+    <details>
+      <summary>What each mode does</summary>
+      <div class="body">
+        The driver's <code>R34F6GU.GPD</code> exposes four options: <b>AUTO</b>, <b>SUPERCELL</b>, <b>6×6</b>, <b>8×8</b> (default).
+        Their actual matrices live inside the binary <code>.dll</code> files — this tool uses standard halftone matrices that match
+        what those modes are. <b>SUPERCELL</b> uses Ostromoukhov & Hersch 1999's stochastic clustered-dot algorithm
+        (disk-packing + Voronoi-rank thresholds). <b>Grain Touch</b> is RISO marketing for FM/stochastic screening.
+      </div>
+    </details>
+  </div>
+
+  <div class="group" id="stochasticGroup">
+    <h3>Stochastic Cluster <span class="pill driver">Ostromoukhov '99</span></h3>
+    <label>
+      <div class="lbl"><span>Disk radius (r)</span><span class="v" id="diskV">8</span></div>
+      <input type="range" id="disk" min="3" max="24" value="8" step="1">
+    </label>
+    <label>
+      <div class="lbl"><span>Matrix size</span><span class="v" id="matSizeV">128</span></div>
+      <input type="range" id="matSize" min="64" max="256" value="128" step="64">
+    </label>
+    <label>
+      <div class="lbl"><span>Visiting path</span></div>
+      <select id="visitPath">
+        <option value="random" selected>Random SFC (most isotropic)</option>
+        <option value="hilbert">Hilbert SFC</option>
+        <option value="scanline">Scanline (periodic — for comparison)</option>
+      </select>
+    </label>
+    <div class="row" style="margin-top:6px">
+      <button id="reroll">↻ Reroll matrix</button>
+    </div>
+    <details style="margin-top:8px">
+      <summary>About this algorithm</summary>
+      <div class="body">
+        Builds an N×N dither matrix by visiting cells in a chosen order, dropping a disk of radius
+        <code>r</code> at each free cell. Dot centers end up min <code>r</code> / max <code>2r</code> apart.
+        Each cell's threshold = rank of its distance to the nearest center → dots grow outward from
+        centers as ink density rises. The natural 2:1 dot/Voronoi-vertex ratio gives bigger black dots
+        in highlights, smaller white dots in shadows — same as RISO's supercell mode.
+        Per the paper: <code>r=8</code> ≈ 150 lpi @ 1200 dpi, larger <code>r</code> improves tone reproduction on
+        high-dot-gain devices (like RISO).
+      </div>
+    </details>
+    <div style="margin-top:10px">
+      <div class="lbl" style="font-size:11px;color:#888;margin-bottom:4px">Matrix preview</div>
+      <canvas id="matPreview" width="128" height="128" style="width:100%;image-rendering:pixelated;background:#fff;border:1px solid #333;border-radius:4px;display:block"></canvas>
+      <div style="font-size:10px;color:#666;margin-top:4px;text-align:center" id="matStats">—</div>
+    </div>
+  </div>
+
+  <div class="group">
+    <h3>Screen</h3>
+    <label>
+      <div class="lbl"><span>Screen angle</span><span class="v" id="angleV">45°</span></div>
+      <input type="range" id="angle" min="0" max="90" value="45" step="1">
+    </label>
+    <label>
+      <div class="lbl"><span>Cell size (px)</span><span class="v" id="cellV">8</span></div>
+      <input type="range" id="cell" min="4" max="32" value="8" step="1">
+    </label>
+    <label>
+      <div class="lbl"><span>LPI equivalent</span><span class="v" id="lpiV">75 lpi @ 600dpi</span></div>
+      <input type="range" id="lpi" min="30" max="200" value="75" step="1">
+    </label>
+  </div>
+
+  <div class="group">
+    <h3>Tonal</h3>
+    <label>
+      <div class="lbl"><span>Gamma</span><span class="v" id="gammaV">1.00</span></div>
+      <input type="range" id="gamma" min="0.3" max="3" value="1" step="0.05">
+    </label>
+    <label>
+      <div class="lbl"><span>Brightness</span><span class="v" id="brightV">0</span></div>
+      <input type="range" id="brightness" min="-100" max="100" value="0" step="1">
+    </label>
+    <label>
+      <div class="lbl"><span>Contrast</span><span class="v" id="contrastV">0</span></div>
+      <input type="range" id="contrast" min="-100" max="100" value="0" step="1">
+    </label>
+  </div>
+
+  <div class="group">
+    <h3>Output</h3>
+    <label>
+      <div class="lbl"><span>Output scale</span><span class="v" id="scaleV">1×</span></div>
+      <input type="range" id="scale" min="1" max="8" value="1" step="1">
+    </label>
+    <label>
+      <div class="lbl"><span>Max width (px)</span><span class="v" id="maxwV">800</span></div>
+      <input type="range" id="maxw" min="200" max="2400" value="800" step="50">
+    </label>
+    <div class="checkrow"><input type="checkbox" id="invertOut"><label for="invertOut">Invert output (white dots)</label></div>
+    <button class="primary" id="download" style="margin-top:10px">Download 1‑bit PNG</button>
+  </div>
+
+</aside>
+
+<section class="canvas-area">
+  <div class="toolbar">
+    <span class="pill" id="modePill">8×8 BAYER</span>
+    <span class="pill" id="sizePill">— × —</span>
+    <span class="pill" id="coveragePill">— % coverage</span>
+    <div class="spacer"></div>
+  </div>
+  <div class="canvas-wrap" id="wrap">
+    <canvas id="out" width="600" height="400"></canvas>
+  </div>
+  <div class="stats">
+    <span>Source: <b id="srcStats">none</b></span>
+    <span>Output: <b id="outStats">—</b></span>
+    <span>Dots ON: <b id="dotStats">—</b></span>
+  </div>
+</section>
+
+</main>
+
+<script>
+// ============================================================
+// HALFTONE MATRICES (the data the .dll files hold internally)
+// ============================================================
+
+// Dispersed-dot Bayer 8x8 (the canonical one — what HT_PATSIZE_8x8_M is)
+// Values 0-63, normalize by /64
+const BAYER8 = [
+   0, 32,  8, 40,  2, 34, 10, 42,
+  48, 16, 56, 24, 50, 18, 58, 26,
+  12, 44,  4, 36, 14, 46,  6, 38,
+  60, 28, 52, 20, 62, 30, 54, 22,
+   3, 35, 11, 43,  1, 33,  9, 41,
+  51, 19, 59, 27, 49, 17, 57, 25,
+  15, 47,  7, 39, 13, 45,  5, 37,
+  63, 31, 55, 23, 61, 29, 53, 21
+];
+
+// 6x6 clustered-dot dither (HT_PATSIZE_6x6_M — RISO uses clustered, not Bayer, at 6x6)
+// Standard 6x6 clustered halftone, 36 levels
+const CLUSTER6 = [
+  34, 29, 17, 21, 30, 35,
+  28, 14,  9, 16, 20, 31,
+  13,  8,  4,  5, 15, 19,
+  12,  3,  0,  1, 10, 18,
+  27,  7,  2,  6, 23, 26,
+  33, 22, 11, 24, 25, 32
+];
+
+// ============================================================
+// STOCHASTIC CLUSTERED-DOT MATRIX
+// (Ostromoukhov & Hersch 1999, "Stochastic Clustered-Dot Dithering")
+//
+// Algorithm:
+//   1. Visit dither cells along a chosen path (random / Hilbert / scanline)
+//   2. At each free cell, drop a disk of radius r — mark covered cells occupied
+//   3. The visited-and-free cells become dot CENTERS
+//   4. For each cell, compute distance to nearest center (with wrap-around)
+//   5. Rank cells by distance; assigned threshold = rank / N
+//      → cells at centers turn on first (small black dots in highlights)
+//      → cells at Voronoi vertices turn on last (small white dots in shadows)
+//   6. r controls dot size: r=8 ≈ 150 lpi @ 1200 dpi
+// ============================================================
+let SUPERCELL = null; // built on demand
+
+// seeded PRNG so the matrix is reproducible (and can be re-rolled)
+function makeRng(seed){
+  let s = (seed | 0) || 1;
+  return () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+}
+
+// Hilbert curve order for power-of-two N
+function hilbertOrder(N){
+  // returns Int32Array of cell indices in Hilbert visiting order
+  const out = new Int32Array(N*N);
+  function d2xy(n, d){
+    let rx, ry, x=0, y=0, t=d;
+    for(let s=1; s<n; s*=2){
+      rx = 1 & (t/2);
+      ry = 1 & (t ^ rx);
+      if(ry === 0){ if(rx === 1){ x = s-1-x; y = s-1-y; } [x,y] = [y,x]; }
+      x += s*rx; y += s*ry;
+      t = Math.floor(t/4);
+    }
+    return [x,y];
+  }
+  for(let d=0; d<N*N; d++){
+    const [x,y] = d2xy(N, d);
+    out[d] = y*N + x;
+  }
+  return out;
+}
+
+function buildStochasticClusteredDot(N, r, pathType, seed){
+  const rng = makeRng(seed);
+  const total = N*N;
+  const occupied = new Uint8Array(total);
+  const centers = [];
+
+  // Build visiting order based on path type
+  let order;
+  if(pathType === 'hilbert' && (N & (N-1)) === 0){
+    order = hilbertOrder(N);
+  } else if(pathType === 'scanline'){
+    order = new Int32Array(total);
+    for(let i=0;i<total;i++) order[i]=i;
+  } else {
+    // random space-filling (default — best per paper)
+    order = new Int32Array(total);
+    for(let i=0;i<total;i++) order[i]=i;
+    // Fisher-Yates with seeded rng
+    for(let i=total-1; i>0; i--){
+      const j = Math.floor(rng()*(i+1));
+      const t = order[i]; order[i] = order[j]; order[j] = t;
+    }
+  }
+
+  // Place disks at free cells along the path
+  const rInt = Math.ceil(r);
+  const r2 = r*r;
+  for(let oi=0; oi<total; oi++){
+    const idx = order[oi];
+    if(occupied[idx]) continue;
+    const cx = idx % N, cy = (idx / N) | 0;
+    centers.push(cx); centers.push(cy);
+    for(let dy=-rInt; dy<=rInt; dy++){
+      const dy2 = dy*dy;
+      for(let dx=-rInt; dx<=rInt; dx++){
+        if(dx*dx + dy2 <= r2){
+          const nx = ((cx+dx) % N + N) % N;
+          const ny = ((cy+dy) % N + N) % N;
+          occupied[ny*N + nx] = 1;
+        }
+      }
+    }
+  }
+
+  // Paper §3: per-Voronoi-cell area-equal iso-line threshold assignment.
+  //   1) Assign each cell to its nearest center (Voronoi partition, toroidal).
+  //   2) Within each region, rank by distance-to-center → fractional rank ∈ (0,1).
+  //      The natural CDF of cell-count vs r grows as r², so within-region ranking
+  //      directly implements equal-area iso-intensity rings.
+  //   3) Globally renumber by fractional rank → uniform threshold distribution (§3e).
+  const half = N/2;
+  const ncenters = centers.length / 2;
+  const dists = new Float32Array(total);
+  const ownerOf = new Int32Array(total);
+  for(let y=0; y<N; y++){
+    for(let x=0; x<N; x++){
+      let minD = Infinity, minIdx = 0;
+      for(let c=0; c<ncenters; c++){
+        let dx = x - centers[c*2];
+        let dy = y - centers[c*2+1];
+        if(dx > half) dx -= N; else if(dx < -half) dx += N;
+        if(dy > half) dy -= N; else if(dy < -half) dy += N;
+        const d = dx*dx + dy*dy;
+        if(d < minD){ minD = d; minIdx = c; }
+      }
+      dists[y*N + x] = minD;
+      ownerOf[y*N + x] = minIdx;
+    }
+  }
+
+  // Voronoi-region grouping + per-region fractional rank
+  const regionCells = Array.from({length: ncenters}, () => []);
+  for(let i=0; i<total; i++) regionCells[ownerOf[i]].push(i);
+  const fracRank = new Float32Array(total);
+  for(let c=0; c<ncenters; c++){
+    const cells = regionCells[c];
+    cells.sort((a,b)=> dists[a] - dists[b]);
+    const n = cells.length;
+    for(let k=0; k<n; k++){
+      fracRank[cells[k]] = (k + 0.5) / n + rng() * 1e-6;
+    }
+  }
+
+  // Global renumber → uniform threshold distribution
+  const idx = new Int32Array(total);
+  for(let i=0; i<total; i++) idx[i]=i;
+  const idxArr = Array.from(idx).sort((a,b)=> fracRank[a] - fracRank[b]);
+  const thresh = new Float32Array(total);
+  for(let rank=0; rank<total; rank++){
+    thresh[idxArr[rank]] = (rank + 0.5) / total;
+  }
+
+  return { data: thresh, size: N, centers, dotCount: ncenters };
+}
+
+// ============================================================
+// STATE
+// ============================================================
+const els = {};
+['drop','file','dropText','mode','angle','cell','lpi','gamma','brightness','contrast',
+ 'scale','maxw','invertSrc','invertOut','download','out','wrap',
+ 'angleV','cellV','lpiV','gammaV','brightV','contrastV','scaleV','maxwV',
+ 'modePill','sizePill','coveragePill','srcStats','outStats','dotStats',
+ 'disk','diskV','matSize','matSizeV','visitPath','reroll','matPreview','matStats',
+ 'stochasticGroup'
+].forEach(id => els[id] = document.getElementById(id));
+
+// ============================================================
+// MATRIX BUILD STATE
+// ============================================================
+let _matrixSeed = 1;
+function rebuildStochasticMatrix(){
+  const N = +els.matSize.value;
+  const r = +els.disk.value;
+  const path = els.visitPath.value;
+  const t0 = performance.now();
+  SUPERCELL = buildStochasticClusteredDot(N, r, path, _matrixSeed);
+  const ms = (performance.now() - t0).toFixed(0);
+  drawMatrixPreview();
+  els.matStats.textContent = `${N}×${N} · ${SUPERCELL.dotCount} centers · built in ${ms}ms`;
+}
+function drawMatrixPreview(){
+  if(!SUPERCELL) return;
+  const c = els.matPreview, ctx = c.getContext('2d');
+  const N = SUPERCELL.size;
+  c.width = N; c.height = N;
+  const img = ctx.createImageData(N, N);
+  const d = img.data, t = SUPERCELL.data;
+  for(let i=0;i<t.length;i++){
+    const v = Math.round(t[i] * 255);
+    d[i*4] = v; d[i*4+1] = v; d[i*4+2] = v; d[i*4+3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+let sourceImg = null;
+let sourceCanvas = document.createElement('canvas');
+
+// ============================================================
+// LOADING
+// ============================================================
+function loadFile(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      sourceImg = img;
+      els.srcStats.textContent = `${img.width}×${img.height}`;
+      els.dropText.textContent = file.name;
+      render();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+els.file.addEventListener('change', e => loadFile(e.target.files[0]));
+['dragover','dragenter'].forEach(ev=>els.drop.addEventListener(ev,e=>{e.preventDefault();els.drop.classList.add('drag');}));
+['dragleave','dragend','drop'].forEach(ev=>els.drop.addEventListener(ev,e=>{e.preventDefault();els.drop.classList.remove('drag');}));
+els.drop.addEventListener('drop', e => { e.preventDefault(); loadFile(e.dataTransfer.files[0]); });
+
+// load a default test image
+window.addEventListener('load', () => {
+  // Build the stochastic clustered-dot matrix up front
+  rebuildStochasticMatrix();
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => { sourceImg = img; els.srcStats.textContent=`${img.width}×${img.height}`; els.dropText.textContent='test_images/03_skin_tones.png'; render(); };
+  img.onerror = () => { drawPlaceholder(); };
+  img.src = 'test_images/03_skin_tones.png';
+});
+
+function drawPlaceholder(){
+  const c = els.out, ctx = c.getContext('2d');
+  c.width = 600; c.height = 240;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,c.width,c.height);
+  ctx.fillStyle = '#888'; ctx.font = '14px monospace';
+  ctx.textAlign='center';
+  ctx.fillText('Drop an image to see thermal-head output', c.width/2, c.height/2);
+}
+
+// ============================================================
+// SLIDER WIRING
+// ============================================================
+function wireSlider(id, valId, fmt){
+  els[id].addEventListener('input', () => {
+    els[valId].textContent = fmt(els[id].value);
+    render();
+  });
+  els[valId].textContent = fmt(els[id].value);
+}
+wireSlider('angle','angleV', v=>v+'°');
+wireSlider('cell','cellV', v=>v);
+wireSlider('lpi','lpiV', v=>v+' lpi @ 600dpi');
+wireSlider('gamma','gammaV', v=>parseFloat(v).toFixed(2));
+wireSlider('brightness','brightV', v=>v);
+wireSlider('contrast','contrastV', v=>v);
+wireSlider('scale','scaleV', v=>v+'×');
+wireSlider('maxw','maxwV', v=>v);
+els.mode.addEventListener('change', () => { updateStochasticVisibility(); render(); });
+els.invertSrc.addEventListener('change', render);
+els.invertOut.addEventListener('change', render);
+
+// Stochastic matrix controls
+wireSlider('disk','diskV', v=>v);
+wireSlider('matSize','matSizeV', v=>v);
+els.disk.addEventListener('change', () => { rebuildStochasticMatrix(); render(); });
+els.matSize.addEventListener('change', () => { rebuildStochasticMatrix(); render(); });
+els.visitPath.addEventListener('change', () => { rebuildStochasticMatrix(); render(); });
+els.reroll.addEventListener('click', () => { _matrixSeed = (Math.random()*1e9)|0; rebuildStochasticMatrix(); render(); });
+
+function updateStochasticVisibility(){
+  const m = els.mode.value;
+  els.stochasticGroup.style.display = (m === 'supercell' || m === 'auto') ? '' : 'none';
+}
+updateStochasticVisibility();
+
+// LPI slider also derives cell size
+els.lpi.addEventListener('input', () => {
+  const lpi = +els.lpi.value;
+  // cell px = 600 / lpi (for 600dpi master)
+  const cellPx = Math.max(4, Math.round(600/lpi));
+  els.cell.value = cellPx;
+  els.cellV.textContent = cellPx;
+});
+
+// ============================================================
+// RENDER PIPELINE
+// ============================================================
+function render(){
+  if(!sourceImg) return;
+
+  // 1) Resample source to output dimensions
+  const maxW = +els.maxw.value;
+  const ratio = sourceImg.height / sourceImg.width;
+  const W = Math.min(sourceImg.width, maxW);
+  const H = Math.round(W * ratio);
+
+  sourceCanvas.width = W;
+  sourceCanvas.height = H;
+  const sctx = sourceCanvas.getContext('2d');
+  sctx.drawImage(sourceImg, 0, 0, W, H);
+
+  // 2) Get pixel data, convert to luminance + apply tonal
+  const img = sctx.getImageData(0, 0, W, H);
+  const px = img.data;
+  const lum = new Float32Array(W * H);
+  const gamma = +els.gamma.value;
+  const bright = +els.brightness.value / 100;
+  const contrast = +els.contrast.value / 100;
+  const invSrc = els.invertSrc.checked;
+
+  for(let i = 0, j = 0; i < px.length; i += 4, j++){
+    // Rec.709 luminance
+    let l = (0.2126*px[i] + 0.7152*px[i+1] + 0.0722*px[i+2]) / 255;
+    if(invSrc) l = 1 - l;
+    // brightness
+    l += bright;
+    // contrast (around 0.5)
+    l = (l - 0.5) * (1 + contrast) + 0.5;
+    // gamma
+    l = Math.pow(Math.max(0, Math.min(1, l)), 1/gamma);
+    lum[j] = Math.max(0, Math.min(1, l));
+  }
+
+  // 3) Apply halftone — produces a 1-bit array
+  const mode = els.mode.value;
+  const cellPx = +els.cell.value;
+  const angleDeg = +els.angle.value;
+  const bits = halftone(lum, W, H, mode, cellPx, angleDeg);
+
+  // 4) Render bits to canvas, scaled
+  const scale = +els.scale.value;
+  const c = els.out;
+  c.width = W * scale;
+  c.height = H * scale;
+  const ctx = c.getContext('2d');
+  const out = ctx.createImageData(c.width, c.height);
+  const od = out.data;
+  const invOut = els.invertOut.checked;
+  const onColor = invOut ? 255 : 0;
+  const offColor = invOut ? 0 : 255;
+
+  let dotsOn = 0;
+  for(let y = 0; y < H; y++){
+    for(let x = 0; x < W; x++){
+      const bit = bits[y*W + x];
+      if(bit) dotsOn++;
+      const v = bit ? onColor : offColor;
+      // splat into scale × scale block
+      for(let sy = 0; sy < scale; sy++){
+        for(let sx = 0; sx < scale; sx++){
+          const oi = ((y*scale + sy) * c.width + (x*scale + sx)) * 4;
+          od[oi] = v; od[oi+1] = v; od[oi+2] = v; od[oi+3] = 255;
+        }
+      }
+    }
+  }
+  ctx.putImageData(out, 0, 0);
+
+  // 5) Stats
+  const total = W * H;
+  const cov = (dotsOn/total*100);
+  els.sizePill.textContent = `${W}×${H}`;
+  els.coveragePill.textContent = `${cov.toFixed(1)}% ink`;
+  els.outStats.textContent = `${c.width}×${c.height}`;
+  els.dotStats.textContent = `${dotsOn.toLocaleString()} / ${total.toLocaleString()}`;
+  els.modePill.textContent = modeLabel(mode);
+}
+
+function modeLabel(m){
+  return {
+    auto:'AUTO → SUPERCELL', supercell:'STOCHASTIC CLUSTER', bayer6:'6×6 CLUSTER',
+    bayer8:'8×8 BAYER', grain:'GRAIN TOUCH (FM)',
+    fs:'FLOYD–STEINBERG', atkinson:'ATKINSON', threshold:'THRESHOLD'
+  }[m] || m;
+}
+
+// ============================================================
+// HALFTONE ALGORITHMS — output 1-bit per pixel
+// ============================================================
+function halftone(lum, W, H, mode, cellPx, angleDeg){
+  const bits = new Uint8Array(W * H);
+
+  // AUTO: pick based on image character — driver default is supercell for photos
+  if(mode === 'auto') mode = 'supercell';
+
+  if(mode === 'supercell'){
+    // Stochastic clustered-dot (Ostromoukhov & Hersch 1999) — already-uniform threshold matrix
+    if(!SUPERCELL) return bits;
+    const MS = SUPERCELL.size;
+    const T = SUPERCELL.data;
+    const angle = angleDeg * Math.PI / 180;
+    const cs = Math.cos(angle), sn = Math.sin(angle);
+    // No rescaling — stochastic matrix is already at its natural frequency from r
+    for(let y = 0; y < H; y++){
+      for(let x = 0; x < W; x++){
+        const rx = (x*cs - y*sn);
+        const ry = (x*sn + y*cs);
+        const mx = ((Math.floor(rx) % MS) + MS) % MS;
+        const my = ((Math.floor(ry) % MS) + MS) % MS;
+        const t = T[my*MS + mx];
+        bits[y*W + x] = ((1 - lum[y*W + x]) > t) ? 1 : 0;
+      }
+    }
+    return bits;
+  }
+
+  if(mode === 'bayer8' || mode === 'bayer6'){
+    const angle = angleDeg * Math.PI / 180;
+    const cs = Math.cos(angle), sn = Math.sin(angle);
+    let M, MS, MAX;
+    if(mode === 'bayer8'){ M = BAYER8; MS = 8; MAX = 64; }
+    else { M = CLUSTER6; MS = 6; MAX = 36; }
+
+    // cellPx scales the matrix. We sample the matrix at rotated coords.
+    const scale = MS / cellPx;
+    for(let y = 0; y < H; y++){
+      for(let x = 0; x < W; x++){
+        const rx = (x*cs - y*sn) * scale;
+        const ry = (x*sn + y*cs) * scale;
+        const mx = ((Math.floor(rx) % MS) + MS) % MS;
+        const my = ((Math.floor(ry) % MS) + MS) % MS;
+        const t = (M[my*MS + mx] + 0.5) / MAX;
+        bits[y*W + x] = ((1 - lum[y*W + x]) > t) ? 1 : 0;
+      }
+    }
+    return bits;
+  }
+
+  if(mode === 'grain'){
+    // FM stochastic — blue-noise-ish via hash
+    // Threshold each pixel against a deterministic noise value.
+    // Use a hash + value-noise for grain feel.
+    function hash(x, y){
+      let h = (x * 374761393 + y * 668265263) | 0;
+      h = (h ^ (h >>> 13)) * 1274126177;
+      return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+    }
+    // simulate clustered grain by smoothing the noise lightly
+    for(let y = 0; y < H; y++){
+      for(let x = 0; x < W; x++){
+        // weighted blend of two hash samples for slight clustering
+        const n = hash(x, y) * 0.7 + hash(x>>1, y>>1) * 0.3;
+        bits[y*W + x] = ((1 - lum[y*W + x]) > n) ? 1 : 0;
+      }
+    }
+    return bits;
+  }
+
+  if(mode === 'fs' || mode === 'atkinson'){
+    // Error diffusion — needs a mutable buffer
+    const buf = new Float32Array(lum.length);
+    for(let i = 0; i < lum.length; i++) buf[i] = 1 - lum[i]; // ink density
+    const isFS = mode === 'fs';
+    for(let y = 0; y < H; y++){
+      for(let x = 0; x < W; x++){
+        const i = y*W + x;
+        const old = buf[i];
+        const newV = old > 0.5 ? 1 : 0;
+        bits[i] = newV;
+        const err = old - newV;
+        if(isFS){
+          // Floyd-Steinberg: 7/16 right, 3/16 BL, 5/16 below, 1/16 BR
+          if(x+1 < W)             buf[i+1]     += err * 7/16;
+          if(y+1 < H && x > 0)    buf[i+W-1]   += err * 3/16;
+          if(y+1 < H)             buf[i+W]     += err * 5/16;
+          if(y+1 < H && x+1 < W)  buf[i+W+1]   += err * 1/16;
+        } else {
+          // Atkinson: 1/8 each to 6 neighbors
+          const e = err / 8;
+          if(x+1 < W)             buf[i+1]     += e;
+          if(x+2 < W)             buf[i+2]     += e;
+          if(y+1 < H && x > 0)    buf[i+W-1]   += e;
+          if(y+1 < H)             buf[i+W]     += e;
+          if(y+1 < H && x+1 < W)  buf[i+W+1]   += e;
+          if(y+2 < H)             buf[i+2*W]   += e;
+        }
+      }
+    }
+    return bits;
+  }
+
+  // pure threshold
+  for(let i = 0; i < lum.length; i++) bits[i] = lum[i] < 0.5 ? 1 : 0;
+  return bits;
+}
+
+// ============================================================
+// DOWNLOAD
+// ============================================================
+els.download.addEventListener('click', () => {
+  if(!sourceImg) return;
+  // Build a 1× canvas (true thermal-head resolution) for export
+  const W = sourceCanvas.width, H = sourceCanvas.height;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+
+  // re-run halftone for export to ensure unscaled
+  const sctx = sourceCanvas.getContext('2d');
+  const img = sctx.getImageData(0, 0, W, H);
+  const px = img.data;
+  const lum = new Float32Array(W * H);
+  const gamma = +els.gamma.value;
+  const bright = +els.brightness.value / 100;
+  const contrast = +els.contrast.value / 100;
+  const invSrc = els.invertSrc.checked;
+  for(let i = 0, j = 0; i < px.length; i += 4, j++){
+    let l = (0.2126*px[i] + 0.7152*px[i+1] + 0.0722*px[i+2]) / 255;
+    if(invSrc) l = 1 - l;
+    l += bright;
+    l = (l - 0.5) * (1 + contrast) + 0.5;
+    l = Math.pow(Math.max(0, Math.min(1, l)), 1/gamma);
+    lum[j] = Math.max(0, Math.min(1, l));
+  }
+  const bits = halftone(lum, W, H, els.mode.value, +els.cell.value, +els.angle.value);
+  const out = ctx.createImageData(W, H);
+  const od = out.data;
+  const invOut = els.invertOut.checked;
+  const onC = invOut ? 255 : 0, offC = invOut ? 0 : 255;
+  for(let i = 0; i < bits.length; i++){
+    const v = bits[i] ? onC : offC;
+    od[i*4] = v; od[i*4+1] = v; od[i*4+2] = v; od[i*4+3] = 255;
+  }
+  ctx.putImageData(out, 0, 0);
+
+  const link = document.createElement('a');
+  const modeStr = els.mode.value;
+  link.download = `thermal-head_${modeStr}_${W}x${H}.png`;
+  link.href = c.toDataURL('image/png');
+  link.click();
+});
+
+</script>
+</body>
+</html>

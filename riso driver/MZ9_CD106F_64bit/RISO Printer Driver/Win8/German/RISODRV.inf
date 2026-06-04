@@ -1,0 +1,69 @@
+;
+; RISODRV.INF
+;
+
+[Version]
+Signature="$Windows NT$"
+Provider=%RISO%
+LayoutFile=ntprint.inf
+ClassGUID={4D36E979-E325-11CE-BFC1-08002BE10318}
+Class=Printer
+CatalogFile=R34V6FC.cat
+DriverVer=10/02/2012
+
+[Manufacturer]
+%RISO% = RISO, NTamd64
+
+[RISO.NTamd64]
+"RISO MZ 9 Series" = MZ9SerG.RDF,USBPRINT\RISO_KAGAKU_CORPORAT45AF
+
+[MZ9SerG.RDF]
+CopyFiles = @MZ9SerG.RDF, RISODRIVER, PRINT_PROCESSOR
+DataFile = R34F6GG.GPD
+HelpFile = R34FHG.chm
+DataSection = UNIDRV_DATA
+PrintProcessor = %RISO_PRINT%
+Include = NTPRINT.INF
+Needs = UNIDRV.OEM,UNIDRV_DATA
+
+
+[RISODRIVER]
+R34V6FRG.dll
+R34F6GG.GPD
+R34F6GG.ini
+
+R34V6FC.dll
+R34V6FU.dll
+
+R34FHG.chm
+
+R34FG.GPD
+
+[PRINT_PROCESSOR]
+R34V6FP.dll
+
+[SourceDisksNames]
+1 = %DRIVER_FILES%
+
+[SourceDisksFiles]
+R34V6FC.dll = 1
+R34V6FU.dll = 1
+R34V6FP.dll = 1
+R34V6FRG.dll = 1
+R34FHG.chm = 1
+
+R34F6GG.GPD = 1
+R34F6GG.ini = 1
+
+MZ9SerG.RDF  = 1
+
+R34FG.GPD = 1
+
+[DestinationDirs]
+DefaultDestDir = 66000
+PRINT_PROCESSOR = 66001
+
+[Strings]
+RISO = "RISO KAGAKU CORPORATION"
+DRIVER_FILES = "RISO PRINTER DRIVER"
+RISO_PRINT = "R34V6FP,R34V6FP.dll"

@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stochastic Clustered-Dot Gradient Test</title>
+<style>
+  :root{ --bg:#0b0b0b; --fg:#e6e6e6; --panel:#151515; --line:#262626; --accent:#ff5a36; --muted:#888; }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,Inter,system-ui,sans-serif;font-size:13px;line-height:1.4}
+  header{padding:18px 24px;border-bottom:1px solid var(--line)}
+  header h1{margin:0 0 4px;font-size:15px;font-weight:600}
+  header .sub{font-size:12px;color:var(--muted)}
+  main{padding:20px 24px;max-width:1400px;margin:0 auto}
+  .controls{display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap;padding:14px;background:var(--panel);border:1px solid var(--line);border-radius:6px;margin-bottom:20px}
+  .ctl{display:flex;flex-direction:column;gap:4px;min-width:120px}
+  .ctl label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  .ctl input[type=range]{accent-color:var(--accent);width:160px}
+  .ctl select,.ctl button,.ctl input[type=number]{background:#1f1f1f;color:var(--fg);border:1px solid #333;border-radius:4px;padding:6px 10px;font-size:12px;font-family:inherit}
+  .ctl button{cursor:pointer}
+  .ctl button:hover{border-color:#555}
+  .ctl button.primary{background:var(--accent);border-color:var(--accent);color:#000;font-weight:600}
+  .ctl .v{font-size:12px;color:var(--accent);font-variant-numeric:tabular-nums;margin-top:2px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px;margin-bottom:16px}
+  .panel h2{margin:0 0 10px;font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#bbb;display:flex;justify-content:space-between;align-items:baseline}
+  .panel h2 .info{font-size:10px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0}
+  canvas{display:block;width:100%;background:#fff;border:1px solid #222;image-rendering:pixelated;image-rendering:crisp-edges}
+  .note{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5}
+  .note code{background:#222;padding:1px 5px;border-radius:3px;color:#ddd;font-size:10px}
+  .status{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .ref{margin-top:32px;padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:6px;font-size:11px;color:#aaa;line-height:1.6}
+  .ref b{color:#ddd}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Stochastic Clustered-Dot Gradient Test</h1>
+  <div class="sub">Reproducing Ostromoukhov &amp; Hersch 1999, Fig. 5 — grayscale wedge at <code style="background:#222;padding:1px 4px;border-radius:3px">r=8</code> vs <code style="background:#222;padding:1px 4px;border-radius:3px">r=16</code></div>
+</header>
+
+<main>
+
+<div class="controls">
+  <div class="ctl">
+    <label>Visiting path</label>
+    <select id="visitPath">
+      <option value="random" selected>Random SFC</option>
+      <option value="rotatedHilbert">Rotated Hilbert SFC</option>
+      <option value="hilbert">Hilbert SFC</option>
+      <option value="scanline">Scanline</option>
+    </select>
+  </div>
+  <div class="ctl">
+    <label>Threshold method</label>
+    <select id="method">
+      <option value="voronoiRank">Voronoi-rank (fast approx)</option>
+      <option value="paperLiteral" selected>Paper-literal (Delaunay + area-equal)</option>
+    </select>
+  </div>
+  <div class="ctl">
+    <label>Matrix size N×N</label>
+    <select id="matSize">
+      <option value="64">64 × 64 (pow-2)</option>
+      <option value="80">80 × 80 (5·16)</option>
+      <option value="128">128 × 128 (pow-2)</option>
+      <option value="160" selected>160 × 160 (5·32) ★</option>
+      <option value="256">256 × 256 (pow-2)</option>
+      <option value="320">320 × 320 (5·64)</option>
+    </select>
+  </div>
+  <div class="ctl">
+    <label>Wedge width</label>
+    <select id="wedgeW">
+      <option value="800">800 px</option>
+      <option value="1200" selected>1200 px</option>
+      <option value="1600">1600 px</option>
+    </select>
+  </div>
+  <div class="ctl">
+    <label>Wedge height</label>
+    <select id="wedgeH">
+      <option value="120">120 px</option>
+      <option value="180" selected>180 px</option>
+      <option value="240">240 px</option>
+    </select>
+  </div>
+  <div class="ctl">
+    <label>Gamma</label>
+    <input type="range" id="gamma" min="0.5" max="2.5" step="0.05" value="1">
+    <div class="v" id="gammaV">1.00</div>
+  </div>
+  <div class="ctl">
+    <button class="primary" id="rebuild">↻ Rebuild matrices</button>
+  </div>
+  <div class="ctl">
+    <button id="download">Download both PNGs</button>
+  </div>
+</div>
+
+<div class="panel">
+  <h2><span>(a) Disk radius <span style="color:var(--accent)">r = 16</span> — coarse clustered dots</span><span class="info" id="info16">—</span></h2>
+  <canvas id="c16"></canvas>
+  <div class="note">Larger dots → robust on high-dot-gain devices (RISO). Paper: <code>r=16</code> at 1200 dpi ≈ 75 lpi.</div>
+</div>
+
+<div class="panel">
+  <h2><span>(b) Disk radius <span style="color:var(--accent)">r = 8</span> — fine clustered dots</span><span class="info" id="info8">—</span></h2>
+  <canvas id="c8"></canvas>
+  <div class="note">Finer texture, mezzotint-like appearance. Paper: <code>r=8</code> at 1200 dpi ≈ 150 lpi.</div>
+</div>
+
+<div class="panel">
+  <h2><span>Matrix preview (r=16, r=8) — the dither matrices themselves</span></h2>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <canvas id="m16" style="width:100%;aspect-ratio:1;background:#fff"></canvas>
+    <canvas id="m8" style="width:100%;aspect-ratio:1;background:#fff"></canvas>
+  </div>
+  <div class="note">Each pixel's brightness = its threshold value. Dark spots = cells that ink up first (dot centers).
+    Bright spots = cells at Voronoi vertices (ink up last). Matches paper Fig. 4d.</div>
+</div>
+
+<div class="ref">
+  <b>How it works.</b> The matrix is built once: cells are visited along the chosen path; each free cell becomes a dot
+  center and marks all neighbors within radius <code>r</code> as occupied. Then every cell gets a threshold equal to its
+  rank when sorted by distance-to-nearest-center (with wrap-around). Rendering is just
+  <code>bit = (1 − luminance) &gt; threshold</code>. Centers turn on first (small black dots in highlights),
+  Voronoi vertices turn on last (small white dots in shadows). The 2:1 face-to-vertex ratio of the Delaunay
+  triangulation gives the asymmetric highlight/shadow appearance for free.
+</div>
+
+</main>
+
+<script>
+// ============================================================
+// PRNG
+// ============================================================
+function makeRng(seed){
+  let s = (seed|0) || 1;
+  return () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+}
+
+// ============================================================
+// VISITING PATHS
+// ============================================================
+function hilbertOrder(N){
+  // d → (x,y) Hilbert decode (N must be power of 2)
+  const out = new Int32Array(N*N);
+  for(let d=0; d<N*N; d++){
+    let rx, ry, x=0, y=0, t=d;
+    for(let s=1; s<N; s*=2){
+      rx = 1 & (t/2);
+      ry = 1 & (t ^ rx);
+      if(ry === 0){
+        if(rx === 1){ x = s-1-x; y = s-1-y; }
+        const tmp = x; x = y; y = tmp;
+      }
+      x += s*rx; y += s*ry;
+      t = Math.floor(t/4);
+    }
+    out[d] = y*N + x;
+  }
+  return out;
+}
+
+// Rotated Hilbert SFC per paper Section 2.3:
+//   x = round(a/c·u − b/c·v),  y = round(b/c·u + a/c·v),  a=4, b=3, c=5
+// Pythagorean atan(3/4) ≈ 36.87°.
+// Per paper: array size must be 5K × 5K where K is a power of 2 (Hilbert curve size).
+// We tile 5×5 copies of the K×K Hilbert path and rotate each (u,v) visit.
+function rotatedHilbertOrder(N){
+  if(N % 5 !== 0) return null;
+  const K = N / 5;
+  if(K < 1 || (K & (K-1)) !== 0) return null;   // K must be power of 2
+  const baseHilb = hilbertOrder(K);
+  const a=4, b=3, c=5;
+  const seen = new Uint8Array(N*N);
+  const order = new Int32Array(N*N);
+  let oi = 0;
+  for(let ty=0; ty<5; ty++){
+    for(let tx=0; tx<5; tx++){
+      for(let k=0; k<baseHilb.length; k++){
+        const idx = baseHilb[k];
+        const u = tx*K + (idx % K);
+        const v = ty*K + ((idx/K)|0);
+        const xr = Math.round(a/c * u - b/c * v);
+        const yr = Math.round(b/c * u + a/c * v);
+        const x = ((xr % N) + N) % N;
+        const y = ((yr % N) + N) % N;
+        const id = y*N + x;
+        if(!seen[id]){ seen[id] = 1; order[oi++] = id; }
+      }
+    }
+  }
+  // Fill any uncovered cells (rounding edges) with scanline
+  if(oi < N*N){
+    for(let i=0; i<N*N; i++){
+      if(!seen[i]){ order[oi++] = i; seen[i] = 1; }
+    }
+  }
+  return order;
+}
+
+// ============================================================
+// DOT-CENTER PLACEMENT (paper §2 — disk packing along visiting path)
+// ============================================================
+function placeDotCenters(N, r, pathType, seed){
+  const rng = makeRng(seed);
+  const total = N*N;
+  const occupied = new Uint8Array(total);
+  const cx_arr = [], cy_arr = [];
+
+  let order;
+  if(pathType === 'rotatedHilbert'){
+    order = rotatedHilbertOrder(N);
+    if(!order){ pathType = 'random'; }
+  }
+  if(pathType === 'hilbert' && (N & (N-1)) === 0){
+    order = hilbertOrder(N);
+  } else if(pathType === 'scanline'){
+    order = new Int32Array(total);
+    for(let i=0;i<total;i++) order[i]=i;
+  } else if(pathType === 'random' || !order){
+    order = new Int32Array(total);
+    for(let i=0;i<total;i++) order[i]=i;
+    for(let i=total-1; i>0; i--){
+      const j = Math.floor(rng()*(i+1));
+      const t = order[i]; order[i] = order[j]; order[j] = t;
+    }
+  }
+
+  const rInt = Math.ceil(r);
+  const r2 = r*r;
+  for(let oi=0; oi<total; oi++){
+    const idx = order[oi];
+    if(occupied[idx]) continue;
+    const cx = idx % N, cy = (idx/N)|0;
+    cx_arr.push(cx); cy_arr.push(cy);
+    for(let dy=-rInt; dy<=rInt; dy++){
+      const dy2 = dy*dy;
+      for(let dx=-rInt; dx<=rInt; dx++){
+        if(dx*dx + dy2 <= r2){
+          const nx = ((cx+dx) % N + N) % N;
+          const ny = ((cy+dy) % N + N) % N;
+          occupied[ny*N + nx] = 1;
+        }
+      }
+    }
+  }
+  return { cx_arr, cy_arr, rng };
+}
+
+// ============================================================
+// BOWYER–WATSON DELAUNAY TRIANGULATION  (Goodman97 reference,
+// standard incremental algorithm)
+// ============================================================
+function circumcircle(p0, p1, p2){
+  const ax = p1.x - p0.x, ay = p1.y - p0.y;
+  const bx = p2.x - p0.x, by = p2.y - p0.y;
+  const d = 2*(ax*by - ay*bx);
+  if(Math.abs(d) < 1e-12) return null;
+  const ax2 = ax*ax + ay*ay;
+  const bx2 = bx*bx + by*by;
+  const cx = (by * ax2 - ay * bx2) / d + p0.x;
+  const cy = (ax * bx2 - bx * ax2) / d + p0.y;
+  const r2 = (cx - p0.x)*(cx - p0.x) + (cy - p0.y)*(cy - p0.y);
+  return { cx, cy, r2 };
+}
+
+function bowyerWatson(pts){
+  if(pts.length < 3) return [];
+  let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+  for(const p of pts){
+    if(p.x<minX)minX=p.x; if(p.x>maxX)maxX=p.x;
+    if(p.y<minY)minY=p.y; if(p.y>maxY)maxY=p.y;
+  }
+  const cx=(minX+maxX)/2, cy=(minY+maxY)/2;
+  const d=Math.max(maxX-minX, maxY-minY);
+  // Super-triangle (huge, so all points are inside)
+  const sp = [
+    { x: cx - 20*d, y: cy - d, id: -1 },
+    { x: cx, y: cy + 20*d, id: -2 },
+    { x: cx + 20*d, y: cy - d, id: -3 }
+  ];
+  let tris = [{ p0: sp[0], p1: sp[1], p2: sp[2], cc: circumcircle(sp[0], sp[1], sp[2]) }];
+
+  for(const p of pts){
+    const survivors = [];
+    const edges = [];
+    for(let i=0; i<tris.length; i++){
+      const t = tris[i];
+      const dx = p.x - t.cc.cx, dy = p.y - t.cc.cy;
+      if(dx*dx + dy*dy < t.cc.r2 - 1e-9){
+        edges.push([t.p0, t.p1]);
+        edges.push([t.p1, t.p2]);
+        edges.push([t.p2, t.p0]);
+      } else {
+        survivors.push(t);
+      }
+    }
+    // Remove shared edges (interior of the cavity)
+    const used = new Uint8Array(edges.length);
+    for(let i=0; i<edges.length; i++){
+      if(used[i]) continue;
+      for(let j=i+1; j<edges.length; j++){
+        if(used[j]) continue;
+        const a = edges[i], b = edges[j];
+        if((a[0]===b[0] && a[1]===b[1]) || (a[0]===b[1] && a[1]===b[0])){
+          used[i]=used[j]=1; break;
+        }
+      }
+    }
+    tris = survivors;
+    for(let i=0; i<edges.length; i++){
+      if(used[i]) continue;
+      const cc = circumcircle(edges[i][0], edges[i][1], p);
+      if(cc) tris.push({ p0: edges[i][0], p1: edges[i][1], p2: p, cc });
+    }
+  }
+  // Strip triangles touching the super-triangle
+  return tris.filter(t => t.p0.id >= 0 && t.p1.id >= 0 && t.p2.id >= 0);
+}
+
+// ============================================================
+// PAPER-LITERAL THRESHOLD ASSIGNMENT  (paper §3)
+//
+// Per cell of the dither matrix:
+//   1) Find which Delaunay triangle contains it (via scan-conversion).
+//   2) Compute barycentric coords (b0, b1, b2). The vertex with the MAX bary
+//      coord is the "owning" screen dot — this defines the centroid-edge-midpoint
+//      partition of the triangle (Fig 4a): argmax-barycentric IS the partition
+//      because the boundary M_AB↔G has b_A = b_B (the swap point).
+//   3) Scaling factor s = 1 - b_max + b_mid.  This is the fractional radius
+//      from the screen dot V to the boundary of V's max-coverage sub-region
+//      along the ray V→P.  Verified at corners:
+//        V → b=(1,0,0)        → s = 1-1+0 = 0  (center)
+//        M_VB → b=(½,½,0)     → s = 1-½+½ = 1  (boundary)
+//        G → b=(⅓,⅓,⅓)        → s = 1-⅓+⅓ = 1  (boundary)
+//        M_VC → b=(½,0,½)     → s = 1-½+½ = 1  (boundary)
+//   4) Preliminary threshold = s²   (area scales as square of side length)
+//   5) Globally renumber → uniform threshold distribution (§3e)
+// ============================================================
+function buildMatrixPaperLiteral(N, r, pathType, seed){
+  const { cx_arr, cy_arr, rng } = placeDotCenters(N, r, pathType, seed);
+  const total = N*N;
+  const nc = cx_arr.length;
+
+  // Ghost centers across 3×3 tile grid for toroidal-correct Delaunay
+  const ghost = [];
+  for(let gy=-1; gy<=1; gy++){
+    for(let gx=-1; gx<=1; gx++){
+      for(let c=0; c<nc; c++){
+        ghost.push({ x: cx_arr[c] + gx*N, y: cy_arr[c] + gy*N, id: c, gx, gy });
+      }
+    }
+  }
+  const tris = bowyerWatson(ghost);
+
+  // Scan-convert each triangle that overlaps [0, N)² and assign s²
+  const prelim = new Float32Array(total);
+  const claimed = new Uint8Array(total);
+
+  for(const t of tris){
+    const minX = Math.min(t.p0.x, t.p1.x, t.p2.x);
+    const maxX = Math.max(t.p0.x, t.p1.x, t.p2.x);
+    const minY = Math.min(t.p0.y, t.p1.y, t.p2.y);
+    const maxY = Math.max(t.p0.y, t.p1.y, t.p2.y);
+    if(maxX < 0 || minX >= N || maxY < 0 || minY >= N) continue;
+
+    const x0 = Math.max(0, Math.floor(minX));
+    const x1 = Math.min(N - 1, Math.ceil(maxX));
+    const y0 = Math.max(0, Math.floor(minY));
+    const y1 = Math.min(N - 1, Math.ceil(maxY));
+
+    // Pre-compute barycentric denominators
+    const p0=t.p0, p1=t.p1, p2=t.p2;
+    const denom = (p1.y - p2.y)*(p0.x - p2.x) + (p2.x - p1.x)*(p0.y - p2.y);
+    if(Math.abs(denom) < 1e-12) continue;
+    const invD = 1/denom;
+
+    for(let py=y0; py<=y1; py++){
+      for(let px=x0; px<=x1; px++){
+        if(claimed[py*N + px]) continue;
+        const sx = px + 0.5, sy = py + 0.5;
+        const b0 = ((p1.y - p2.y)*(sx - p2.x) + (p2.x - p1.x)*(sy - p2.y)) * invD;
+        if(b0 < -1e-9 || b0 > 1+1e-9) continue;
+        const b1 = ((p2.y - p0.y)*(sx - p2.x) + (p0.x - p2.x)*(sy - p2.y)) * invD;
+        if(b1 < -1e-9 || b1 > 1+1e-9) continue;
+        const b2 = 1 - b0 - b1;
+        if(b2 < -1e-9 || b2 > 1+1e-9) continue;
+
+        // Find max and mid of the three barycentrics
+        let bMax, bMid;
+        if(b0 >= b1 && b0 >= b2){ bMax = b0; bMid = (b1 >= b2) ? b1 : b2; }
+        else if(b1 >= b0 && b1 >= b2){ bMax = b1; bMid = (b0 >= b2) ? b0 : b2; }
+        else { bMax = b2; bMid = (b0 >= b1) ? b0 : b1; }
+
+        const s = 1 - bMax + bMid;                      // fractional radius
+        prelim[py*N + px] = s * s + rng() * 1e-8;       // area fraction, tie-break
+        claimed[py*N + px] = 1;
+      }
+    }
+  }
+
+  // Fallback for unclaimed cells (shouldn't fire with ghosting, but guard anyway)
+  for(let i=0; i<total; i++) if(!claimed[i]) prelim[i] = 1 + rng() * 1e-8;
+
+  // §3e — globally renumber for uniform threshold distribution
+  const idxArr = Array.from({length: total}, (_,i)=>i)
+    .sort((a,b) => prelim[a] - prelim[b]);
+  const thresh = new Float32Array(total);
+  for(let rank=0; rank<total; rank++){
+    thresh[idxArr[rank]] = (rank + 0.5) / total;
+  }
+  return { data: thresh, size: N, dotCount: nc, triCount: tris.length };
+}
+
+// ============================================================
+// VORONOI-RANK THRESHOLD  (faster approximation)
+// ============================================================
+function buildMatrixVoronoiRank(N, r, pathType, seed){
+  const { cx_arr, cy_arr, rng } = placeDotCenters(N, r, pathType, seed);
+  const total = N*N;
+  // Section 3 — paper-faithful threshold assignment:
+  //   a) Voronoi-partition each cell to its nearest screen-dot center
+  //   b) Within each Voronoi region, rank cells by distance-to-center.
+  //      The CDF of cell-count vs distance naturally grows as r², so within-region
+  //      ranking IS the area-equal iso-intensity-line subdivision (paper §3c).
+  //   c) Convert each cell's within-region rank to a fractional rank ∈ [0,1].
+  //      This is the "fraction of Voronoi area filled" — the iso-intensity level.
+  //   d) Globally renumber by sorting on fractional rank (paper §3e).
+  //
+  // This gives equal *fractional area* per dot at any global threshold T
+  // (paper's "linear surface growth with intensity"), not equal radius.
+  const half = N/2;
+  const nc = cx_arr.length;
+  const dists = new Float32Array(total);
+  const ownerOf = new Int32Array(total);
+  for(let y=0; y<N; y++){
+    for(let x=0; x<N; x++){
+      let minD = Infinity, minIdx = 0;
+      for(let c=0; c<nc; c++){
+        let dx = x - cx_arr[c], dy = y - cy_arr[c];
+        if(dx > half) dx -= N; else if(dx < -half) dx += N;
+        if(dy > half) dy -= N; else if(dy < -half) dy += N;
+        const d = dx*dx + dy*dy;
+        if(d < minD){ minD = d; minIdx = c; }
+      }
+      dists[y*N + x] = minD;          // squared dist is fine (monotonic)
+      ownerOf[y*N + x] = minIdx;
+    }
+  }
+
+  // Group cells per Voronoi region
+  const regionCells = Array.from({length: nc}, () => []);
+  for(let i=0; i<total; i++) regionCells[ownerOf[i]].push(i);
+
+  // Per-region rank → fractional position in Voronoi cell (this IS the iso-intensity)
+  const fracRank = new Float32Array(total);
+  for(let c=0; c<nc; c++){
+    const cells = regionCells[c];
+    cells.sort((a,b) => dists[a] - dists[b]);
+    const n = cells.length;
+    for(let k=0; k<n; k++){
+      // (k+0.5)/n maps to (0,1) — fractional area filled at this iso-level
+      // Add tiny noise to break ties between regions
+      fracRank[cells[k]] = (k + 0.5) / n + rng() * 1e-6;
+    }
+  }
+
+  // Global renumber → uniform threshold distribution (paper §3e)
+  const idxArr = Array.from({length:total}, (_,i)=>i)
+    .sort((a,b)=> fracRank[a] - fracRank[b]);
+  const thresh = new Float32Array(total);
+  for(let rank=0; rank<total; rank++){
+    thresh[idxArr[rank]] = (rank + 0.5) / total;
+  }
+
+  return { data: thresh, size: N, dotCount: nc };
+}
+
+// ============================================================
+// DISPATCHER
+// ============================================================
+function buildMatrix(N, r, pathType, seed, method){
+  if(method === 'paperLiteral') return buildMatrixPaperLiteral(N, r, pathType, seed);
+  return buildMatrixVoronoiRank(N, r, pathType, seed);
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+const els = {};
+['visitPath','method','matSize','wedgeW','wedgeH','gamma','gammaV','rebuild','download',
+ 'c16','c8','m16','m8','info16','info8'].forEach(id => els[id] = document.getElementById(id));
+
+let M16 = null, M8 = null;
+let _seed = 12345;
+
+function buildAll(){
+  const N = +els.matSize.value;
+  const path = els.visitPath.value;
+  const method = els.method.value;
+  const t0 = performance.now();
+  M16 = buildMatrix(N, 16, path, _seed, method);
+  const t1 = performance.now();
+  M8 = buildMatrix(N, 8, path, _seed, method);
+  const t2 = performance.now();
+  const extra16 = M16.triCount ? ` · ${M16.triCount} tris` : '';
+  const extra8 = M8.triCount ? ` · ${M8.triCount} tris` : '';
+  els.info16.textContent = `${N}×${N} · ${M16.dotCount} centers${extra16} · ${(t1-t0).toFixed(0)} ms`;
+  els.info8.textContent  = `${N}×${N} · ${M8.dotCount} centers${extra8} · ${(t2-t1).toFixed(0)} ms`;
+  drawMatrixPreview(els.m16, M16);
+  drawMatrixPreview(els.m8, M8);
+  renderWedges();
+}
+
+function drawMatrixPreview(canvas, M){
+  const N = M.size;
+  canvas.width = N; canvas.height = N;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(N, N);
+  const d = img.data, t = M.data;
+  for(let i=0;i<t.length;i++){
+    const v = Math.round(t[i] * 255);
+    d[i*4] = v; d[i*4+1] = v; d[i*4+2] = v; d[i*4+3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function renderWedge(canvas, M){
+  const W = +els.wedgeW.value;
+  const H = +els.wedgeH.value;
+  const gamma = +els.gamma.value;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(W, H);
+  const d = img.data;
+  const N = M.size, T = M.data;
+  for(let y=0; y<H; y++){
+    for(let x=0; x<W; x++){
+      // horizontal gradient: white at left → black at right
+      let lum = 1 - (x / (W - 1));
+      lum = Math.pow(lum, 1/gamma);
+      // threshold test
+      const t = T[(y % N) * N + (x % N)];
+      const bit = ((1 - lum) > t) ? 0 : 255; // ink on → 0 (black), off → 255 (white)
+      const i = (y*W + x) * 4;
+      d[i] = bit; d[i+1] = bit; d[i+2] = bit; d[i+3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function renderWedges(){
+  if(M16) renderWedge(els.c16, M16);
+  if(M8)  renderWedge(els.c8, M8);
+}
+
+// ============================================================
+// WIRING
+// ============================================================
+els.gamma.addEventListener('input', () => { els.gammaV.textContent = (+els.gamma.value).toFixed(2); renderWedges(); });
+els.wedgeW.addEventListener('change', renderWedges);
+els.wedgeH.addEventListener('change', renderWedges);
+els.visitPath.addEventListener('change', buildAll);
+els.method.addEventListener('change', buildAll);
+els.matSize.addEventListener('change', buildAll);
+els.rebuild.addEventListener('click', () => { _seed = (Math.random()*1e9)|0; buildAll(); });
+
+els.download.addEventListener('click', () => {
+  [['r16', els.c16], ['r8', els.c8]].forEach(([name, c]) => {
+    const a = document.createElement('a');
+    a.download = `wedge_${name}_${els.visitPath.value}.png`;
+    a.href = c.toDataURL('image/png');
+    a.click();
+  });
+});
+
+buildAll();
+</script>
+</body>
+</html>

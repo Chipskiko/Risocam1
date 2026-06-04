@@ -1568,7 +1568,10 @@ float lineDither(float val, vec2 pix, float cellPx, float angle, int idx){
     thicknessMod = 1.0 + u_lineEdgeThickness * distFromCenter * 2.0;
   }
   float w = clamp(val * u_lineWeight * thicknessMod, 0.0, 1.0);
-  float edge = 1.5 / cellPx;
+  // Clamp the AA half-width (matches screenMatrix): at high LPI cellPx is small
+  // and an unbounded 1.5/cellPx edge could exceed the half-period, washing thin
+  // lines toward solid.
+  float edge = clamp(1.5 / cellPx, 0.004, 0.25);
   float lineOut = 1.0 - smoothstep(w - edge, w + edge, dist);
   // Where the line pattern is sub-Nyquist (aaFade<1), blend toward the flat
   // coverage w — the correct average of the unresolvable lines — instead of
@@ -1943,8 +1946,10 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
     return (u_liveSource > 0.5) ? gpuGrainTouch(val, jitPix) : clamp(val, 0.0, 1.0);
   }
 
-  // Paper field perturbs dither threshold — fibers affect where ink lands
-  val += (pf - 1.0) * 0.15;
+  // Paper field perturbs dither threshold — fibers affect where ink lands.
+  // Scaled by u_simNoise so "clean" modes (RISO/flat, clean-screen) get a true
+  // unperturbed halftone — previously this leaked fiber noise into clean output.
+  val += (pf - 1.0) * 0.15 * u_simNoise;
   val = clamp(val, 0.0, 1.0);
 
   // Stencil perforation irregularity — scaled by u_simNoise.
@@ -2186,7 +2191,8 @@ vec3 calBlend(vec3 result, vec3 paper, float coverage, float grain, vec3 p10, ve
   }
 
   // ── Stage 6: Ink contamination ──
-  vec3 contam = blended * 0.02 * d;
+  // Scaled by u_simNoise so clean modes get no cross-ink tint.
+  vec3 contam = blended * 0.02 * d * u_simNoise;
   blended += contam * (ink - blended);
 
   return blended;
@@ -2246,7 +2252,8 @@ vec3 yuBlend(vec3 paper, vec3 ink, float d){
 
   // Ink contamination: multi-pass re-wetting causes subtle cross-ink mixing
   // Later ink layers slightly dissolve previous, preventing perfectly clean overlaps
-  vec3 contam = normalResult * 0.02 * d;
+  // (scaled by u_simNoise so clean modes stay clean).
+  vec3 contam = normalResult * 0.02 * d * u_simNoise;
   normalResult += contam * (ink - normalResult);
 
   return mix(normalResult, whiteResult, isWhite);
@@ -2806,13 +2813,13 @@ void main(){
 <script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
 <script src="js/data.js?v=12"></script>
 <script src="js/state.js?v=12"></script>
-<script src="js/undo.js?v=3"></script>
+<script src="js/undo.js?v=4"></script>
 <script src="js/compare.js?v=5"></script>
 <script src="js/riso-amt.js?v=22"></script>
-<script src="js/renderer.js?v=91"></script>
-<script src="js/source.js?v=44"></script>
+<script src="js/renderer.js?v=92"></script>
+<script src="js/source.js?v=45"></script>
 <script src="js/save.js?v=45"></script>
-<script src="js/ui-controls.js?v=49"></script>
+<script src="js/ui-controls.js?v=50"></script>
 <script src="js/ui-paper.js?v=12"></script>
 <script src="js/phone.js?v=17"></script>
 <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');</script>

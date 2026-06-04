@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RISO Capture Viewer</title>
+<style>
+  :root{--bg:#0b0b0b;--fg:#e6e6e6;--panel:#151515;--line:#262626;--accent:#ff5a36;--muted:#888;--mono:ui-monospace,Menlo,monospace;}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,Inter,system-ui,sans-serif;font-size:13px;line-height:1.45}
+  header{padding:14px 18px;border-bottom:1px solid var(--line)}
+  header h1{margin:0 0 3px;font-size:14px;font-weight:600}
+  header .sub{font-size:11px;color:var(--muted)}
+  header .pill{display:inline-block;padding:2px 7px;background:#2a1b16;border:1px solid #7a3527;color:#ffaa90;border-radius:9px;font-size:10px;margin-left:6px;text-transform:uppercase;letter-spacing:.04em}
+
+  main{display:grid;grid-template-columns:340px 1fr;min-height:calc(100vh - 49px)}
+  aside{padding:14px;border-right:1px solid var(--line);background:var(--panel);overflow-y:auto;max-height:calc(100vh - 49px)}
+  section{padding:14px;overflow-y:auto;max-height:calc(100vh - 49px)}
+
+  .group{margin-bottom:16px}
+  .group h3{margin:0 0 6px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+
+  .file-drop{border:1.5px dashed #333;border-radius:6px;padding:18px;text-align:center;cursor:pointer;color:var(--muted);transition:.15s}
+  .file-drop:hover,.file-drop.drag{border-color:var(--accent);color:var(--accent)}
+  .file-drop input{display:none}
+
+  label{display:block;margin-bottom:6px;font-size:11px;color:#bbb}
+  label .lbl{display:flex;justify-content:space-between}
+  label .lbl .v{color:var(--accent);font-variant-numeric:tabular-nums}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  input[type=number],input[type=text],select,button{background:#1f1f1f;color:var(--fg);border:1px solid #333;border-radius:4px;padding:5px 8px;font-size:12px;font-family:inherit}
+  button{cursor:pointer}
+  button:hover{border-color:#555}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#000;font-weight:600}
+
+  .info-grid{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:11px;font-family:var(--mono)}
+  .info-grid .k{color:var(--muted)}
+  .info-grid .v{color:var(--fg);word-break:break-all}
+
+  .markers-list{font-family:var(--mono);font-size:11px}
+  .markers-list .marker{padding:5px 7px;border-bottom:1px solid #222;cursor:pointer;display:flex;justify-content:space-between;gap:6px}
+  .markers-list .marker:hover{background:#222}
+  .markers-list .marker .off{color:var(--accent)}
+  .markers-list .marker .name{color:#bbb}
+  .markers-list .marker .ctx{color:#666;font-size:10px}
+
+  .hex-pane{font-family:var(--mono);font-size:11px;line-height:1.5;background:#0d0d0d;border:1px solid var(--line);border-radius:4px;padding:8px;overflow:auto;max-height:60vh}
+  .hex-row{display:grid;grid-template-columns:80px auto auto;gap:14px;white-space:pre}
+  .hex-row .addr{color:var(--muted)}
+  .hex-row .hex span{padding:0 1px}
+  .hex-row .hex .printable{color:#fff}
+  .hex-row .hex .zero{color:#444}
+  .hex-row .hex .high{color:#ff8a6a}
+  .hex-row .ascii{color:#9c9}
+  .hex-row .ascii .np{color:#444}
+  .hex-row.highlight .addr{color:var(--accent);font-weight:600}
+
+  .pager{display:flex;gap:6px;align-items:center;margin-top:8px;font-size:11px;color:var(--muted);font-family:var(--mono)}
+  .pager button{padding:3px 8px}
+
+  .bitmap-pane{background:#0d0d0d;border:1px solid var(--line);border-radius:4px;padding:8px;overflow:auto;max-height:70vh}
+  .bitmap-canvas-wrap{overflow:auto;max-width:100%;max-height:60vh;display:inline-block;background:#fff}
+  .bitmap-canvas-wrap canvas{display:block;image-rendering:pixelated}
+
+  details{margin:8px 0}
+  details summary{cursor:pointer;font-size:11px;color:var(--muted);user-select:none;padding:4px 0}
+  details summary:hover{color:var(--fg)}
+
+  .note{font-size:10px;color:#777;line-height:1.6;margin-top:6px}
+  code{background:#222;padding:1px 4px;border-radius:3px;font-family:var(--mono);font-size:10px;color:#ddd}
+  .tag{display:inline-block;padding:1px 6px;border-radius:8px;font-size:9px;background:#222;color:#aaa;margin-right:4px}
+  .tag.found{background:#2a3a16;color:#aaff90}
+  .tag.absent{background:#3a1616;color:#ff9090}
+</style>
+</head>
+
+<header>
+  <h1>RISO Capture Viewer <span class="pill">.prn / spool data inspector</span></h1>
+  <div class="sub">Drop a <code>capture.prn</code> file (Windows "Print to File" of the RISO driver) to inspect its structure, hunt for the embedded 1-bit thermal-head bitmap, and try to decode it.</div>
+</header>
+
+<main>
+
+<aside>
+
+  <div class="group">
+    <h3>Input</h3>
+    <label class="file-drop" id="drop">
+      <input type="file" id="file" accept=".prn,.bin,.dat,.spl,application/octet-stream">
+      <div id="dropText">Drop .prn / .bin · click to browse</div>
+    </label>
+  </div>
+
+  <div class="group">
+    <h3>File info</h3>
+    <div class="info-grid" id="fileInfo">
+      <div class="k">name</div><div class="v" id="info-name">—</div>
+      <div class="k">size</div><div class="v" id="info-size">—</div>
+      <div class="k">first 16</div><div class="v" id="info-magic">—</div>
+      <div class="k">entropy</div><div class="v" id="info-entropy">—</div>
+    </div>
+  </div>
+
+  <div class="group">
+    <h3>Markers found</h3>
+    <div id="markers" class="markers-list">
+      <div style="font-size:11px;color:var(--muted);padding:4px">No file yet.</div>
+    </div>
+  </div>
+
+  <div class="group">
+    <h3>Format signals</h3>
+    <div id="signals" style="font-size:11px"></div>
+  </div>
+
+</aside>
+
+<section>
+
+  <div class="group">
+    <h3>Hex viewer</h3>
+    <div class="hex-pane" id="hexPane"></div>
+    <div class="pager">
+      <button id="hexPrev">◀ prev</button>
+      <span id="hexInfo">—</span>
+      <button id="hexNext">next ▶</button>
+      <span style="margin-left:14px">jump to:</span>
+      <input type="text" id="hexJump" placeholder="0x1000 or 4096" style="width:100px">
+      <button id="hexJumpBtn">go</button>
+    </div>
+  </div>
+
+  <div class="group" id="risoSection" style="display:none">
+    <h3>★ RISO PRN — auto-decoded thermal-head bitmap</h3>
+    <div id="risoInfo" class="info-grid" style="margin-bottom:8px"></div>
+    <div class="bitmap-pane">
+      <div class="bitmap-canvas-wrap"><canvas id="risoCanvas"></canvas></div>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <button class="primary" id="risoDownload">Download full-res 1-bit PNG</button>
+        <button id="risoDownloadBin">Download raw .bin (1-bit packed)</button>
+        <span id="risoStatus" style="font-size:11px;color:var(--muted)"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="group">
+    <h3>Bitmap decode attempt (raw, manual)</h3>
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px">
+      <label style="margin-bottom:0">
+        <div class="lbl"><span>Start offset</span></div>
+        <input type="text" id="bmStart" value="0" style="width:100px">
+      </label>
+      <label style="margin-bottom:0">
+        <div class="lbl"><span>Width (dots)</span></div>
+        <input type="number" id="bmWidth" value="4960" style="width:100px">
+      </label>
+      <label style="margin-bottom:0">
+        <div class="lbl"><span>Length to read (bytes)</span></div>
+        <input type="text" id="bmLen" value="0x100000" style="width:120px">
+      </label>
+      <label style="margin-bottom:0">
+        <div class="lbl"><span>Bit order</span></div>
+        <select id="bmBitOrder">
+          <option value="msb" selected>MSB-first (PCL-style)</option>
+          <option value="lsb">LSB-first</option>
+        </select>
+      </label>
+      <label style="margin-bottom:0">
+        <div class="lbl"><span>Invert</span></div>
+        <select id="bmInvert">
+          <option value="0" selected>off (0=white, 1=black)</option>
+          <option value="1">on (0=black, 1=white)</option>
+        </select>
+      </label>
+      <button class="primary" id="bmRender">Render</button>
+    </div>
+    <div class="bitmap-pane">
+      <div class="bitmap-canvas-wrap"><canvas id="bmCanvas" width="100" height="100"></canvas></div>
+      <div class="note" id="bmInfo">
+        Drop a file, then guess a width and starting offset. Common RISO master widths at 600 dpi: A3 long-edge = 9921 dots, A3 short-edge = 7016 dots, A4 long-edge = 7016, A4 short-edge = 4960.
+        If the data is compressed (JBIG), this raw bit-rendering won't make sense — we'll need to add a decoder once we see what's actually in the file.
+      </div>
+    </div>
+  </div>
+
+  <details>
+    <summary>What markers we're scanning for</summary>
+    <div class="note" style="margin-left:14px">
+      <ul style="padding-left:18px;line-height:1.7">
+        <li><b>PJL / @PJL</b> — HP Printer Job Language commands (often wrap the actual data)</li>
+        <li><b>ESC sequences</b> (0x1B + letter) — printer control bytes</li>
+        <li><b>JBIG/JBIG2 magic</b> — <code>\x97\x4A\x42\x32\x0D\x0A\x1A\x0A</code> (JBIG2 header)</li>
+        <li><b>"tHsG"</b> — RISO halftone-file magic (in case fonts/data are inlined)</li>
+        <li><b>"RISO" / "MZ9"</b> — printer model strings</li>
+        <li><b>0xFFD8</b> — JPEG SOI</li>
+        <li><b>"PNG"</b> at offset 1 — PNG signature</li>
+        <li>Long runs of 0x00 / 0xFF — likely raw 1-bit raster (white/black solid areas)</li>
+      </ul>
+    </div>
+  </details>
+
+</section>
+
+</main>
+
+<script>
+let buf = null;          // ArrayBuffer of loaded file
+let bytes = null;        // Uint8Array view
+let hexStart = 0;        // current hex page start offset
+const HEX_PAGE = 4096;   // bytes per hex page (256 rows × 16)
+
+const els = {};
+['drop','file','dropText',
+ 'info-name','info-size','info-magic','info-entropy',
+ 'markers','signals',
+ 'hexPane','hexPrev','hexNext','hexInfo','hexJump','hexJumpBtn',
+ 'bmStart','bmWidth','bmLen','bmBitOrder','bmInvert','bmRender','bmCanvas','bmInfo',
+ 'risoSection','risoInfo','risoCanvas','risoDownload','risoDownloadBin','risoStatus'
+].forEach(id => els[id] = document.getElementById(id));
+
+// =============================================================
+// RISO PRN DECODER  —  command stream + PackBits per scanline
+// =============================================================
+function packbitsDecode(data, off, len){
+  const out = [];
+  const end = off + len;
+  let i = off;
+  while(i < end){
+    const n = data[i++];
+    if(n < 128){
+      // copy n+1 bytes literally
+      for(let k = 0; k <= n && i < end; k++) out.push(data[i++]);
+    } else if(n > 128){
+      const count = 257 - n;
+      if(i < end){
+        const b = data[i++];
+        for(let k = 0; k < count; k++) out.push(b);
+      }
+    }
+    // n === 128 → no-op
+  }
+  return out;
+}
+
+function decodeRisoPrn(data){
+  // Walk the \x1E-prefixed command stream and pull out per-scanline raster
+  let curRow = 0, curH = 0;
+  const lines = [];
+  let pageW = null, pageH = null, dpi = null;
+  let i = 0;
+  while(i < data.length){
+    if(data[i] !== 0x1E){ i++; continue; }
+    let j = i + 1;
+    let paramsStart = j;
+    let opcode = null;
+    while(j < data.length){
+      const c = data[j];
+      if((c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A)){
+        opcode = String.fromCharCode(c); j++; break;
+      }
+      j++;
+    }
+    if(opcode === null){ i++; continue; }
+    // Parse params — strip leading/trailing & and split on ;
+    const paramStr = String.fromCharCode(...data.slice(paramsStart, j - 1)).replace(/^&+|&+$/g, '');
+    const nums = paramStr.length ? paramStr.split(';').map(s => parseInt(s, 10)).filter(n => !isNaN(n)) : [];
+
+    if(opcode === 'V' && nums.length) curRow = nums[0];
+    else if(opcode === 'H' && nums.length) curH = nums[0];
+    else if(opcode === 'z' && nums.length >= 3){ pageW = nums[1]; pageH = nums[2]; }
+    else if(opcode === 'r' && nums.length >= 2){ dpi = nums[0]; }
+    else if(opcode === 'i' && nums.length){
+      const N = nums[0];
+      if(j + N <= data.length){
+        lines.push({ row: curRow, h: curH, n: N, off: j });
+        j += N;
+      }
+    }
+    i = j;
+  }
+  if(lines.length === 0) return null;
+
+  // Decompress all lines
+  const decoded = lines.map(L => ({ row: L.row, bytes: packbitsDecode(data, L.off, L.n) }));
+  // Most common stride = canonical row size
+  const sizeCount = new Map();
+  for(const d of decoded) sizeCount.set(d.bytes.length, (sizeCount.get(d.bytes.length) || 0) + 1);
+  let stride = 0, best = 0;
+  for(const [s, c] of sizeCount){ if(c > best){ best = c; stride = s; } }
+  const minRow = Math.min(...decoded.map(d => d.row));
+  const maxRow = Math.max(...decoded.map(d => d.row));
+  const height = maxRow - minRow + 1;
+  const width = stride * 8;
+
+  // Build flat raster — rows not in `decoded` are all-white
+  const buf = new Uint8Array(stride * height);
+  for(const d of decoded){
+    const row = d.row - minRow;
+    const off = row * stride;
+    const len = Math.min(d.bytes.length, stride);
+    for(let k = 0; k < len; k++) buf[off + k] = d.bytes[k];
+  }
+  return {
+    width, height, stride, buf,
+    pageW, pageH, dpi,
+    firstRow: minRow, lastRow: maxRow,
+    lineCount: lines.length,
+    totalBytes: lines.reduce((a, l) => a + l.n, 0)
+  };
+}
+
+function renderRisoBitmap(decoded){
+  els.risoSection.style.display = '';
+  const { width, height, stride, buf, pageW, pageH, dpi, firstRow, lastRow, lineCount } = decoded;
+  els.risoInfo.innerHTML =
+    `<div class="k">page size</div><div class="v">${pageW||'?'} × ${pageH||'?'} mm</div>` +
+    `<div class="k">resolution</div><div class="v">${dpi||'?'} dpi</div>` +
+    `<div class="k">imaged area</div><div class="v">${width} × ${height} dots = ${(width*25.4/(dpi||600)).toFixed(1)} × ${(height*25.4/(dpi||600)).toFixed(1)} mm</div>` +
+    `<div class="k">first row</div><div class="v">${firstRow} (${(firstRow*25.4/(dpi||600)).toFixed(1)} mm from top)</div>` +
+    `<div class="k">scanlines</div><div class="v">${lineCount.toLocaleString()}</div>` +
+    `<div class="k">stride</div><div class="v">${stride} bytes (${width} dots)</div>`;
+
+  // Render to canvas — downscale aggressively if huge (preview only)
+  // For full A3 at 600 dpi (~60 megapixels) we downscale to ~1500px wide for preview.
+  const PREVIEW_MAX_W = 1500;
+  const scale = Math.max(1, Math.ceil(width / PREVIEW_MAX_W));
+  const pw = Math.floor(width / scale);
+  const ph = Math.floor(height / scale);
+  const c = els.risoCanvas;
+  c.width = pw; c.height = ph;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(pw, ph);
+  const d = img.data;
+  els.risoStatus.textContent = `Rendering ${pw}×${ph} preview (downscale ${scale}×)…`;
+
+  // Box-average bits within each scale×scale block → grayscale preview
+  const blockSize = scale * scale;
+  for(let py = 0; py < ph; py++){
+    for(let px = 0; px < pw; px++){
+      let on = 0;
+      for(let dy = 0; dy < scale; dy++){
+        const sy = py * scale + dy;
+        if(sy >= height) break;
+        const rowOff = sy * stride;
+        for(let dx = 0; dx < scale; dx++){
+          const sx = px * scale + dx;
+          if(sx >= width) break;
+          const byte = buf[rowOff + (sx >> 3)];
+          const bit = (byte >> (7 - (sx & 7))) & 1;
+          on += bit;
+        }
+      }
+      const v = 255 - Math.round(on * 255 / blockSize);  // ink=1 → black
+      const i = (py * pw + px) * 4;
+      d[i] = v; d[i+1] = v; d[i+2] = v; d[i+3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  els.risoStatus.textContent =
+    `Preview: ${pw}×${ph} (downscale ${scale}×). Full-res download is ${width}×${height} true 1-bit.`;
+
+  // Wire downloads
+  els.risoDownload.onclick = () => {
+    const fullC = document.createElement('canvas');
+    fullC.width = width; fullC.height = height;
+    const fctx = fullC.getContext('2d');
+    const fimg = fctx.createImageData(width, height);
+    const fd = fimg.data;
+    for(let y = 0; y < height; y++){
+      const rowOff = y * stride;
+      for(let x = 0; x < width; x++){
+        const bit = (buf[rowOff + (x >> 3)] >> (7 - (x & 7))) & 1;
+        const v = bit ? 0 : 255;
+        const i = (y * width + x) * 4;
+        fd[i] = v; fd[i+1] = v; fd[i+2] = v; fd[i+3] = 255;
+      }
+    }
+    fctx.putImageData(fimg, 0, 0);
+    fullC.toBlob(blob => {
+      const a = document.createElement('a');
+      a.download = `captured_master_${width}x${height}.png`;
+      a.href = URL.createObjectURL(blob);
+      a.click();
+    });
+  };
+  els.risoDownloadBin.onclick = () => {
+    const blob = new Blob([buf], { type: 'application/octet-stream' });
+    const a = document.createElement('a');
+    a.download = `captured_master_${width}x${height}_stride${stride}.bin`;
+    a.href = URL.createObjectURL(blob);
+    a.click();
+  };
+}
+
+// ============================================================
+// FILE LOADING
+// ============================================================
+els.file.addEventListener('change', e => loadFile(e.target.files[0]));
+['dragover','dragenter'].forEach(ev => els.drop.addEventListener(ev, e => { e.preventDefault(); els.drop.classList.add('drag'); }));
+['dragleave','dragend','drop'].forEach(ev => els.drop.addEventListener(ev, e => { e.preventDefault(); els.drop.classList.remove('drag'); }));
+els.drop.addEventListener('drop', e => { e.preventDefault(); loadFile(e.dataTransfer.files[0]); });
+
+function loadFile(file){
+  if(!file) return;
+  els.dropText.textContent = `Loading ${file.name}…`;
+  const reader = new FileReader();
+  reader.onload = e => {
+    buf = e.target.result;
+    bytes = new Uint8Array(buf);
+    els.dropText.textContent = file.name;
+    document.getElementById('info-name').textContent = file.name;
+    document.getElementById('info-size').textContent = `${bytes.length.toLocaleString()} bytes (${(bytes.length/1024).toFixed(1)} KB)`;
+    analyze();
+    hexStart = 0;
+    renderHex();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ============================================================
+// ANALYSIS
+// ============================================================
+function entropy(b){
+  // Shannon entropy of bytes — 8.0 = max random, lower = structured/compressible
+  const cnt = new Uint32Array(256);
+  for(let i = 0; i < b.length; i++) cnt[b[i]]++;
+  let h = 0;
+  for(let i = 0; i < 256; i++){
+    if(cnt[i] === 0) continue;
+    const p = cnt[i] / b.length;
+    h -= p * Math.log2(p);
+  }
+  return h;
+}
+
+function findAll(needle, max = 50){
+  // bytewise search
+  const hits = [];
+  const n = needle.length;
+  for(let i = 0; i <= bytes.length - n && hits.length < max; i++){
+    let ok = true;
+    for(let j = 0; j < n; j++){
+      if(bytes[i + j] !== needle[j]){ ok = false; break; }
+    }
+    if(ok) hits.push(i);
+  }
+  return hits;
+}
+
+function findString(s, max = 50){
+  const arr = new TextEncoder().encode(s);
+  return findAll(arr, max);
+}
+
+function analyze(){
+  // Magic / first 16 bytes
+  const first = Array.from(bytes.slice(0, 16)).map(b => b.toString(16).padStart(2,'0')).join(' ');
+  const firstAscii = Array.from(bytes.slice(0, 16)).map(b => (b >= 32 && b < 127) ? String.fromCharCode(b) : '.').join('');
+  document.getElementById('info-magic').textContent = `${first}  |  ${firstAscii}`;
+
+  // Entropy (sample first 1MB if big file)
+  const sample = bytes.length > 1024*1024 ? bytes.slice(0, 1024*1024) : bytes;
+  const ent = entropy(sample);
+  let entLabel = ent.toFixed(2) + ' bits/byte';
+  if(ent > 7.8) entLabel += ' (high — likely compressed or random)';
+  else if(ent > 6.5) entLabel += ' (mid — packed binary)';
+  else entLabel += ' (low — structured / text / sparse)';
+  document.getElementById('info-entropy').textContent = entLabel;
+
+  // Hunt for markers
+  const markersDiv = els.markers;
+  markersDiv.innerHTML = '';
+  const scans = [
+    { name: 'PJL @PJL',          needle: '\x1B%-12345X@PJL', kind: 'string' },
+    { name: 'PJL @PJL plain',    needle: '@PJL',              kind: 'string' },
+    { name: 'PCL ESC E (reset)', needle: '\x1BE',             kind: 'string' },
+    { name: 'PCL ESC % (lang)',  needle: '\x1B%',             kind: 'string' },
+    { name: 'JBIG2 magic',       needle: '\x97\x4A\x42\x32\x0D\x0A\x1A\x0A', kind: 'string' },
+    { name: 'tHsG (RISO halftone magic)', needle: 'tHsG',     kind: 'string' },
+    { name: 'RISO',              needle: 'RISO',              kind: 'string' },
+    { name: 'MZ9',               needle: 'MZ9',               kind: 'string' },
+    { name: 'JPEG SOI 0xFFD8',   needle: '\xFF\xD8\xFF',      kind: 'bytes' },
+    { name: 'PNG signature',     needle: '\x89PNG',           kind: 'bytes' },
+    { name: 'TIFF II*',          needle: 'II*\x00',           kind: 'string' },
+    { name: 'TIFF MM*',          needle: 'MM\x00*',           kind: 'string' },
+    { name: 'BMP BM',            needle: 'BM',                kind: 'string' },
+    { name: 'FF FF FF FF (run)', needle: '\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF', kind: 'bytes', limit: 5 },
+    { name: '00 00 00 00 (run)', needle: '\x00\x00\x00\x00\x00\x00\x00\x00', kind: 'bytes', limit: 5 },
+    { name: 'JOB',               needle: 'JOB',               kind: 'string' },
+    { name: 'EOJ',               needle: 'EOJ',               kind: 'string' },
+    { name: 'UEL (universal exit)', needle: '\x1B%-12345X', kind: 'string' },
+  ];
+
+  for(const s of scans){
+    let needle;
+    if(s.kind === 'string' || s.kind === 'bytes'){
+      needle = new TextEncoder().encode(s.needle);
+      // Handle \x00 properly (TextEncoder produces it correctly via  )
+      if(s.needle.includes('\x00') || s.needle.includes('\xFF') || s.needle.includes('\x89') || s.needle.includes('\x97') || s.needle.includes('\x1B')){
+        // rebuild bytes manually for binary needles
+        const arr = [];
+        for(let i = 0; i < s.needle.length; i++) arr.push(s.needle.charCodeAt(i));
+        needle = new Uint8Array(arr);
+      }
+    }
+    const hits = findAll(needle, s.limit || 50);
+    if(hits.length === 0) continue;
+    for(const off of hits){
+      const div = document.createElement('div');
+      div.className = 'marker';
+      const ctx = Array.from(bytes.slice(off, off + 12)).map(b => b.toString(16).padStart(2,'0')).join('');
+      div.innerHTML = `<span class="off">${'0x'+off.toString(16).padStart(8,'0')}</span><span class="name">${s.name}</span><span class="ctx">${ctx}…</span>`;
+      div.onclick = () => { hexStart = (off & ~0xF) - 32; if(hexStart < 0) hexStart = 0; renderHex(off); };
+      markersDiv.appendChild(div);
+    }
+  }
+  if(markersDiv.children.length === 0){
+    markersDiv.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:4px">No common markers detected — file is probably proprietary binary. Try the hex viewer.</div>';
+  }
+
+  // Signals summary
+  buildSignals();
+
+  // RISO PRN auto-decode — detect by looking for the &z page-size command
+  // and the &i scanline command in the first 4 KB. If found, decode the
+  // whole file and render the bitmap.
+  els.risoSection.style.display = 'none';
+  const head = bytes.slice(0, 4096);
+  const headStr = Array.from(head).map(c => String.fromCharCode(c)).join('');
+  const looksLikeRiso = headStr.includes('&z') && headStr.includes('&r') &&
+                        head.indexOf(0x1E) >= 0;
+  if(looksLikeRiso){
+    els.risoStatus.textContent = 'RISO PRN signature detected — decoding…';
+    // Defer to next tick so UI updates before heavy work
+    setTimeout(() => {
+      try {
+        const decoded = decodeRisoPrn(bytes);
+        if(decoded) renderRisoBitmap(decoded);
+        else els.risoStatus.textContent = 'No scanlines found.';
+      } catch(e){
+        els.risoStatus.textContent = `Decode error: ${e.message}`;
+        console.error(e);
+      }
+    }, 20);
+  }
+}
+
+function buildSignals(){
+  const sig = els.signals;
+  sig.innerHTML = '';
+  const checks = [
+    { label: 'PJL wrapping',  test: () => findAll(b('@PJL'), 1).length > 0 },
+    { label: 'JBIG2 stream',  test: () => findAll(b('\x97\x4A\x42\x32\x0D\x0A\x1A\x0A'), 1).length > 0 },
+    { label: 'Likely 1-bit raster runs', test: () => findAll(b('\x00\x00\x00\x00\x00\x00\x00\x00'), 1).length > 0 && findAll(b('\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF'), 1).length > 0 },
+    { label: 'Embedded JPEG', test: () => findAll(b('\xFF\xD8\xFF'), 1).length > 0 },
+    { label: 'High entropy (compressed?)', test: () => {
+      const sample = bytes.length > 1024*1024 ? bytes.slice(0, 1024*1024) : bytes;
+      return entropy(sample) > 7.8;
+    }},
+    { label: 'Contains "RISO" string', test: () => findString('RISO', 1).length > 0 },
+  ];
+  for(const c of checks){
+    let found;
+    try { found = c.test(); } catch(e){ found = false; }
+    const t = document.createElement('span');
+    t.className = 'tag ' + (found ? 'found' : 'absent');
+    t.textContent = (found ? '✓ ' : '· ') + c.label;
+    sig.appendChild(t);
+  }
+}
+function b(s){
+  const arr = [];
+  for(let i = 0; i < s.length; i++) arr.push(s.charCodeAt(i));
+  return new Uint8Array(arr);
+}
+
+// ============================================================
+// HEX VIEWER
+// ============================================================
+function renderHex(highlightOffset = -1){
+  if(!bytes){ els.hexPane.textContent = 'No file loaded.'; return; }
+  const pane = els.hexPane;
+  pane.innerHTML = '';
+  const end = Math.min(hexStart + HEX_PAGE, bytes.length);
+  for(let off = hexStart; off < end; off += 16){
+    const row = document.createElement('div');
+    row.className = 'hex-row';
+    if(highlightOffset >= off && highlightOffset < off + 16) row.classList.add('highlight');
+
+    const addr = document.createElement('span');
+    addr.className = 'addr';
+    addr.textContent = '0x' + off.toString(16).padStart(8, '0');
+
+    const hex = document.createElement('span');
+    hex.className = 'hex';
+    let hexStr = '';
+    for(let i = 0; i < 16; i++){
+      const o = off + i;
+      if(o >= bytes.length){ hexStr += '   '; continue; }
+      const v = bytes[o];
+      const cls = v === 0 ? 'zero' : (v >= 0x80 ? 'high' : 'printable');
+      hexStr += `<span class="${cls}">${v.toString(16).padStart(2,'0')}</span> `;
+      if(i === 7) hexStr += ' ';
+    }
+    hex.innerHTML = hexStr;
+
+    const ascii = document.createElement('span');
+    ascii.className = 'ascii';
+    let ascStr = '';
+    for(let i = 0; i < 16; i++){
+      const o = off + i;
+      if(o >= bytes.length){ ascStr += ' '; continue; }
+      const v = bytes[o];
+      if(v >= 32 && v < 127) ascStr += `<span>${escapeHtml(String.fromCharCode(v))}</span>`;
+      else ascStr += `<span class="np">.</span>`;
+    }
+    ascii.innerHTML = ascStr;
+
+    row.append(addr, hex, ascii);
+    pane.appendChild(row);
+  }
+  const pageNum = Math.floor(hexStart / HEX_PAGE) + 1;
+  const totalPages = Math.ceil(bytes.length / HEX_PAGE);
+  els.hexInfo.textContent = `0x${hexStart.toString(16)}–0x${end.toString(16)}  ·  page ${pageNum}/${totalPages}  ·  ${bytes.length.toLocaleString()} bytes total`;
+}
+function escapeHtml(s){ return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+els.hexPrev.onclick = () => { if(!bytes) return; hexStart = Math.max(0, hexStart - HEX_PAGE); renderHex(); };
+els.hexNext.onclick = () => { if(!bytes) return; if(hexStart + HEX_PAGE < bytes.length){ hexStart += HEX_PAGE; renderHex(); } };
+els.hexJumpBtn.onclick = () => {
+  if(!bytes) return;
+  const v = els.hexJump.value.trim();
+  const off = v.startsWith('0x') ? parseInt(v, 16) : parseInt(v, 10);
+  if(isNaN(off)) return;
+  hexStart = Math.max(0, Math.min(bytes.length - HEX_PAGE, (off & ~0xF) - 32));
+  if(hexStart < 0) hexStart = 0;
+  renderHex(off);
+};
+
+// ============================================================
+// BITMAP DECODE (raw 1-bit interpretation)
+// ============================================================
+els.bmRender.onclick = renderBitmap;
+function renderBitmap(){
+  if(!bytes){ els.bmInfo.textContent = 'No file loaded.'; return; }
+  const startStr = els.bmStart.value.trim();
+  const start = startStr.startsWith('0x') ? parseInt(startStr, 16) : parseInt(startStr, 10);
+  const lenStr = els.bmLen.value.trim();
+  const len = Math.min(
+    lenStr.startsWith('0x') ? parseInt(lenStr, 16) : parseInt(lenStr, 10),
+    bytes.length - start
+  );
+  const width = parseInt(els.bmWidth.value, 10);
+  const msbFirst = els.bmBitOrder.value === 'msb';
+  const invert = els.bmInvert.value === '1';
+
+  if(!(width > 0) || !(len > 0) || isNaN(start) || start < 0 || start >= bytes.length){
+    els.bmInfo.textContent = 'Invalid parameters.';
+    return;
+  }
+
+  const stride = Math.ceil(width / 8);  // bytes per row
+  const rows = Math.floor(len / stride);
+  const c = els.bmCanvas;
+  c.width = width;
+  c.height = rows;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(width, rows);
+  const d = img.data;
+  let onCount = 0;
+  for(let y = 0; y < rows; y++){
+    for(let x = 0; x < width; x++){
+      const byteIdx = start + y * stride + (x >> 3);
+      if(byteIdx >= bytes.length) break;
+      const bitOff = msbFirst ? (7 - (x & 7)) : (x & 7);
+      const bit = (bytes[byteIdx] >> bitOff) & 1;
+      const ink = invert ? (1 - bit) : bit;
+      if(ink) onCount++;
+      const v = ink ? 0 : 255;
+      const i = (y * width + x) * 4;
+      d[i] = v; d[i+1] = v; d[i+2] = v; d[i+3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const cov = (onCount / (width * rows) * 100).toFixed(2);
+  els.bmInfo.textContent = `Rendered ${width}×${rows} dots from offset 0x${start.toString(16)} (${len.toLocaleString()} bytes). Coverage: ${cov}% black. If this looks like garbage, the data is probably compressed (JBIG) — we'll need to decode it first.`;
+}
+</script>
+</body>
+</html>

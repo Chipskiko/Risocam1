@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RISO MZ9 Authentic Halftones — extracted from rastertoRISO04A</title>
+<style>
+  :root{--bg:#0b0b0b;--fg:#e6e6e6;--panel:#151515;--line:#262626;--accent:#ff5a36;--muted:#888;}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,Inter,system-ui,sans-serif;font-size:13px;line-height:1.4}
+  header{padding:14px 18px;border-bottom:1px solid var(--line)}
+  header h1{margin:0 0 3px;font-size:14px;font-weight:600}
+  header .sub{font-size:11px;color:var(--muted)}
+  main{display:grid;grid-template-columns:320px 1fr;min-height:calc(100vh - 49px)}
+  aside{padding:14px;border-right:1px solid var(--line);background:var(--panel);overflow-y:auto;max-height:calc(100vh - 49px)}
+  section{padding:14px;overflow-y:auto;display:flex;flex-direction:column;gap:14px}
+  .group{margin-bottom:16px}
+  .group h3{margin:0 0 6px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  .pill{display:inline-block;padding:2px 7px;background:#222;border:1px solid #333;border-radius:9px;font-size:10px;color:#bbb;letter-spacing:.04em;text-transform:uppercase}
+  .pill.real{background:#2a1b16;border-color:#7a3527;color:#ffaa90}
+  label{display:block;margin-bottom:6px;font-size:11px;color:#bbb}
+  label .v{color:var(--accent);float:right;font-variant-numeric:tabular-nums}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  select,button{background:#1f1f1f;color:var(--fg);border:1px solid #333;border-radius:4px;padding:5px 8px;font-size:11px;width:100%;cursor:pointer;font-family:inherit}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#000;font-weight:600}
+  .hft-list{display:flex;flex-direction:column;gap:1px;font-size:11px;font-family:ui-monospace,Menlo,monospace}
+  .hft-item{padding:5px 7px;cursor:pointer;border-radius:3px;color:#bbb;display:flex;justify-content:space-between;gap:6px}
+  .hft-item:hover{background:#222;color:var(--fg)}
+  .hft-item.active{background:var(--accent);color:#000;font-weight:600}
+  .hft-item .sz{font-size:9px;color:#666}
+  .hft-item.active .sz{color:#000}
+  .file-drop{border:1.5px dashed #333;border-radius:5px;padding:14px;text-align:center;cursor:pointer;color:var(--muted)}
+  .file-drop:hover,.file-drop.drag{border-color:var(--accent);color:var(--accent)}
+  .file-drop input{display:none}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:5px;padding:12px}
+  .panel h2{margin:0 0 8px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#bbb;display:flex;justify-content:space-between;align-items:baseline}
+  .panel h2 .meta{font-size:10px;color:var(--muted);font-weight:400}
+  canvas.out{display:block;width:100%;background:#fff;image-rendering:pixelated;border:1px solid #222}
+  .matrix-vis{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:8px}
+  .mat-cell{background:#222;border-radius:4px;padding:6px;text-align:center;font-size:9px;color:#aaa;font-family:ui-monospace,monospace}
+  .mat-cell canvas{display:block;width:100%;image-rendering:pixelated;background:#fff;margin-bottom:4px}
+  .mat-cell.entry-2{outline:1px solid var(--accent)}
+  .stats{display:flex;gap:14px;font-size:10px;color:var(--muted);padding:4px 2px;font-family:ui-monospace,monospace}
+  .stats b{color:var(--fg);font-weight:500}
+</style>
+</head>
+
+<header>
+  <h1>RISO MZ9 Authentic Halftones <span class="pill real">extracted from rastertoRISO04A</span></h1>
+  <div class="sub">21 unique threshold matrices · 30 .hft files · pulled from <code style="background:#222;padding:0 4px;border-radius:2px">/Library/Printers/RISO/Halftones/04A/</code></div>
+</header>
+
+<main>
+
+<aside>
+
+  <div class="group">
+    <h3>Input image</h3>
+    <label class="file-drop" id="drop">
+      <input type="file" id="file" accept="image/*">
+      <div id="dropText">Drop image · click to browse</div>
+    </label>
+  </div>
+
+  <div class="group">
+    <h3>Print dialog preset</h3>
+    <label>
+      <select id="preset">
+        <option value="">— pick a halftone manually below —</option>
+        <optgroup label="Grain-touch (Halftone radio 2)">
+          <option value="ht5_3x3_6x6" selected>Grain Touch · Line/Text</option>
+          <option value="ht5_3x6">Grain Touch · Photo</option>
+        </optgroup>
+        <optgroup label="Screen-covered (Halftone radio 1) · AM 45°">
+          <option value="ht1_6x6_106_45">106 lpi · 45° · 6×6 (high freq)</option>
+          <option value="ht1_6x6_71_45">71 lpi · 45° · 6×6</option>
+          <option value="ht1_6x6_43_45">43 lpi · 45° · 6×6 (low freq)</option>
+          <option value="ht1_3x6_106_45">106 lpi · 45° · 3×6</option>
+          <option value="ht1_3x3_106_45">106 lpi · 45° · 3×3</option>
+        </optgroup>
+        <optgroup label="Solid-look (Halftone radio 3)">
+          <option value="ht6">Solid (passthrough)</option>
+        </optgroup>
+      </select>
+    </label>
+  </div>
+
+  <div class="group">
+    <h3>AMT zone (5 zones / file)</h3>
+    <label>
+      <select id="zone">
+        <option value="-1" selected>All zones (entry 2 for midtones)</option>
+        <option value="0">Zone 0 — highlights</option>
+        <option value="1">Zone 1 — light mid</option>
+        <option value="2">Zone 2 — midtone</option>
+        <option value="3">Zone 3 — dark mid</option>
+        <option value="4">Zone 4 — shadows</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="group">
+    <h3>Tonal</h3>
+    <label>Gamma <span class="v" id="gammaV">1.00</span><input type="range" id="gamma" min="0.3" max="3" step="0.05" value="1"></label>
+    <label>Output scale <span class="v" id="scaleV">1×</span><input type="range" id="scale" min="1" max="6" step="1" value="1"></label>
+    <label>Max width <span class="v" id="maxwV">800</span><input type="range" id="maxw" min="200" max="1600" step="50" value="800"></label>
+  </div>
+
+  <div class="group">
+    <h3>RISO halftone files</h3>
+    <div class="hft-list" id="hftList"></div>
+  </div>
+
+  <button id="dl" class="primary" style="margin-top:10px">Download 1-bit PNG</button>
+
+</aside>
+
+<section>
+
+  <div class="panel">
+    <h2><span>Thermal-head output</span><span class="meta" id="outMeta">—</span></h2>
+    <canvas class="out" id="out"></canvas>
+    <div class="stats">
+      <span>Source: <b id="srcStats">none</b></span>
+      <span>Matrix: <b id="matStats">—</b></span>
+      <span>Coverage: <b id="covStats">—</b></span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2><span id="hftTitle">Matrix preview</span><span class="meta" id="hftMeta">—</span></h2>
+    <div class="matrix-vis" id="matVis"></div>
+    <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5">
+      Each tile = one AMT zone matrix from the .hft file (paper-literal data — every byte pulled from RISO's filter).
+      Bright cells = high threshold (ink only at high coverage); dark cells = low threshold (ink immediately).
+      Entry 2 is outlined when it differs from the others — that's the midtone-specific refinement.
+    </div>
+  </div>
+
+</section>
+
+</main>
+
+<script>
+let HFT = {};            // loaded from riso_halftones.json
+let activeFile = null;   // currently-selected halftone key
+
+const els = {};
+['drop','file','dropText','zone','gamma','gammaV','scale','scaleV','maxw','maxwV',
+ 'hftList','dl','out','outMeta','srcStats','matStats','covStats',
+ 'hftTitle','hftMeta','matVis'].forEach(id => els[id] = document.getElementById(id));
+
+let sourceImg = null;
+const sourceCanvas = document.createElement('canvas');
+
+// ============================================================
+// LOAD HFT JSON
+// ============================================================
+fetch('riso_halftones.json').then(r => r.json()).then(data => {
+  HFT = data;
+  buildHftList();
+  // default to the literal "Grain Touch" matrix
+  selectFile('ht5_3x3_6x6');
+});
+
+document.getElementById('preset').addEventListener('change', e => {
+  if(e.target.value) selectFile(e.target.value);
+});
+
+function buildHftList(){
+  const items = Object.entries(HFT).map(([k, v]) => ({ k, m: v.meta || {} }));
+  // sort by type, lpi, cell
+  items.sort((a, b) => {
+    if((a.m.type||0) !== (b.m.type||0)) return (a.m.type||0) - (b.m.type||0);
+    if((a.m.lpi||0) !== (b.m.lpi||0)) return (b.m.lpi||0) - (a.m.lpi||0);
+    return a.k.localeCompare(b.k);
+  });
+  els.hftList.innerHTML = '';
+  for(const { k, m } of items){
+    const div = document.createElement('div');
+    div.className = 'hft-item';
+    const meta = m.lpi ? `${m.lpi}lpi${m.angle ? ' '+m.angle+'°' : ''}` : 'no-lpi';
+    div.innerHTML = `<span>${k}</span><span class="sz">${meta}</span>`;
+    div.onclick = () => selectFile(k);
+    div.dataset.key = k;
+    els.hftList.appendChild(div);
+  }
+}
+
+function selectFile(key){
+  activeFile = key;
+  document.querySelectorAll('.hft-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.key === key));
+  drawMatrixPreview();
+  render();
+}
+
+// ============================================================
+// MATRIX PREVIEW
+// ============================================================
+function drawMatrixPreview(){
+  const file = HFT[activeFile];
+  if(!file) return;
+  // Print-dialog label
+  let dialogLabel = '';
+  if(activeFile.startsWith('ht5')) dialogLabel = '★ GRAIN TOUCH (FM)';
+  else if(activeFile.startsWith('ht1') && activeFile.includes('_45'))
+    dialogLabel = 'Screen-covered (AM 45°)';
+  else if(activeFile.startsWith('ht6')) dialogLabel = 'Solid-look';
+  else if(activeFile.startsWith('ht2') || activeFile.startsWith('ht3'))
+    dialogLabel = 'Screen-covered (AM 0°)';
+  els.hftTitle.innerHTML = `${activeFile} ${dialogLabel ? '<span style="color:#ff5a36;font-size:10px;margin-left:8px">' + dialogLabel + '</span>' : ''}`;
+  const m = file.meta || {};
+  els.hftMeta.textContent =
+    `type=ht${m.type||'?'} cell=${m.cell||'?'} ${m.lpi?(m.lpi+'lpi'):''} ${m.angle?(m.angle+'°'):''}`;
+  els.matVis.innerHTML = '';
+  // detect if entry 2 differs
+  const entryStr = e => e.data.join(',');
+  const hash = file.entries.map(entryStr);
+  const e2differs = hash[2] !== hash[0];
+  for(let i=0; i<file.entries.length; i++){
+    const e = file.entries[i];
+    const cell = document.createElement('div');
+    cell.className = 'mat-cell' + (i === 2 && e2differs ? ' entry-2' : '');
+    const c = document.createElement('canvas');
+    c.width = e.w; c.height = e.h;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(e.w, e.h);
+    for(let p=0; p<e.data.length; p++){
+      const v = e.data[p];
+      img.data[p*4] = v; img.data[p*4+1] = v; img.data[p*4+2] = v; img.data[p*4+3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    cell.appendChild(c);
+    const lbl = document.createElement('div');
+    lbl.innerHTML = `zone ${i} · ${e.w}×${e.h}` + (i === 2 && e2differs ? '<br><span style="color:#ff5a36">(midtone)</span>' : '');
+    cell.appendChild(lbl);
+    els.matVis.appendChild(cell);
+  }
+}
+
+// ============================================================
+// IMAGE LOAD
+// ============================================================
+function loadFile(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      sourceImg = img;
+      els.srcStats.textContent = `${img.width}×${img.height}`;
+      els.dropText.textContent = file.name;
+      render();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+els.file.onchange = e => loadFile(e.target.files[0]);
+['dragover','dragenter'].forEach(ev => els.drop.addEventListener(ev, e => { e.preventDefault(); els.drop.classList.add('drag'); }));
+['dragleave','dragend','drop'].forEach(ev => els.drop.addEventListener(ev, e => { e.preventDefault(); els.drop.classList.remove('drag'); }));
+els.drop.addEventListener('drop', e => { e.preventDefault(); loadFile(e.dataTransfer.files[0]); });
+
+// Try default image
+window.addEventListener('load', () => {
+  const img = new Image();
+  img.onload = () => { sourceImg = img; els.srcStats.textContent=`${img.width}×${img.height}`; els.dropText.textContent='test_images/03_skin_tones.png'; render(); };
+  img.onerror = () => {};
+  img.src = 'test_images/03_skin_tones.png';
+});
+
+// ============================================================
+// RENDER
+// ============================================================
+function wire(id, valId, fmt){
+  els[id].addEventListener('input', () => {
+    els[valId].textContent = fmt(els[id].value);
+    render();
+  });
+  els[valId].textContent = fmt(els[id].value);
+}
+wire('gamma', 'gammaV', v => parseFloat(v).toFixed(2));
+wire('scale', 'scaleV', v => v + '×');
+wire('maxw',  'maxwV',  v => v);
+els.zone.addEventListener('change', render);
+
+function render(){
+  if(!sourceImg || !activeFile) return;
+  const file = HFT[activeFile];
+  if(!file) return;
+
+  // Resample
+  const maxW = +els.maxw.value;
+  const ratio = sourceImg.height / sourceImg.width;
+  const W = Math.min(sourceImg.width, maxW);
+  const H = Math.round(W * ratio);
+  sourceCanvas.width = W; sourceCanvas.height = H;
+  const sctx = sourceCanvas.getContext('2d');
+  sctx.drawImage(sourceImg, 0, 0, W, H);
+
+  // Luminance + gamma
+  const id = sctx.getImageData(0, 0, W, H);
+  const px = id.data;
+  const lum = new Float32Array(W * H);
+  const gamma = +els.gamma.value;
+  for(let i=0, j=0; i<px.length; i+=4, j++){
+    let l = (0.2126*px[i] + 0.7152*px[i+1] + 0.0722*px[i+2]) / 255;
+    l = Math.pow(Math.max(0, Math.min(1, l)), 1/gamma);
+    lum[j] = l;
+  }
+
+  // Pick zone: -1 = AMT-style auto (zone based on local luminance)
+  const zoneSel = +els.zone.value;
+  let dotsOn = 0;
+
+  const scale = +els.scale.value;
+  const out = els.out;
+  out.width = W * scale; out.height = H * scale;
+  const ctx = out.getContext('2d');
+  const oimg = ctx.createImageData(out.width, out.height);
+  const od = oimg.data;
+
+  for(let y=0; y<H; y++){
+    for(let x=0; x<W; x++){
+      const l = lum[y*W + x];
+      // Choose AMT zone: split [0,1] into 5 bands
+      let zi;
+      if(zoneSel >= 0) zi = zoneSel;
+      else zi = Math.min(4, Math.max(0, Math.floor((1-l) * 5)));
+      const m = file.entries[zi];
+      const t = m.data[(y % m.h) * m.w + (x % m.w)] / 255;
+      const bit = ((1 - l) > t) ? 1 : 0;
+      if(bit) dotsOn++;
+      const v = bit ? 0 : 255;
+      // splat scale × scale
+      for(let sy=0; sy<scale; sy++){
+        for(let sx=0; sx<scale; sx++){
+          const oi = ((y*scale + sy) * out.width + (x*scale + sx)) * 4;
+          od[oi] = v; od[oi+1] = v; od[oi+2] = v; od[oi+3] = 255;
+        }
+      }
+    }
+  }
+  ctx.putImageData(oimg, 0, 0);
+
+  const total = W*H;
+  els.outMeta.textContent = `${out.width}×${out.height}`;
+  els.matStats.textContent = `${activeFile} (zone ${zoneSel<0?'auto':zoneSel})`;
+  els.covStats.textContent = `${(dotsOn/total*100).toFixed(1)}% (${dotsOn.toLocaleString()})`;
+}
+
+els.dl.onclick = () => {
+  if(!sourceImg || !activeFile) return;
+  // 1× resolution export
+  const W = sourceCanvas.width, H = sourceCanvas.height;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  const sctx = sourceCanvas.getContext('2d');
+  const id = sctx.getImageData(0, 0, W, H).data;
+  const out = ctx.createImageData(W, H);
+  const od = out.data;
+  const gamma = +els.gamma.value;
+  const zoneSel = +els.zone.value;
+  const file = HFT[activeFile];
+  for(let i=0, j=0; i<id.length; i+=4, j++){
+    let l = (0.2126*id[i] + 0.7152*id[i+1] + 0.0722*id[i+2]) / 255;
+    l = Math.pow(Math.max(0, Math.min(1, l)), 1/gamma);
+    const x = j % W, y = (j/W)|0;
+    const zi = zoneSel >= 0 ? zoneSel : Math.min(4, Math.max(0, Math.floor((1-l) * 5)));
+    const m = file.entries[zi];
+    const t = m.data[(y % m.h) * m.w + (x % m.w)] / 255;
+    const v = ((1-l) > t) ? 0 : 255;
+    od[j*4] = v; od[j*4+1] = v; od[j*4+2] = v; od[j*4+3] = 255;
+  }
+  ctx.putImageData(out, 0, 0);
+  const a = document.createElement('a');
+  a.download = `${activeFile}_thermal.png`;
+  a.href = c.toDataURL('image/png');
+  a.click();
+};
+</script>
+</body>
+</html>

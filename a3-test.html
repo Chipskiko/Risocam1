@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A3 RISO Grain Touch Test Pattern</title>
+<style>
+  :root{--bg:#0b0b0b;--fg:#e6e6e6;--panel:#151515;--line:#262626;--accent:#ff5a36;--muted:#888;--page:#f8f8f8;}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,Inter,system-ui,sans-serif;font-size:13px;line-height:1.4}
+  header{padding:14px 18px;border-bottom:1px solid var(--line)}
+  header h1{margin:0 0 3px;font-size:14px;font-weight:600}
+  header .sub{font-size:11px;color:var(--muted)}
+  header .pill{display:inline-block;padding:2px 7px;background:#2a1b16;border:1px solid #7a3527;color:#ffaa90;border-radius:9px;font-size:10px;margin-left:6px;text-transform:uppercase;letter-spacing:.04em}
+
+  main{display:grid;grid-template-columns:300px 1fr;min-height:calc(100vh - 49px)}
+  aside{padding:14px;border-right:1px solid var(--line);background:var(--panel);overflow-y:auto;max-height:calc(100vh - 49px)}
+  section.view{padding:18px;overflow:auto;background:#1a1a1a;display:flex;flex-direction:column;align-items:center;gap:14px}
+
+  .group{margin-bottom:18px}
+  .group h3{margin:0 0 8px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  label{display:block;margin-bottom:8px;font-size:12px}
+  label .lbl{display:flex;justify-content:space-between;color:#bbb;margin-bottom:2px}
+  label .lbl .v{color:var(--accent);font-variant-numeric:tabular-nums}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  select,button{background:#1f1f1f;color:var(--fg);border:1px solid #333;border-radius:4px;padding:6px 10px;font-size:12px;width:100%;cursor:pointer;font-family:inherit}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#000;font-weight:600}
+  button:hover{border-color:#555}
+
+  /* A3 page rendering */
+  .a3-shell{display:flex;flex-direction:column;align-items:center;gap:6px}
+  .a3-page{background:var(--page);position:relative;box-shadow:0 6px 30px rgba(0,0,0,.5);border:1px solid #333;color:#222}
+  .a3-marker{position:absolute;border:1px dashed rgba(255,90,54,.6);box-sizing:border-box;pointer-events:none}
+  .ruler-h,.ruler-v{position:absolute;font-size:9px;color:#888;font-family:ui-monospace,Menlo,monospace}
+  .ruler-h{bottom:-18px;left:0;right:0;height:14px}
+  .ruler-v{top:0;bottom:0;left:-22px;width:18px}
+  .ruler-h .tick,.ruler-v .tick{position:absolute;border-color:#555}
+  .ruler-h .tick{height:5px;border-left:1px solid #555;top:0;padding-left:2px}
+  .ruler-v .tick{width:5px;border-top:1px solid #555;left:13px;padding-top:0;text-align:right;width:14px}
+  .pattern{position:absolute;display:block;image-rendering:pixelated;image-rendering:crisp-edges}
+  canvas{display:block}
+
+  .info{font-size:11px;color:var(--muted);font-family:ui-monospace,Menlo,monospace;line-height:1.6}
+  .info b{color:var(--fg);font-weight:500}
+  .legend{font-size:10px;color:#777;display:flex;gap:14px}
+  .legend span::before{content:'■ ';color:var(--accent)}
+</style>
+</head>
+
+<header>
+  <h1>RISO Print Driver Simulator <span class="pill">ht5_3x3_6x6_04A.hft · real matrix</span></h1>
+  <div class="sub">Upload an A3 PNG OR generate a test pattern. Output = the literal 1-bit thermal-head bitmap, at 300/400/600 dpi, on 297×420 mm A3.</div>
+</header>
+
+<main>
+
+<aside>
+
+  <div class="group">
+    <h3>Source</h3>
+    <label>
+      <select id="sourceMode">
+        <option value="pattern" selected>Generated test pattern (10×10 cm)</option>
+        <option value="upload">Uploaded image · full A3</option>
+      </select>
+    </label>
+    <label class="file-drop" id="drop" style="border:1.5px dashed #333;border-radius:5px;padding:10px;text-align:center;cursor:pointer;color:var(--muted);font-size:11px">
+      <input type="file" id="file" accept="image/*" style="display:none">
+      <div id="dropText">Drop A3 PNG · click to browse</div>
+    </label>
+    <div style="font-size:10px;color:var(--muted);margin-top:4px">
+      Uploaded image is resampled to A3 at the current DPI (297×420 mm).
+    </div>
+  </div>
+
+  <div class="group" id="patternGroup">
+    <h3>Test pattern</h3>
+    <label>
+      <select id="pattern">
+        <option value="gradient_h" selected>Horizontal gradient (white→black)</option>
+        <option value="gradient_v">Vertical gradient (white→black)</option>
+        <option value="gradient_2d">2D gradient (corner→corner)</option>
+        <option value="step_wedge">Step wedge (11 steps)</option>
+        <option value="radial">Radial gradient (center→edge)</option>
+        <option value="solid">Solid tone</option>
+        <option value="grid">Grid (checkerboard)</option>
+      </select>
+    </label>
+    <label>
+      <div class="lbl"><span>Solid level</span><span class="v" id="solidV">50%</span></div>
+      <input type="range" id="solid" min="0" max="100" value="50" step="1">
+    </label>
+  </div>
+
+  <div class="group">
+    <h3>Halftone (RISO matrix)</h3>
+    <label>
+      <select id="hftFile">
+        <option value="ht5_3x3_6x6" selected>★ Grain Touch · Line/Text (ht5_3x3_6x6)</option>
+        <option value="ht5_3x6">★ Grain Touch · Photo (ht5_3x6)</option>
+        <option value="ht1_6x6_106_45">Screen-covered · 106 lpi 45°</option>
+        <option value="ht1_6x6_71_45">Screen-covered · 71 lpi 45°</option>
+        <option value="ht1_6x6_43_45">Screen-covered · 43 lpi 45°</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="group">
+    <h3>Print resolution</h3>
+    <label>
+      <select id="dpi">
+        <option value="300">300 dpi · dot Ø ≈ 85 µm</option>
+        <option value="400">400 dpi · dot Ø ≈ 63 µm</option>
+        <option value="600" selected>600 dpi · dot Ø ≈ 42 µm</option>
+      </select>
+    </label>
+    <div style="font-size:10px;color:var(--muted);margin-top:4px" id="dpiNote">
+      At 600 dpi the pixel pitch is 25.4/600 = 0.042 mm. Each "dot" is rendered as a circular ink drop of that diameter (× dot-gain factor).
+    </div>
+  </div>
+
+  <div class="group">
+    <h3>Dot simulation</h3>
+    <label>
+      <div class="lbl"><span>Render mode</span></div>
+      <select id="dotMode">
+        <option value="circles" selected>Circular ink dots (printed look)</option>
+        <option value="squares">Square pixels (raw thermal head)</option>
+      </select>
+    </label>
+    <label>
+      <div class="lbl"><span>Dot gain</span><span class="v" id="gainV">1.15×</span></div>
+      <input type="range" id="gain" min="100" max="200" value="115" step="5">
+    </label>
+    <div style="font-size:10px;color:var(--muted);margin-top:4px">
+      1.00× = dot diameter equals pixel pitch (dots just touch).
+      RISO typical dot gain is ~1.1–1.3× (ink spreads on paper).
+    </div>
+  </div>
+
+  <div class="group">
+    <h3>Tonal</h3>
+    <label>
+      <div class="lbl"><span>Gamma</span><span class="v" id="gammaV">1.00</span></div>
+      <input type="range" id="gamma" min="0.3" max="3" value="1" step="0.05">
+    </label>
+  </div>
+
+  <div class="group">
+    <h3>View</h3>
+    <label>
+      <div class="lbl"><span>Zoom on pattern</span><span class="v" id="zoomV">fit</span></div>
+      <input type="range" id="zoom" min="0" max="8" value="0" step="1">
+    </label>
+    <div style="font-size:10px;color:var(--muted);margin-top:4px">0 = fit A3 to screen · 1 = pattern fills screen · 2-8 = pixel zoom on pattern</div>
+  </div>
+
+  <button class="primary" id="download" style="margin-top:10px">Download 10×10 cm PNG · 1-bit · 600 dpi</button>
+  <button id="downloadA3" style="margin-top:6px">Download full A3 PNG · 1-bit · 600 dpi</button>
+
+  <div class="group" style="margin-top:18px">
+    <h3>Physical info</h3>
+    <div class="info" id="physInfo"></div>
+  </div>
+
+</aside>
+
+<section class="view">
+
+  <div class="a3-shell" id="a3Shell">
+    <div class="a3-page" id="a3Page">
+      <canvas class="pattern" id="patternCanvas"></canvas>
+      <div class="a3-marker" id="patternMarker"></div>
+      <div class="ruler-h" id="rulerH"></div>
+      <div class="ruler-v" id="rulerV"></div>
+    </div>
+  </div>
+
+  <div class="info" id="renderInfo" style="text-align:center"></div>
+  <div class="legend"><span>10 cm test pattern position (50 mm from top, 50 mm from left)</span></div>
+
+</section>
+
+</main>
+
+<script>
+// =============================================================
+// REAL RISO HALFTONE MATRICES (from /Library/Printers/RISO/Halftones/04A/)
+// =============================================================
+const MATRICES = {
+  'ht5_3x3_6x6': {  // Grain Touch · Line/Text
+    w: 8, h: 8,
+    data: [
+      101, 109, 117, 125, 188, 192, 200, 208,
+       93,   5,  29,  37, 176, 248, 252, 216,
+       85,  21,  13,  45, 168, 240, 232, 224,
+       77,  69,  61,  53, 160, 152, 144, 136,
+      132, 140, 148, 156, 105, 113, 121, 128,
+      220, 252, 228, 164,  97,   9,  33,  41,
+      212, 244, 236, 172,  89,  25,  17,  49,
+      204, 196, 188, 180,  81,  73,  65,  57
+    ]
+  },
+  'ht1_6x6_106_45': {  // Screen-covered AM 106lpi 45°
+    w: 8, h: 8,
+    data: [
+      242, 218,  80,  18,   2,  26,  88, 226,
+      180, 203, 133,  57,  33,  64, 141, 187,
+       72, 111, 172, 149,  95, 156, 164, 103,
+       10,  49, 126, 211, 234, 195, 119,  41,
+        2,  26,  88, 226, 242, 218,  80,  18,
+       33,  64, 141, 187, 180, 203, 133,  57,
+       95, 156, 164, 103,  72, 111, 172, 149,
+      234, 195, 119,  41,  10,  49, 126, 211
+    ]
+  },
+  // ht5_3x6 and the other lpi variants will be fetched lazily if selected
+};
+
+// =============================================================
+// PHYSICAL CONSTANTS
+// =============================================================
+const A3_W_MM = 297, A3_H_MM = 420;
+const MM_PER_INCH = 25.4;
+const PATTERN_MM = 100;                          // 10 cm
+const PATTERN_OFF_MM = 50;                       // 50 mm from top-left
+
+// Dynamic — recomputed when DPI changes
+let DPI = 600;
+let PX_PER_MM = DPI / MM_PER_INCH;
+let PATTERN_PX = Math.round(PATTERN_MM * PX_PER_MM);
+let A3_PX_W = Math.round(A3_W_MM * PX_PER_MM);
+let A3_PX_H = Math.round(A3_H_MM * PX_PER_MM);
+let DOT_PITCH_MM = MM_PER_INCH / DPI;            // 0.0423 mm at 600dpi
+let DOT_PITCH_UM = DOT_PITCH_MM * 1000;          // microns
+
+function recomputeDpi(){
+  DPI = +els.dpi.value;
+  PX_PER_MM = DPI / MM_PER_INCH;
+  PATTERN_PX = Math.round(PATTERN_MM * PX_PER_MM);
+  A3_PX_W = Math.round(A3_W_MM * PX_PER_MM);
+  A3_PX_H = Math.round(A3_H_MM * PX_PER_MM);
+  DOT_PITCH_MM = MM_PER_INCH / DPI;
+  DOT_PITCH_UM = DOT_PITCH_MM * 1000;
+  els.dpiNote.innerHTML =
+    `Pixel pitch <b style="color:var(--accent)">${DOT_PITCH_MM.toFixed(4)} mm = ${DOT_PITCH_UM.toFixed(1)} µm</b>. ` +
+    `Each "dot" is a circular ink drop of this diameter × dot-gain factor.`;
+}
+
+// =============================================================
+// STATE
+// =============================================================
+const els = {};
+['pattern','solid','solidV','hftFile','gamma','gammaV','zoom','zoomV',
+ 'patternCanvas','patternMarker','a3Page','a3Shell','rulerH','rulerV',
+ 'physInfo','renderInfo','download','downloadA3',
+ 'dpi','dpiNote','dotMode','gain','gainV',
+ 'sourceMode','drop','file','dropText','patternGroup'
+].forEach(id => els[id] = document.getElementById(id));
+
+// Uploaded image (drawn into the full A3 area when sourceMode === 'upload')
+let uploadedImg = null;
+els.file.addEventListener('change', e => loadFile(e.target.files[0]));
+['dragover','dragenter'].forEach(ev => els.drop.addEventListener(ev, e => { e.preventDefault(); els.drop.style.borderColor='#ff5a36'; }));
+['dragleave','dragend','drop'].forEach(ev => els.drop.addEventListener(ev, e => { e.preventDefault(); els.drop.style.borderColor='#333'; }));
+els.drop.addEventListener('drop', e => { e.preventDefault(); loadFile(e.dataTransfer.files[0]); });
+els.drop.addEventListener('click', () => els.file.click());
+
+function loadFile(file){
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      uploadedImg = img;
+      els.dropText.textContent = `${file.name} · ${img.width}×${img.height}`;
+      els.sourceMode.value = 'upload';
+      els.patternGroup.style.display = 'none';
+      render();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+els.sourceMode.addEventListener('change', () => {
+  const isPattern = els.sourceMode.value === 'pattern';
+  els.patternGroup.style.display = isPattern ? '' : 'none';
+  render();
+});
+
+let activeMatrix = MATRICES['ht5_3x3_6x6'];
+
+// =============================================================
+// LOAD ADDITIONAL MATRICES FROM JSON
+// =============================================================
+fetch('riso_halftones.json').then(r => r.json()).then(data => {
+  // copy in any matrices we don't already have
+  for(const [k, v] of Object.entries(data)){
+    if(!MATRICES[k] && v.entries && v.entries[0]){
+      const e0 = v.entries[0];
+      MATRICES[k] = { w: e0.w, h: e0.h, data: e0.data };
+    }
+  }
+}).catch(()=>{});
+
+// =============================================================
+// RENDER
+// =============================================================
+function wire(id, valId, fmt){
+  els[id].addEventListener('input', () => { els[valId].textContent = fmt(els[id].value); render(); });
+  els[valId].textContent = fmt(els[id].value);
+}
+wire('solid', 'solidV', v => v + '%');
+wire('gamma', 'gammaV', v => parseFloat(v).toFixed(2));
+wire('zoom',  'zoomV',  v => v == '0' ? 'fit A3' : v == '1' ? 'pattern only' : v+'× px');
+wire('gain',  'gainV',  v => (v/100).toFixed(2) + '×');
+els.pattern.addEventListener('change', render);
+els.dotMode.addEventListener('change', render);
+els.dpi.addEventListener('change', () => { recomputeDpi(); render(); });
+els.hftFile.addEventListener('change', () => {
+  activeMatrix = MATRICES[els.hftFile.value] || activeMatrix;
+  render();
+});
+recomputeDpi();  // initial
+
+function generatePatternLum(W, H){
+  const lum = new Float32Array(W * H);
+  const mode = els.pattern.value;
+  const gamma = +els.gamma.value;
+  const solid = +els.solid.value / 100;
+  for(let y = 0; y < H; y++){
+    for(let x = 0; x < W; x++){
+      let l;
+      switch(mode){
+        case 'gradient_h': l = 1 - x / (W - 1); break;
+        case 'gradient_v': l = 1 - y / (H - 1); break;
+        case 'gradient_2d': l = 1 - (x + y) / (W + H - 2); break;
+        case 'radial': {
+          const cx = W/2, cy = H/2;
+          const d = Math.hypot(x - cx, y - cy) / Math.hypot(cx, cy);
+          l = 1 - d;
+          break;
+        }
+        case 'step_wedge': {
+          const steps = 11;
+          const step = Math.floor(x / W * steps);
+          l = 1 - step / (steps - 1);
+          break;
+        }
+        case 'solid': l = 1 - solid; break;
+        case 'grid': {
+          // ~2cm squares (4724 cell size at 600 dpi too big — use 472 px = 2cm)
+          const cell = Math.round(PX_PER_MM * 20);
+          l = ((Math.floor(x/cell) + Math.floor(y/cell)) % 2 === 0) ? 1 : 0;
+          break;
+        }
+        default: l = 0.5;
+      }
+      l = Math.pow(Math.max(0, Math.min(1, l)), 1/gamma);
+      lum[y*W + x] = l;
+    }
+  }
+  return lum;
+}
+
+function thresholdBits(W, H, lum, matrix){
+  const bits = new Uint8Array(W * H);
+  const m = matrix.data, mw = matrix.w, mh = matrix.h;
+  let on = 0;
+  for(let y = 0; y < H; y++){
+    for(let x = 0; x < W; x++){
+      const t = m[(y % mh) * mw + (x % mw)] / 255;
+      const b = ((1 - lum[y*W + x]) > t) ? 1 : 0;
+      if(b) on++;
+      bits[y*W + x] = b;
+    }
+  }
+  return { bits, on };
+}
+
+function renderSquares(canvas, W, H, bits){
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(W, H);
+  const d = img.data;
+  for(let i = 0; i < bits.length; i++){
+    const v = bits[i] ? 0 : 255;
+    d[i*4] = v; d[i*4+1] = v; d[i*4+2] = v; d[i*4+3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function renderCircles(canvas, W, H, bits, dotGain){
+  // Render with circular ink dots — each ON pixel becomes a filled circle
+  // of diameter dotGain × pixel-pitch. Oversample by 2× for smooth edges
+  // when the canvas is small enough; at full A3 (7016×9921) we'd allocate
+  // ~1 GB of pixels with OS=2, so drop to OS=1 there.
+  const OS = (W * H > 10_000_000) ? 1 : 2;
+  const SW = W * OS, SH = H * OS;
+  canvas.width = SW;
+  canvas.height = SH;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'white';
+  ctx.fillRect(0, 0, SW, SH);
+  ctx.fillStyle = 'black';
+  ctx.imageSmoothingEnabled = true;
+  // Build a single Path2D containing every ink dot, then fill once — far faster
+  // than per-circle ctx.arc + ctx.fill.
+  const r = (dotGain / 2) * OS;     // radius in oversampled pixels
+  const TAU = Math.PI * 2;
+  const path = new Path2D();
+  for(let y = 0; y < H; y++){
+    for(let x = 0; x < W; x++){
+      if(!bits[y*W + x]) continue;
+      const cx = (x + 0.5) * OS;
+      const cy = (y + 0.5) * OS;
+      path.moveTo(cx + r, cy);
+      path.arc(cx, cy, r, 0, TAU);
+    }
+  }
+  ctx.fill(path);
+}
+
+function halftoneToCanvas(canvas, W, H, lum, matrix){
+  const { bits, on } = thresholdBits(W, H, lum, matrix);
+  if(els.dotMode.value === 'circles'){
+    const dotGain = +els.gain.value / 100;  // 1.00–2.00
+    renderCircles(canvas, W, H, bits, dotGain);
+  } else {
+    renderSquares(canvas, W, H, bits);
+  }
+  return on;
+}
+
+// Reusable scratch canvas for resampling uploaded images
+const scratch = document.createElement('canvas');
+
+function generateUploadedLum(W, H){
+  // Draw the uploaded image into a W×H canvas (resampling A3-fits-A3)
+  scratch.width = W; scratch.height = H;
+  const sctx = scratch.getContext('2d');
+  sctx.fillStyle = 'white'; sctx.fillRect(0, 0, W, H);
+  // "Fit, keep aspect" — assume the uploaded image is meant for A3.
+  // If aspect doesn't match A3, letterbox with white.
+  const A3_AR = A3_W_MM / A3_H_MM;
+  const imgAR = uploadedImg.width / uploadedImg.height;
+  let dw, dh, dx, dy;
+  if(imgAR > A3_AR){
+    dw = W; dh = W / imgAR;
+    dx = 0; dy = (H - dh) / 2;
+  } else {
+    dh = H; dw = H * imgAR;
+    dx = (W - dw) / 2; dy = 0;
+  }
+  sctx.imageSmoothingEnabled = true;
+  sctx.imageSmoothingQuality = 'high';
+  sctx.drawImage(uploadedImg, dx, dy, dw, dh);
+  const id = sctx.getImageData(0, 0, W, H);
+  const px = id.data;
+  const lum = new Float32Array(W * H);
+  const gamma = +els.gamma.value;
+  for(let i = 0, j = 0; i < px.length; i += 4, j++){
+    let l = (0.2126*px[i] + 0.7152*px[i+1] + 0.0722*px[i+2]) / 255;
+    l = Math.pow(Math.max(0, Math.min(1, l)), 1/gamma);
+    lum[j] = l;
+  }
+  return lum;
+}
+
+function render(){
+  const isPattern = els.sourceMode.value === 'pattern';
+  let W, H, lum;
+  els.renderInfo.textContent = 'Processing…';
+
+  // Yield to browser briefly so the "Processing…" message shows for big jobs
+  setTimeout(() => {
+    if(isPattern){
+      W = H = PATTERN_PX;
+      lum = generatePatternLum(W, H);
+    } else {
+      if(!uploadedImg){
+        els.renderInfo.textContent = 'No image uploaded yet — drop an A3 PNG into the source panel.';
+        return;
+      }
+      W = A3_PX_W; H = A3_PX_H;
+      lum = generateUploadedLum(W, H);
+    }
+    const dotsOn = halftoneToCanvas(els.patternCanvas, W, H, lum, activeMatrix);
+    const totalDots = W * H;
+    const cov = (dotsOn / totalDots * 100).toFixed(2);
+    finishRender(W, H, dotsOn, totalDots, cov, isPattern);
+  }, 20);
+}
+
+function finishRender(W, H, dotsOn, totalDots, cov, isPattern){
+  // Layout: position canvas inside A3 page based on zoom
+  layoutA3(isPattern, W, H);
+
+  // Info
+  const dotGain = +els.gain.value / 100;
+  const dotDiamUm = DOT_PITCH_UM * dotGain;
+  els.physInfo.innerHTML =
+    `A3 paper: <b>${A3_W_MM}×${A3_H_MM} mm</b><br>` +
+    `Print res: <b>${DPI} dpi</b><br>` +
+    `Pixel pitch: <b style="color:var(--accent)">${DOT_PITCH_MM.toFixed(4)} mm</b> (${DOT_PITCH_UM.toFixed(1)} µm)<br>` +
+    `Ink dot Ø: <b style="color:var(--accent)">${dotDiamUm.toFixed(1)} µm</b> @ ${dotGain.toFixed(2)}× gain<br>` +
+    `A3 in dots: <b>${A3_PX_W.toLocaleString()}×${A3_PX_H.toLocaleString()}</b><br>` +
+    `Pattern: <b>${PATTERN_MM}×${PATTERN_MM} mm</b> (${PATTERN_PX.toLocaleString()}×${PATTERN_PX.toLocaleString()} dots)<br>` +
+    `Matrix: <b>${els.hftFile.value}</b> (${activeMatrix.w}×${activeMatrix.h})`;
+  els.renderInfo.innerHTML =
+    `<b>Coverage:</b> ${cov}% ink · <b>${dotsOn.toLocaleString()}</b> dots ON of ${totalDots.toLocaleString()} · ` +
+    `<b>dot Ø:</b> ${dotDiamUm.toFixed(1)} µm`;
+}
+
+function layoutA3(isPattern, W, H){
+  if(isPattern === undefined) isPattern = els.sourceMode.value === 'pattern';
+  const z = +els.zoom.value;
+  const view = document.querySelector('section.view');
+  const viewW = view.clientWidth - 80;
+  const viewH = view.clientHeight - 80;
+  let pageScale;  // CSS pixels per mm of A3
+  if(z === 0){
+    // Fit A3 to viewport
+    pageScale = Math.min(viewW / A3_W_MM, viewH / A3_H_MM);
+  } else if(z === 1){
+    // Scale so pattern fills viewport
+    pageScale = Math.min(viewW / PATTERN_MM, viewH / PATTERN_MM) * 0.95;
+  } else {
+    // 2-8: zoom factor (each unit = 1× pixel scale)
+    // 1× pixel zoom means 1 CSS pixel = 1 print-dot
+    const pxZoom = z - 1; // so z=2 → 1×, z=3 → 2×, etc.
+    pageScale = (PX_PER_MM * pxZoom);
+  }
+
+  const a3w = A3_W_MM * pageScale;
+  const a3h = A3_H_MM * pageScale;
+  els.a3Page.style.width = a3w + 'px';
+  els.a3Page.style.height = a3h + 'px';
+
+  // Pattern canvas: either 10cm patch offset 50mm, or full A3
+  if(isPattern){
+    const patternCssSize = PATTERN_MM * pageScale;
+    els.patternCanvas.style.width = patternCssSize + 'px';
+    els.patternCanvas.style.height = patternCssSize + 'px';
+    els.patternCanvas.style.left = (PATTERN_OFF_MM * pageScale) + 'px';
+    els.patternCanvas.style.top = (PATTERN_OFF_MM * pageScale) + 'px';
+    els.patternMarker.style.display = 'block';
+    els.patternMarker.style.left = (PATTERN_OFF_MM * pageScale - 1) + 'px';
+    els.patternMarker.style.top = (PATTERN_OFF_MM * pageScale - 1) + 'px';
+    els.patternMarker.style.width = patternCssSize + 'px';
+    els.patternMarker.style.height = patternCssSize + 'px';
+  } else {
+    // Full-A3 mode: canvas fills the entire page
+    els.patternCanvas.style.width = a3w + 'px';
+    els.patternCanvas.style.height = a3h + 'px';
+    els.patternCanvas.style.left = '0px';
+    els.patternCanvas.style.top = '0px';
+    els.patternMarker.style.display = 'none';
+  }
+
+  // Rulers
+  buildRulers(pageScale);
+
+  // If zoomed in, allow page to scroll
+  view.style.overflow = (z >= 2) ? 'auto' : 'hidden';
+}
+
+function buildRulers(pageScale){
+  // Horizontal ruler — ticks every 10mm with labels every 50mm
+  els.rulerH.innerHTML = '';
+  for(let mm = 0; mm <= A3_W_MM; mm += 10){
+    const t = document.createElement('div');
+    t.className = 'tick';
+    t.style.left = (mm * pageScale) + 'px';
+    if(mm % 50 === 0) t.textContent = mm;
+    els.rulerH.appendChild(t);
+  }
+  // Vertical ruler — every 10mm, labels every 50mm
+  els.rulerV.innerHTML = '';
+  for(let mm = 0; mm <= A3_H_MM; mm += 10){
+    const t = document.createElement('div');
+    t.className = 'tick';
+    t.style.top = (mm * pageScale) + 'px';
+    if(mm % 50 === 0) t.textContent = mm;
+    els.rulerV.appendChild(t);
+  }
+}
+
+window.addEventListener('resize', layoutA3);
+
+// =============================================================
+// DOWNLOADS
+// =============================================================
+els.download.addEventListener('click', () => {
+  const a = document.createElement('a');
+  const src = els.sourceMode.value === 'pattern' ? els.pattern.value : 'uploaded';
+  const label = els.sourceMode.value === 'pattern' ? '10cm' : 'fullA3';
+  a.download = `riso_${label}_${els.hftFile.value}_${src}_${DPI}dpi.png`;
+  a.href = els.patternCanvas.toDataURL('image/png');
+  a.click();
+});
+
+els.downloadA3.addEventListener('click', () => {
+  // If in upload mode the canvas already IS the full A3, just export it.
+  // Otherwise composite the 10cm patch onto a white A3 background.
+  let url;
+  if(els.sourceMode.value !== 'pattern'){
+    url = els.patternCanvas.toDataURL('image/png');
+  } else {
+    const c = document.createElement('canvas');
+    c.width = A3_PX_W; c.height = A3_PX_H;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, c.width, c.height);
+    const offset = Math.round(PATTERN_OFF_MM * PX_PER_MM);
+    ctx.drawImage(els.patternCanvas, offset, offset);
+    url = c.toDataURL('image/png');
+  }
+  const a = document.createElement('a');
+  a.download = `riso_A3_${els.hftFile.value}_${DPI}dpi.png`;
+  a.href = url;
+  a.click();
+});
+
+render();
+</script>
+</body>
+</html>

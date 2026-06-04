@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Blue + Yellow Overprint Test Chart — Riso Separation Generator</title>
+<style>
+  body { font-family: 'Helvetica Neue', sans-serif; background: #f5f5f0; padding: 40px; max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .sub { color: #888; font-size: 13px; margin-bottom: 30px; }
+  .canvases { display: flex; gap: 24px; flex-wrap: wrap; margin: 20px 0; }
+  .canvas-wrap { text-align: center; }
+  .canvas-wrap canvas { border: 1px solid #ccc; background: white; }
+  .canvas-wrap h3 { font-size: 13px; margin: 8px 0 4px; }
+  button { padding: 8px 18px; border: 1px solid #333; background: white; cursor: pointer;
+    font-family: inherit; font-size: 13px; border-radius: 4px; margin: 4px; }
+  button:hover { background: #eee; }
+  .settings { background: white; border: 1px solid #ddd; padding: 20px 24px; border-radius: 6px; margin: 24px 0; }
+  .settings h2 { font-size: 15px; margin: 0 0 12px; }
+  .settings table { border-collapse: collapse; width: 100%; }
+  .settings td { padding: 4px 12px 4px 0; font-size: 13px; vertical-align: top; }
+  .settings td:first-child { font-weight: 600; white-space: nowrap; min-width: 140px; }
+  .note { font-size: 12px; color: #888; margin-top: 16px; line-height: 1.5; }
+  .preview-wrap { text-align: center; margin: 24px 0; }
+  .preview-wrap canvas { border: 1px solid #ccc; }
+</style>
+</head>
+<body>
+
+<h1>Blue + Yellow Overprint Test Chart</h1>
+<p class="sub">Generates two grayscale separation plates for risograph printing. Print blue plate first, then yellow on top.</p>
+
+<div class="canvases">
+  <div class="canvas-wrap">
+    <canvas id="bluePlate" width="600" height="600"></canvas>
+    <h3>Blue Plate (print first)</h3>
+    <button onclick="download('bluePlate','blue-plate.png')">Download Blue Plate PNG</button>
+  </div>
+  <div class="canvas-wrap">
+    <canvas id="yellowPlate" width="600" height="600"></canvas>
+    <h3>Yellow Plate (print second)</h3>
+    <button onclick="download('yellowPlate','yellow-plate.png')">Download Yellow Plate PNG</button>
+  </div>
+</div>
+
+<div class="preview-wrap">
+  <h3 style="font-size:13px; margin-bottom:8px;">Expected Overprint Preview (simulated)</h3>
+  <canvas id="preview" width="600" height="600"></canvas>
+</div>
+
+<div class="settings">
+  <h2>Riso Print Settings</h2>
+  <table>
+    <tr><td>Paper</td><td>A4 or Letter, white uncoated (same stock you normally use)</td></tr>
+    <tr><td>Drums</td><td><strong>Pass 1:</strong> Blue &nbsp;→&nbsp; <strong>Pass 2:</strong> Yellow</td></tr>
+    <tr><td>Print order</td><td>Blue first (darker ink), yellow second. This matters — the order affects the overprint color.</td></tr>
+    <tr><td>Speed</td><td>Slow (1-2) for consistent ink density</td></tr>
+    <tr><td>Ink density</td><td>Medium-dark (3 out of 5, or your normal default). Do NOT set to maximum.</td></tr>
+    <tr><td>Master</td><td>Standard resolution (300-400 dpi). Use "Photo" mode if your riso has it.</td></tr>
+    <tr><td>Registration</td><td>Use pin registration or careful manual alignment between passes</td></tr>
+    <tr><td>Copies</td><td>Print 3-5 copies (first few sheets have inconsistent ink density as drum warms up)</td></tr>
+    <tr><td>Drying</td><td>Let blue pass dry 10+ minutes before running yellow pass</td></tr>
+  </table>
+  <p class="note">
+    <strong>Important:</strong> Feed the separation files as grayscale images. Black = full ink, white = no ink.
+    The chart has 5 density levels per channel (0%, 25%, 50%, 75%, 100%) giving 25 overprint combinations.
+    Each patch is large enough to scan/photograph clearly. Labels are included in each plate.
+  </p>
+</div>
+
+<div class="settings">
+  <h2>After Printing</h2>
+  <table>
+    <tr><td>Scan/photograph</td><td>Scan at 300+ dpi or photograph under consistent, neutral lighting (no warm/cool cast). Include a white paper border for white-balance reference.</td></tr>
+    <tr><td>What to compare</td><td>Focus on the 5x5 grid center cells — especially the diagonal where both inks overlap at equal density (25/25, 50/50, 75/75, 100/100).</td></tr>
+    <tr><td>Key question</td><td>How green vs. olive vs. muddy are the overlap patches? This tells us the opacity balance.</td></tr>
+  </table>
+</div>
+
+<script>
+const LEVELS = [0, 0.25, 0.50, 0.75, 1.0];
+const LABELS = ['0%', '25%', '50%', '75%', '100%'];
+const GRID = 5;
+const PAD = 80;       // left/top margin for labels
+const PAD_R = 20;     // right/bottom margin
+const PATCH = 90;     // patch size
+const GAP = 10;       // gap between patches
+
+function drawPlate(canvasId, isBlue) {
+  const c = document.getElementById(canvasId);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = 'white';
+  ctx.fillRect(0, 0, c.width, c.height);
+
+  ctx.fillStyle = '#000';
+  ctx.font = 'bold 14px Helvetica, sans-serif';
+  ctx.textAlign = 'center';
+
+  // Title
+  ctx.font = 'bold 16px Helvetica, sans-serif';
+  ctx.fillText(isBlue ? 'BLUE PLATE' : 'YELLOW PLATE', c.width / 2, 24);
+
+  ctx.font = '11px Helvetica, sans-serif';
+  ctx.fillText(isBlue ? 'Blue density →' : 'Yellow density →', PAD + (GRID * (PATCH + GAP)) / 2, 42);
+
+  // Axis labels — for blue plate: columns = blue density, rows = yellow density (but only blue ink printed)
+  // For yellow plate: columns = blue density (no ink), rows = yellow density (ink printed)
+  // Actually, simpler: each plate just needs to lay down its own ink at the right density per cell
+
+  ctx.font = '10px Helvetica, sans-serif';
+  ctx.textAlign = 'center';
+
+  // Column headers
+  for (let col = 0; col < GRID; col++) {
+    const x = PAD + col * (PATCH + GAP) + PATCH / 2;
+    if (isBlue) {
+      ctx.fillText(LABELS[col], x, PAD - 8);
+    } else {
+      ctx.fillText(LABELS[col], x, PAD - 8);
+    }
+  }
+
+  // Row headers
+  ctx.textAlign = 'right';
+  for (let row = 0; row < GRID; row++) {
+    const y = PAD + row * (PATCH + GAP) + PATCH / 2 + 4;
+    if (isBlue) {
+      ctx.fillText(LABELS[row], PAD - 10, y);
+    } else {
+      ctx.fillText(LABELS[row], PAD - 10, y);
+    }
+  }
+
+  // Axis titles
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.font = '11px Helvetica, sans-serif';
+  // Vertical axis
+  ctx.translate(18, PAD + (GRID * (PATCH + GAP)) / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText(isBlue ? 'Yellow density →' : 'Blue density →', 0, 0);
+  ctx.restore();
+
+  // Draw patches
+  for (let row = 0; row < GRID; row++) {
+    for (let col = 0; col < GRID; col++) {
+      const x = PAD + col * (PATCH + GAP);
+      const y = PAD + row * (PATCH + GAP);
+
+      // Blue plate: cols = blue density, rows = yellow density
+      // This plate only prints BLUE ink, so density comes from column for blue, row for yellow
+      let density;
+      if (isBlue) {
+        // Blue plate: blue ink density based on ROW (blue = vertical axis)
+        // Wait, let me rethink. The grid is:
+        //   columns = one axis, rows = other axis
+        // Let's say: columns = blue density, rows = yellow density
+        // Blue plate prints at the column's density for every cell in that column
+        density = LEVELS[col];
+      } else {
+        // Yellow plate prints at the row's density for every cell in that row
+        density = LEVELS[row];
+      }
+
+      const gray = Math.round(255 * (1 - density)); // 0% density = white, 100% = black
+      ctx.fillStyle = `rgb(${gray},${gray},${gray})`;
+      ctx.fillRect(x, y, PATCH, PATCH);
+
+      // Thin border for 0% patches
+      if (density === 0) {
+        ctx.strokeStyle = '#ddd';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(x, y, PATCH, PATCH);
+      }
+    }
+  }
+
+  // Bottom legend
+  ctx.fillStyle = '#000';
+  ctx.font = '10px Helvetica, sans-serif';
+  ctx.textAlign = 'left';
+  const by = PAD + GRID * (PATCH + GAP) + 16;
+  ctx.fillText('Columns: Blue density (0→100%)    Rows: Yellow density (0→100%)', PAD, by);
+  ctx.fillText('Black = full ink coverage, White = no ink. Feed as grayscale to riso.', PAD, by + 16);
+
+  // Gradient strip at bottom
+  const gy = by + 36;
+  ctx.fillText(isBlue ? 'Blue gradient strip:' : 'Yellow gradient strip:', PAD, gy);
+  for (let i = 0; i < 200; i++) {
+    const t = i / 199;
+    const g = Math.round(255 * (1 - t));
+    ctx.fillStyle = `rgb(${g},${g},${g})`;
+    ctx.fillRect(PAD + 140 + i, gy - 10, 1, 14);
+  }
+  ctx.fillStyle = '#000';
+  ctx.font = '9px Helvetica, sans-serif';
+  ctx.fillText('0%', PAD + 140, gy + 14);
+  ctx.textAlign = 'right';
+  ctx.fillText('100%', PAD + 340, gy + 14);
+}
+
+function drawPreview() {
+  const c = document.getElementById('preview');
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#f0ede6'; // paper
+  ctx.fillRect(0, 0, c.width, c.height);
+
+  // Simulate blue + yellow overprint on paper
+  const BLUE = [0.130, 0.361, 0.738];
+  const YELLOW = [0.967, 0.909, 0.226];
+  const PAPER = [0.941, 0.929, 0.902];
+
+  ctx.font = 'bold 14px Helvetica, sans-serif';
+  ctx.fillStyle = '#333';
+  ctx.textAlign = 'center';
+  ctx.fillText('SIMULATED OVERPRINT (what it should approximately look like)', c.width / 2, 24);
+
+  ctx.font = '10px Helvetica, sans-serif';
+  ctx.textAlign = 'center';
+  for (let col = 0; col < GRID; col++) {
+    ctx.fillStyle = '#333';
+    ctx.fillText('B:' + LABELS[col], PAD + col * (PATCH + GAP) + PATCH / 2, PAD - 8);
+  }
+  ctx.textAlign = 'right';
+  for (let row = 0; row < GRID; row++) {
+    ctx.fillStyle = '#333';
+    ctx.fillText('Y:' + LABELS[row], PAD - 10, PAD + row * (PATCH + GAP) + PATCH / 2 + 4);
+  }
+
+  for (let row = 0; row < GRID; row++) {
+    for (let col = 0; col < GRID; col++) {
+      const x = PAD + col * (PATCH + GAP);
+      const y = PAD + row * (PATCH + GAP);
+      const bD = LEVELS[col]; // blue density
+      const yD = LEVELS[row]; // yellow density
+
+      // Simple Beer-Lambert simulation
+      let r = PAPER[0], g = PAPER[1], b = PAPER[2];
+
+      // Apply blue ink
+      if (bD > 0) {
+        const safeB = BLUE.map(v => Math.max(v, 0.05));
+        r *= Math.pow(Math.sqrt(safeB[0]), bD);
+        g *= Math.pow(Math.sqrt(safeB[1]), bD);
+        b *= Math.pow(Math.sqrt(safeB[2]), bD);
+        r *= r; g *= g; b *= b; // undo sqrt (Yule-Nielsen)
+        // Wait, this isn't quite right for sequential. Let me do it properly
+      }
+
+      // Redo: proper sequential Beer-Lambert with YN
+      r = PAPER[0]; g = PAPER[1]; b = PAPER[2];
+
+      // Blue layer
+      if (bD > 0) {
+        const ink = BLUE;
+        const si = ink.map(v => Math.max(v, 0.05));
+        const pYN = [Math.sqrt(r), Math.sqrt(g), Math.sqrt(b)];
+        const iYN = si.map(v => Math.sqrt(v));
+        const abs = iYN.map(v => Math.pow(v, bD));
+        const rYN = pYN.map((p, i) => p * abs[i]);
+        const transparent = rYN.map(v => v * v);
+        const opaque = [r, g, b].map((p, i) => p * (1 - bD) + ink[i] * bD);
+        const opacity = smoothstep(0.3, 0.85, bD) * 0.45;
+        r = transparent[0] * (1 - opacity) + opaque[0] * opacity;
+        g = transparent[1] * (1 - opacity) + opaque[1] * opacity;
+        b = transparent[2] * (1 - opacity) + opaque[2] * opacity;
+      }
+
+      // Yellow layer on top
+      if (yD > 0) {
+        const ink = YELLOW;
+        const si = ink.map(v => Math.max(v, 0.05));
+        const pYN = [Math.sqrt(r), Math.sqrt(g), Math.sqrt(b)];
+        const iYN = si.map(v => Math.sqrt(v));
+        const abs = iYN.map(v => Math.pow(v, yD));
+        const rYN = pYN.map((p, i) => p * abs[i]);
+        const transparent = rYN.map(v => v * v);
+        const opaque = [r, g, b].map((p, i) => p * (1 - yD) + ink[i] * yD);
+        const opacity = smoothstep(0.3, 0.85, yD) * 0.45;
+        r = transparent[0] * (1 - opacity) + opaque[0] * opacity;
+        g = transparent[1] * (1 - opacity) + opaque[1] * opacity;
+        b = transparent[2] * (1 - opacity) + opaque[2] * opacity;
+      }
+
+      ctx.fillStyle = `rgb(${clamp(r)},${clamp(g)},${clamp(b)})`;
+      ctx.fillRect(x, y, PATCH, PATCH);
+    }
+  }
+
+  // Label
+  ctx.fillStyle = '#333';
+  ctx.font = '10px Helvetica, sans-serif';
+  ctx.textAlign = 'left';
+  const by = PAD + GRID * (PATCH + GAP) + 16;
+  ctx.fillText('Columns: Blue density    Rows: Yellow density    Paper: warm white', PAD, by);
+  ctx.fillText('Compare this grid to your actual print to calibrate the overprint model.', PAD, by + 16);
+}
+
+function smoothstep(edge0, edge1, x) {
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+function clamp(v) {
+  return Math.max(0, Math.min(255, Math.round(v * 255)));
+}
+
+function download(canvasId, filename) {
+  const c = document.getElementById(canvasId);
+  const a = document.createElement('a');
+  a.href = c.toDataURL('image/png');
+  a.download = filename;
+  a.click();
+}
+
+// Generate on load
+drawPlate('bluePlate', true);
+drawPlate('yellowPlate', false);
+drawPreview();
+</script>
+
+</body>
+</html>

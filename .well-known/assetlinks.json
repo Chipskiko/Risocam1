@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.risocam.twa",
+      "sha256_cert_fingerprints": [
+        "CA:3A:AD:D9:68:49:74:1D:92:05:5F:DF:77:73:4C:D0:A8:A7:0E:15:50:3B:53:AD:9A:97:79:4E:8E:6A:0A:02"
+      ]
+    }
+  }
+]

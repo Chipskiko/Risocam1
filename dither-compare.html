@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dither Compare</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #111; color: #eee; font: 14px/1.4 ui-monospace, Menlo, monospace; }
+  #app { display: flex; flex-direction: column; align-items: center; padding: 16px; gap: 12px; }
+  #header { text-align: center; }
+  #algo { font-size: 22px; letter-spacing: 0.05em; }
+  #stats { color: #888; font-size: 12px; margin-top: 4px; }
+  canvas { image-rendering: pixelated; image-rendering: crisp-edges; max-width: 100vw; background: #000; border: 1px solid #333; }
+  #ctrls { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; max-width: 720px; }
+  button { padding: 8px 12px; background: #222; color: #ddd; border: 1px solid #444; cursor: pointer; font: inherit; }
+  button:hover { background: #2a2a2a; }
+  button.active { background: #eee; color: #111; border-color: #eee; }
+  #start { padding: 14px 28px; font-size: 16px; background: #d44; border: 0; color: #fff; }
+  #note { color: #777; font-size: 12px; text-align: center; max-width: 540px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <div id="algo">click START to enable camera</div>
+    <div id="stats">– fps · – ms/frame</div>
+  </div>
+  <canvas id="out" width="640" height="480"></canvas>
+  <div id="ctrls"></div>
+  <button id="start">START CAMERA</button>
+  <div id="note">tap any algorithm to switch · press SPACE to cycle · arrow keys also work</div>
+</div>
+<video id="vid" autoplay playsinline muted style="display:none"></video>
+<canvas id="cap" width="640" height="480" style="display:none"></canvas>
+
+<script>
+'use strict';
+
+// ─── DIMENSIONS ──────────────────────────────────────────────────────────
+const W = 640, H = 480;
+const N = W * H;
+
+// ─── CAMERA SETUP ────────────────────────────────────────────────────────
+const vid = document.getElementById('vid');
+const cap = document.getElementById('cap');
+const capCtx = cap.getContext('2d', { willReadFrequently: true });
+const out = document.getElementById('out');
+const outCtx = out.getContext('2d');
+let camOn = false;
+
+async function startCam() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: W }, height: { ideal: H }, facingMode: 'environment' },
+      audio: false
+    });
+    vid.srcObject = stream;
+    await new Promise(r => vid.onloadedmetadata = r);
+    await vid.play();
+    camOn = true;
+    document.getElementById('start').style.display = 'none';
+  } catch (e) {
+    document.getElementById('algo').textContent = 'camera blocked: ' + e.message;
+  }
+}
+document.getElementById('start').addEventListener('click', startCam);
+
+// ─── ALGORITHMS ──────────────────────────────────────────────────────────
+// Each algorithm takes a Uint8Array `gray` (W*H, 0..255) and writes binary
+// 0/255 into Uint8Array `out` (same size).
+
+function thresholdOnly(g, o) {
+  for (let i = 0; i < N; i++) o[i] = g[i] >= 128 ? 255 : 0;
+}
+
+// Floyd-Steinberg (serpentine), int16 buffer for speed
+function fs(g, o) {
+  const b = new Int16Array(g);
+  for (let y = 0; y < H; y++) {
+    const goingRight = (y & 1) === 0;
+    const xStart = goingRight ? 0 : W - 1;
+    const xEnd   = goingRight ? W : -1;
+    const xStep  = goingRight ? 1 : -1;
+    const xDir   = goingRight ? 1 : -1;
+    for (let x = xStart; x !== xEnd; x += xStep) {
+      const i = y * W + x;
+      const v = b[i];
+      const q = v >= 128 ? 255 : 0;
+      o[i] = q;
+      const err = v - q;
+      if (err === 0) continue;
+      const nx1 = x + xDir;
+      if (nx1 >= 0 && nx1 < W) b[y*W + nx1] += (err * 7) >> 4;
+      if (y + 1 < H) {
+        const ny = y + 1;
+        const nxA = x - xDir;
+        if (nxA >= 0 && nxA < W) b[ny*W + nxA] += (err * 3) >> 4;
+                                   b[ny*W + x]   += (err * 5) >> 4;
+        const nxB = x + xDir;
+        if (nxB >= 0 && nxB < W) b[ny*W + nxB] += (err * 1) >> 4;
+      }
+    }
+  }
+}
+
+// Generic ED with arbitrary kernel — used for Stucki, JJN, Atkinson
+function makeEd(kernel, totalDenom) {
+  // Pre-flatten kernel for speed
+  const kx = new Int8Array(kernel.length);
+  const ky = new Int8Array(kernel.length);
+  const kw = new Float32Array(kernel.length);
+  for (let i = 0; i < kernel.length; i++) {
+    kx[i] = kernel[i][0]; ky[i] = kernel[i][1]; kw[i] = kernel[i][2] / totalDenom;
+  }
+  return function(g, o) {
+    const b = new Float32Array(g);
+    for (let y = 0; y < H; y++) {
+      const goingRight = (y & 1) === 0;
+      const xStart = goingRight ? 0 : W - 1;
+      const xEnd   = goingRight ? W : -1;
+      const xStep  = goingRight ? 1 : -1;
+      const xDir   = goingRight ? 1 : -1;
+      for (let x = xStart; x !== xEnd; x += xStep) {
+        const i = y * W + x;
+        const v = b[i];
+        const q = v >= 128 ? 255 : 0;
+        o[i] = q;
+        const err = v - q;
+        if (err === 0) continue;
+        for (let k = 0; k < kx.length; k++) {
+          const nx = x + kx[k] * xDir;
+          const ny = y + ky[k];
+          if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue;
+          b[ny*W + nx] += err * kw[k];
+        }
+      }
+    }
+  };
+}
+const stucki = makeEd([
+  [1,0,8],[2,0,4],
+  [-2,1,2],[-1,1,4],[0,1,8],[1,1,4],[2,1,2],
+  [-2,2,1],[-1,2,2],[0,2,4],[1,2,2],[2,2,1]
+], 42);
+const jjn = makeEd([
+  [1,0,7],[2,0,5],
+  [-2,1,3],[-1,1,5],[0,1,7],[1,1,5],[2,1,3],
+  [-2,2,1],[-1,2,3],[0,2,5],[1,2,3],[2,2,1]
+], 48);
+const atkinson = makeEd([
+  [1,0,1],[2,0,1],
+  [-1,1,1],[0,1,1],[1,1,1],
+  [0,2,1]
+], 8);
+
+// Bayer matrices (recursive). Cell values [0..N²-1], threshold = (v+0.5)/N² × 255.
+function buildBayer(sz) {
+  if (sz === 1) return [[0]];
+  const sub = buildBayer(sz / 2);
+  const m = Array.from({ length: sz }, () => new Array(sz));
+  const offsets = [[0, 2], [3, 1]];
+  for (let y = 0; y < sz; y++) {
+    for (let x = 0; x < sz; x++) {
+      const qy = y < sz/2 ? 0 : 1, qx = x < sz/2 ? 0 : 1;
+      m[y][x] = sub[y % (sz/2)][x % (sz/2)] * 4 + offsets[qy][qx];
+    }
+  }
+  return m;
+}
+function flattenBayer(m, sz) {
+  const f = new Uint8Array(sz * sz);
+  const max = sz * sz;
+  for (let y = 0; y < sz; y++)
+    for (let x = 0; x < sz; x++)
+      f[y * sz + x] = ((m[y][x] + 0.5) * 256 / max) | 0;
+  return f;
+}
+const BAYER4 = flattenBayer(buildBayer(4), 4);
+const BAYER8 = flattenBayer(buildBayer(8), 8);
+
+function bayer4(g, o) {
+  for (let y = 0; y < H; y++) {
+    const my = (y & 3) * 4;
+    for (let x = 0; x < W; x++) {
+      const t = BAYER4[my + (x & 3)];
+      const i = y * W + x;
+      o[i] = g[i] > t ? 255 : 0;
+    }
+  }
+}
+function bayer8(g, o) {
+  for (let y = 0; y < H; y++) {
+    const my = (y & 7) * 8;
+    for (let x = 0; x < W; x++) {
+      const t = BAYER8[my + (x & 7)];
+      const i = y * W + x;
+      o[i] = g[i] > t ? 255 : 0;
+    }
+  }
+}
+
+// Interleaved Gradient Noise — Jorge Jimenez's blue-noise-spectrum hash
+function ign(g, o) {
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const m = 0.06711056 * x + 0.00583715 * y;
+      const f1 = m - Math.floor(m);
+      const v = 52.9829189 * f1;
+      const t = (v - Math.floor(v)) * 255;
+      const i = y * W + x;
+      o[i] = g[i] > t ? 255 : 0;
+    }
+  }
+}
+
+// True Void-and-Cluster blue noise (precomputed once at startup)
+const VC_SIZE = 64;
+function genVoidCluster(size) {
+  const NN = size * size;
+  const SIGMA = 1.5, radius = Math.ceil(SIGMA * 4);
+  const kernel = [];
+  for (let dy = -radius; dy <= radius; dy++)
+    for (let dx = -radius; dx <= radius; dx++) {
+      const wt = Math.exp(-(dx*dx + dy*dy) / (2*SIGMA*SIGMA));
+      if (wt > 1e-6) kernel.push({ dx, dy, w: wt });
+    }
+  function bump(e, x, y, s) {
+    for (const k of kernel) {
+      const nx = ((x + k.dx) % size + size) % size;
+      const ny = ((y + k.dy) % size + size) % size;
+      e[ny*size + nx] += s * k.w;
+    }
+  }
+  function tight(p, e) { let m = -Infinity, i = -1; for (let k = 0; k < NN; k++) if (p[k] && e[k] > m) { m = e[k]; i = k; } return i; }
+  function void_(p, e) { let m = Infinity, i = -1; for (let k = 0; k < NN; k++) if (!p[k] && e[k] < m) { m = e[k]; i = k; } return i; }
+  const pat = new Uint8Array(NN), en = new Float32Array(NN);
+  let seed = 12345;
+  const rand = () => { seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF; return seed / 0x7FFFFFFF; };
+  const initN = (NN * 0.1) | 0;
+  for (let i = 0; i < initN; i++) {
+    let p = (rand() * NN) | 0;
+    while (pat[p]) p = (p + 1) % NN;
+    pat[p] = 1;
+    bump(en, p % size, (p / size) | 0, +1);
+  }
+  for (let it = 0; it < NN; it++) {
+    const a = tight(pat, en);
+    pat[a] = 0; bump(en, a % size, (a / size) | 0, -1);
+    const b = void_(pat, en);
+    pat[b] = 1; bump(en, b % size, (b / size) | 0, +1);
+    if (a === b) break;
+  }
+  const rank = new Int32Array(NN).fill(-1);
+  let p2 = new Uint8Array(pat), e2 = new Float32Array(en);
+  for (let i = 0; i < initN; i++) {
+    const idx = tight(p2, e2);
+    rank[idx] = initN - 1 - i;
+    p2[idx] = 0; bump(e2, idx % size, (idx / size) | 0, -1);
+  }
+  p2 = new Uint8Array(pat); e2 = new Float32Array(en);
+  let r = initN;
+  while (r < NN) {
+    const idx = void_(p2, e2);
+    if (idx === -1) break;
+    rank[idx] = r++;
+    p2[idx] = 1; bump(e2, idx % size, (idx / size) | 0, +1);
+  }
+  const mask = new Uint8Array(NN);
+  for (let i = 0; i < NN; i++) mask[i] = Math.min(255, ((rank[i] / NN) * 256) | 0);
+  return mask;
+}
+const VC_MASK = genVoidCluster(VC_SIZE);
+
+function vc(g, o) {
+  for (let y = 0; y < H; y++) {
+    const my = (y % VC_SIZE) * VC_SIZE;
+    for (let x = 0; x < W; x++) {
+      const t = VC_MASK[my + (x % VC_SIZE)];
+      const i = y * W + x;
+      o[i] = g[i] > t ? 255 : 0;
+    }
+  }
+}
+
+// Dizzy Dither — random-order ED. Shuffle order is precomputed once so the
+// pattern is stable across frames (no flicker from re-randomization).
+const DIZZY_ORDER = (() => {
+  const ord = new Uint32Array(N);
+  for (let i = 0; i < N; i++) ord[i] = i;
+  for (let i = N - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    const t = ord[i]; ord[i] = ord[j]; ord[j] = t;
+  }
+  return ord;
+})();
+function dizzy(g, o) {
+  const b = new Float32Array(g);
+  const done = new Uint8Array(N);
+  for (let k = 0; k < N; k++) {
+    const i = DIZZY_ORDER[k];
+    const y = (i / W) | 0;
+    const x = i - y * W;
+    const v = b[i];
+    const q = v >= 128 ? 255 : 0;
+    o[i] = q;
+    const err = v - q;
+    if (err !== 0) {
+      let n = 0;
+      const idxs = [];
+      if (x > 0)     { const ni = i - 1; if (!done[ni]) { idxs.push(ni); n++; } }
+      if (x < W-1)   { const ni = i + 1; if (!done[ni]) { idxs.push(ni); n++; } }
+      if (y > 0)     { const ni = i - W; if (!done[ni]) { idxs.push(ni); n++; } }
+      if (y < H-1)   { const ni = i + W; if (!done[ni]) { idxs.push(ni); n++; } }
+      if (n > 0) {
+        const d = err / n;
+        for (const ni of idxs) b[ni] += d;
+      }
+    }
+    done[i] = 1;
+  }
+}
+
+// ─── REGISTRY ─────────────────────────────────────────────────────────────
+const ALGOS = [
+  { name: 'THRESHOLD',         fn: thresholdOnly, note: 'baseline · no dither' },
+  { name: 'FLOYD-STEINBERG',   fn: fs,            note: 'classic ED · serpentine · 7/3/5/1 over 16' },
+  { name: 'STUCKI',            fn: stucki,        note: '12-neighbor ED · wider spread' },
+  { name: 'JARVIS-JUDICE-NINKE', fn: jjn,         note: '12-neighbor ED · similar to Stucki' },
+  { name: 'ATKINSON',          fn: atkinson,      note: '6-neighbor ED · only diffuses 6/8 of error' },
+  { name: 'BAYER 4×4',         fn: bayer4,        note: 'ordered · visible crosshatch' },
+  { name: 'BAYER 8×8',         fn: bayer8,        note: 'ordered · finer crosshatch' },
+  { name: 'IGN',               fn: ign,           note: 'interleaved gradient noise · pseudo-blue-noise hash' },
+  { name: 'BLUE NOISE (V&C)',  fn: vc,            note: 'true blue noise mask · pointwise threshold' },
+  { name: 'DIZZY DITHER',      fn: dizzy,         note: 'random-order ED · stable shuffle' },
+];
+
+let curIdx = 1; // start on FS, the most common reference
+
+// ─── UI ──────────────────────────────────────────────────────────────────
+const algoEl = document.getElementById('algo');
+const statsEl = document.getElementById('stats');
+const ctrls = document.getElementById('ctrls');
+const buttons = ALGOS.map((a, i) => {
+  const b = document.createElement('button');
+  b.textContent = a.name;
+  b.addEventListener('click', () => { curIdx = i; updateUI(); });
+  ctrls.appendChild(b);
+  return b;
+});
+function updateUI() {
+  const cur = ALGOS[curIdx];
+  algoEl.textContent = cur.name;
+  buttons.forEach((b, i) => b.classList.toggle('active', i === curIdx));
+  // Append the note to algo label as smaller subtitle
+  if (algoEl.querySelector('.note')) algoEl.querySelector('.note').remove();
+  const noteEl = document.createElement('div');
+  noteEl.className = 'note';
+  noteEl.style.cssText = 'font-size: 11px; color: #888; letter-spacing: 0; margin-top: 4px;';
+  noteEl.textContent = cur.note;
+  algoEl.appendChild(noteEl);
+}
+updateUI();
+
+document.addEventListener('keydown', e => {
+  if (e.key === ' ' || e.key === 'ArrowRight') {
+    e.preventDefault();
+    curIdx = (curIdx + 1) % ALGOS.length;
+    updateUI();
+  } else if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    curIdx = (curIdx - 1 + ALGOS.length) % ALGOS.length;
+    updateUI();
+  }
+});
+
+// ─── RENDER LOOP ──────────────────────────────────────────────────────────
+const gray = new Uint8Array(N);
+const ditherOut = new Uint8Array(N);
+const outImg = outCtx.createImageData(W, H);
+
+let lastFrame = performance.now();
+let fpsAcc = 0, fpsCount = 0, fpsTime = 0, frameMs = 0;
+
+function loop() {
+  requestAnimationFrame(loop);
+  if (!camOn) return;
+  if (vid.readyState < 2) return;
+
+  const t0 = performance.now();
+  // 1. Draw video frame onto capture canvas
+  capCtx.drawImage(vid, 0, 0, W, H);
+  const d = capCtx.getImageData(0, 0, W, H).data;
+  // 2. Convert to grayscale (Rec.709 luminance)
+  for (let i = 0, j = 0; i < d.length; i += 4, j++) {
+    gray[j] = (54 * d[i] + 183 * d[i+1] + 19 * d[i+2]) >> 8;
+  }
+  // 3. Apply current dither
+  ALGOS[curIdx].fn(gray, ditherOut);
+  // 4. Splat to output (pack u8 → RGBA)
+  const o = outImg.data;
+  for (let i = 0, j = 0; i < N; i++, j += 4) {
+    const v = ditherOut[i];
+    o[j] = v; o[j+1] = v; o[j+2] = v; o[j+3] = 255;
+  }
+  outCtx.putImageData(outImg, 0, 0);
+
+  // FPS / timing
+  const t1 = performance.now();
+  frameMs = t1 - t0;
+  fpsAcc++;
+  fpsTime += (t1 - lastFrame);
+  lastFrame = t1;
+  if (fpsTime >= 500) {
+    const fps = (fpsAcc * 1000 / fpsTime).toFixed(1);
+    statsEl.textContent = `${fps} fps · ${frameMs.toFixed(1)} ms/frame`;
+    fpsAcc = 0; fpsTime = 0;
+  }
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

@@ -1,0 +1,285 @@
+*GPDSpecVersion: "1.0"
+*Include: "StdNames.gpd"
+*Include: "R34FG.GPD"
+*ModelName: "OEM RISO 600DPI PRINTER DRIVER"
+*MasterUnits: PAIR(600, 600)
+*ResourceDLL: "unires.dll"
+*PrinterType: PAGE
+*PrintRate: 8
+*PrintRateUnit: PPM
+*PrintRatePPM: 8
+
+*Feature: Orientation
+{
+    *rcNameID: =ORIENTATION_DISPLAY
+    *DefaultOption: PORTRAIT
+    *Option: PORTRAIT
+    {
+        *rcNameID: =PORTRAIT_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.6
+            *CallbackID: 1
+        }
+    }
+    *Option: LANDSCAPE_CC90
+    {
+        *rcNameID: =LANDSCAPE_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.6
+            *CallbackID: 1
+        }
+    }
+}
+*%******************************************************************************
+*%                             Collate
+*%******************************************************************************
+*Feature: Collate
+{
+    *Name: "Collate"
+    *DefaultOption: OFF
+    *ConcealFromUI?: TRUE
+
+    *Option: OFF
+    {
+        *rcNameID: =OFF_DISPLAY
+    }
+}
+
+*Feature: InputBin
+{
+    *rcNameID: =PAPER_SOURCE_DISPLAY
+    *DefaultOption: AUTO
+    *Option: AUTO
+    {
+        *rcNameID: =AUTO_DISPLAY
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.6
+            *CallbackID: 1
+        }
+    }
+}
+*Feature: Resolution
+{
+    *rcNameID: =RESOLUTION_DISPLAY
+    *DefaultOption: 600DPI
+    *Option: 600DPI
+    {
+        *Name: "600 x 600 " =DOTS_PER_INCH
+        *DPI: PAIR(600, 600)
+        *TextDPI: PAIR(300, 300)
+        *SpotDiameter: 100
+        *Command: CmdSendBlockData { *CallbackID: 1 }
+        *Command: CmdSelect
+        {
+            *Order: DOC_SETUP.4
+            *CallbackID: 1
+        }
+    }
+}
+
+*Feature: PaperSize
+{
+    *rcNameID: =PAPER_SIZE_DISPLAY
+    *DefaultOption: A4
+    *Option: CUSTOMSIZE
+    {
+        *rcNameID: =USER_DEFINED_SIZE_DISPLAY
+        *MinSize: PAIR(237, 237)
+        *MaxSize: PAIR(8035, 10397)
+        *MaxPrintableWidth: 7892
+        *MinLeftMargin: 71
+        *CenterPrintable?: FALSE
+    }
+    *Option: A3
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *PrintableArea: PAIR(6874, 9755)
+        *PrintableOrigin: PAIR(71, 118)
+        *CursorOrigin: PAIR(71, 118)  
+    }
+    *Option: A4
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *PrintableArea: PAIR(4818, 6850)
+        *PrintableOrigin: PAIR(71, 118)
+        *CursorOrigin: PAIR(71, 118)  
+    }
+    *Option: A4_ROTATED
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *PrintableArea: PAIR(6874,4795)
+        *PrintableOrigin: PAIR(71, 118)
+        *CursorOrigin: PAIR(71, 118)  
+    }
+    *Option: A5
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *PrintableArea: PAIR(3354,4795)
+        *PrintableOrigin: PAIR(71, 118)
+        *CursorOrigin: PAIR(71, 118)  
+    }
+    *Option: A5_ROTATED
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *PrintableArea: PAIR(4818,3330)
+        *PrintableOrigin: PAIR(71, 118)
+        *CursorOrigin: PAIR(71, 118)  
+    }
+    *Option: JAPANESE_POSTCARD
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *PrintableArea: PAIR(2220,3330)
+        *PrintableOrigin: PAIR(71, 118)
+        *CursorOrigin: PAIR(71, 118)
+    }
+    *Option: B4
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *PrintableArea: PAIR(5929,8433)
+        *PrintableOrigin: PAIR(71, 118)
+        *CursorOrigin: PAIR(71, 118)  
+    }    
+    *Option: B5
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *PrintableArea: PAIR(4157,5905)
+        *PrintableOrigin: PAIR(71, 118)
+        *CursorOrigin: PAIR(71, 118)  
+    }
+    *Option: B5_JIS_ROTATED
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *PrintableArea: PAIR(5929,4133)
+        *PrintableOrigin: PAIR(71, 118)
+        *CursorOrigin: PAIR(71, 118)
+    }
+    *Option: B6_JIS
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *PrintableArea: PAIR(2881,4133)
+        *PrintableOrigin: PAIR(71, 118)
+        *CursorOrigin: PAIR(71, 118)
+    }
+    *Option: B6_JIS_ROTATED
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *PrintableArea: PAIR(4157,2858)
+        *PrintableOrigin: PAIR(71, 118)
+        *CursorOrigin: PAIR(71, 118)
+    }
+    *Option: FOOLSCAP
+    {
+        *Name: "Foolscap"
+        *PageDimensions: PAIR(5102, 8031)
+        *PrintableArea: PAIR(4960,7866)
+        *PrintableOrigin: PAIR(71, 118)
+        *CursorOrigin: PAIR(71, 118)  
+    }
+    *Option: TABLOID
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *PrintableArea: PAIR(6458, 10034)
+        *PrintableOrigin: PAIR(71, 118)
+        *CursorOrigin: PAIR(71, 118)  
+    }
+    *Option: LEGAL
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *PrintableArea: PAIR(4958, 8234)
+        *PrintableOrigin: PAIR(71, 118)
+        *CursorOrigin: PAIR(71, 118)  
+    }
+    *Option: LETTER
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *PrintableArea: PAIR(4958, 6434)
+        *PrintableOrigin: PAIR(71, 118)
+        *CursorOrigin: PAIR(71, 118)  
+    }
+    *Option: LETTER_ROTATED
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *PrintableArea: PAIR(6458, 4934)
+        *PrintableOrigin: PAIR(71, 118)
+        *CursorOrigin: PAIR(71, 118)
+    }
+    *Option: STATEMENT
+    {
+        *rcNameID: =RCID_DMPAPER_SYSTEM_NAME
+        *PrintableArea: PAIR(3158, 4934)
+        *PrintableOrigin: PAIR(71, 118)
+        *CursorOrigin: PAIR(71, 118)  
+    }
+    *Option: STATEMENT_ROTATED
+    {
+        *Name: "Statement-R"
+        *PageDimensions: PAIR(5100, 3300)
+        *PrintableArea: PAIR(4958, 3134)
+        *PrintableOrigin: PAIR(71, 118)
+        *CursorOrigin: PAIR(71, 118)  
+    }
+}
+*Feature: ColorMode
+{
+    *rcNameID: =COLOR_PRINTING_MODE_DISPLAY
+    *DefaultOption: 24bpp
+    *Option: 24bpp
+    {
+        *rcNameID: =24BPP_DISPLAY
+        *DevNumOfPlanes: 1
+        *DevBPP: 24
+        *DrvBPP: 24
+        *PaletteSize: 1
+        *RasterMode: DIRECT
+        *Command: CmdSelect
+        {
+            *Order: PAGE_SETUP.16
+            *CallbackID: 1
+        }
+    }
+}
+*Feature: Halftone
+{
+    *rcNameID: =HALFTONING_DISPLAY
+    *DefaultOption: HT_PATSIZE_8x8_M
+    *Option: HT_PATSIZE_AUTO
+    {
+        *rcNameID: =HT_AUTO_SELECT_DISPLAY
+    }
+    *Option: HT_PATSIZE_SUPERCELL_M
+    {
+        *rcNameID: =HT_SUPERCELL_DISPLAY
+    }
+    *Option: HT_PATSIZE_6x6_M
+    {
+        *rcNameID: =HT_DITHER6X6_DISPLAY
+    }
+    *Option: HT_PATSIZE_8x8_M
+    {
+        *rcNameID: =HT_DITHER8X8_DISPLAY
+    }
+}
+*Command: CmdStartDoc
+{
+    *Order: DOC_SETUP.5
+    *CallbackID: 1
+}
+*Command: CmdStartPage
+{
+    *Order: PAGE_SETUP.1
+    *CallbackID: 1
+}
+*Command: CmdEndJob
+{
+    *Order: JOB_FINISH.1
+    *CallbackID: 1
+}
+*TextCaps: LIST(TC_UA_ABLE)
+*Command: CmdCR { *CallbackID: 1 }
+*Command: CmdLF { *CallbackID: 1 }
+*Command: CmdFF { *CallbackID: 1 }
+*EjectPageWithFF?: TRUE
+*RasterSendAllData?: TRUE

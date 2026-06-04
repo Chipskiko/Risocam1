@@ -1,0 +1,57 @@
+[RISO Printer Driver for Microsoft(R) Windows(R)] CD106F 18,Mar.,2014
+--------------------------------------------------------------------
+
+   RISO Printer Driver for Microsoft Windows Vista/Windows 7/Windows 8/Windows 8.1
+   - Chinese Edition			Ver. 1.11(B03)
+   - English Edition			Ver. 1.11(B03)
+   - French Edition			Ver. 1.11(B03)
+   - German Edition			Ver. 1.11(B03)
+   - Italian Edition			Ver. 1.11(B03)
+   - Japanese Edition			Ver. 1.11(B03)
+   - Portuguese Edition			Ver. 1.11(B03)
+   - Spanish Edition			Ver. 1.11(B03)
+   - Trad.-Chinese Edition		Ver. 1.11(B03)
+
+   RDF File for Microsoft Windows Vista/7/8/8.1
+   - Chinese Edition
+     - MZ9SerC.RDF			Ver. 1.00(B01)
+
+   - English Edition
+     - MZ9SerU.RDF			Ver. 1.00(B01)
+     - MZ9USerU.RDF			Ver. 1.00(B01)
+
+   - French Edition
+     - MZ9SerF.RDF			Ver. 1.00(B01)
+     - MZ9USerF.RDF			Ver. 1.00(B01)
+
+   - German Edition
+     - MZ9SerG.RDF			Ver. 1.00(B01)
+
+   - Italian Edition
+     - MZ9SerI.RDF			Ver. 1.00(B01)
+
+   - Japanese Edition
+     - MZ9SerJ.RDF			Ver. 1.00(B01)
+
+   - Portuguese Edition
+     - MZ9SerP.RDF			Ver. 1.00(B01)
+     - MZ9USerP.RDF			Ver. 1.00(B01)
+
+   - Spanish Edition
+     - MZ9SerE.RDF			Ver. 1.00(B01)
+     - MZ9USerE.RDF			Ver. 1.00(B01)
+
+   - Trad.-Chinese Edition
+     - MZ9SerT.RDF			Ver. 1.00(B02)
+
+---------------------------------------------------------
+   Manual
+   - Printer Driver
+      -Chinese Edition			05,Mar.,2014
+      -English Edition			24,Feb.,2014
+      -French Edition			05,Mar.,2014
+      -German Edition			05,Mar.,2014
+      -Italian Edition			05,Mar.,2014
+      -Japanese Edition			24,Feb.,2014
+      -Portuguese Edition		05,Mar.,2014
+      -Spanish Edition			05,Mar.,2014

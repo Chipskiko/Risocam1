@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RISO AMT Module Test</title>
+<style>
+  :root{--bg:#0b0b0b;--fg:#e6e6e6;--panel:#151515;--line:#262626;--accent:#ff5a36;--muted:#888;}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,Inter,system-ui,sans-serif;font-size:13px;line-height:1.4}
+  header{padding:14px 18px;border-bottom:1px solid var(--line)}
+  header h1{margin:0 0 3px;font-size:14px;font-weight:600}
+  header .sub{font-size:11px;color:var(--muted)}
+  header .pill{display:inline-block;padding:2px 7px;background:#2a1b16;border:1px solid #7a3527;color:#ffaa90;border-radius:9px;font-size:10px;margin-left:6px;text-transform:uppercase;letter-spacing:.04em}
+
+  main{display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - 49px)}
+  aside{padding:14px;border-right:1px solid var(--line);background:var(--panel);overflow-y:auto;max-height:calc(100vh - 49px)}
+  section{padding:14px;overflow:auto;background:#1a1a1a}
+
+  .group{margin-bottom:16px}
+  .group h3{margin:0 0 6px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+
+  .file-drop{border:1.5px dashed #333;border-radius:6px;padding:14px;text-align:center;cursor:pointer;color:var(--muted);transition:.15s;font-size:11px}
+  .file-drop:hover,.file-drop.drag{border-color:var(--accent);color:var(--accent)}
+  .file-drop input{display:none}
+
+  label{display:block;margin-bottom:6px;font-size:11px;color:#bbb}
+  label .lbl{display:flex;justify-content:space-between}
+  label .lbl .v{color:var(--accent);font-variant-numeric:tabular-nums}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  select,button{background:#1f1f1f;color:var(--fg);border:1px solid #333;border-radius:4px;padding:5px 8px;font-size:11px;width:100%;cursor:pointer;font-family:inherit}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#000;font-weight:600}
+
+  .info-grid{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:10px;font-family:ui-monospace,Menlo,monospace}
+  .info-grid .k{color:var(--muted)}
+  .info-grid .v{color:var(--fg);word-break:break-all}
+
+  .compare-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:12px}
+  .pane{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:10px}
+  .pane h2{margin:0 0 8px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#bbb;display:flex;justify-content:space-between;align-items:baseline}
+  .pane h2 .meta{font-size:10px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0}
+  canvas{display:block;width:100%;background:#fff;image-rendering:pixelated;border:1px solid #222;border-radius:3px}
+  .stats{font-size:10px;color:var(--muted);margin-top:5px;font-family:ui-monospace,Menlo,monospace}
+  .stats b{color:var(--fg)}
+
+  .status{padding:8px 10px;background:#222;border-radius:4px;font-size:11px;color:#aaa;font-family:ui-monospace,Menlo,monospace}
+  .status.running{background:#3a2418;color:#ffaa90}
+  .status.done{background:#1a3a18;color:#90ff90}
+</style>
+</head>
+
+<header>
+  <h1>RISO AMT Module Test <span class="pill">js/riso-amt.js</span></h1>
+  <div class="sub">Tests the Ghidra-confirmed Floyd-Steinberg + ht5 matrix pre-pass. Drop any image, see the simulated 1-bit master.</div>
+</header>
+
+<main>
+<aside>
+
+  <div class="group">
+    <h3>Source</h3>
+    <label class="file-drop" id="drop">
+      <input type="file" id="file" accept="image/*">
+      <div id="dropText">Drop image · click to browse</div>
+    </label>
+  </div>
+
+  <div class="group">
+    <h3>Output size</h3>
+    <label>
+      <div class="lbl"><span>Width (px)</span><span class="v" id="widthV">1200</span></div>
+      <input type="range" id="width" min="400" max="3000" step="100" value="1200">
+    </label>
+    <div style="font-size:10px;color:var(--muted)">Bigger = slower. Full A3 600 dpi = 7016 (takes ~30s).</div>
+  </div>
+
+  <div class="group">
+    <h3>Algorithm parameters</h3>
+    <label>
+      <div class="lbl"><span>Stencil</span></div>
+      <select id="stencil">
+        <option value="fs" selected>Floyd–Steinberg (Ghidra-confirmed)</option>
+        <option value="stucki">Stucki</option>
+        <option value="jjn">JJN</option>
+        <option value="atkinson">Atkinson</option>
+      </select>
+    </label>
+    <label>
+      <div class="lbl"><span>Serpentine</span></div>
+      <select id="serpentine">
+        <option value="false" selected>L→R only</option>
+        <option value="true">Serpentine</option>
+      </select>
+    </label>
+    <label>
+      <div class="lbl"><span>Tone curve</span></div>
+      <select id="toneCurve">
+        <option value="true" selected>RISO measured (default)</option>
+        <option value="false">Identity (naive 1−lum)</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="group">
+    <h3>Compare against</h3>
+    <label class="file-drop" id="drop2" style="padding:8px;font-size:10px">
+      <input type="file" id="file2" accept="image/*">
+      <div id="dropText2">Drop captured master · optional</div>
+    </label>
+  </div>
+
+  <div class="group">
+    <h3>Run</h3>
+    <button class="primary" id="runBtn">Run AMT</button>
+    <div class="status" id="status" style="margin-top:8px">No source loaded.</div>
+  </div>
+
+  <div class="group">
+    <h3>Module info</h3>
+    <div class="info-grid" id="modInfo"></div>
+  </div>
+
+</aside>
+
+<section>
+  <div class="compare-grid">
+    <div class="pane">
+      <h2><span>Source (after resample + luminance)</span><span class="meta" id="srcMeta">—</span></h2>
+      <canvas id="srcCanvas"></canvas>
+      <div class="stats" id="srcStats">—</div>
+    </div>
+    <div class="pane">
+      <h2><span>Simulated 1-bit master</span><span class="meta" id="simMeta">—</span></h2>
+      <canvas id="simCanvas"></canvas>
+      <div class="stats" id="simStats">—</div>
+    </div>
+    <div class="pane" id="realPane" style="display:none">
+      <h2><span>Real driver capture</span><span class="meta" id="realMeta">—</span></h2>
+      <canvas id="realCanvas"></canvas>
+      <div class="stats" id="realStats">—</div>
+    </div>
+    <div class="pane" id="diffPane" style="display:none">
+      <h2><span>Diff (red = sim only, blue = real only)</span><span class="meta" id="diffMeta">—</span></h2>
+      <canvas id="diffCanvas"></canvas>
+      <div class="stats" id="diffStats">—</div>
+    </div>
+  </div>
+  <div style="margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <button id="dlSim">Download simulated PNG</button>
+    <button id="dlSrc">Download resampled source PNG</button>
+    <span class="stats" id="overall"></span>
+  </div>
+</section>
+
+</main>
+
+<script src="js/riso-amt.js?v=1"></script>
+<script>
+const els = {};
+['drop','file','dropText','drop2','file2','dropText2',
+ 'width','widthV','stencil','serpentine','toneCurve',
+ 'runBtn','status','modInfo',
+ 'srcCanvas','simCanvas','realCanvas','diffCanvas',
+ 'srcMeta','simMeta','realMeta','diffMeta',
+ 'srcStats','simStats','realStats','diffStats',
+ 'srcPane','realPane','diffPane',
+ 'dlSim','dlSrc','overall'
+].forEach(id => els[id] = document.getElementById(id));
+
+let sourceImg = null;
+let realImg = null;
+let simBits = null;
+let simW = 0, simH = 0;
+
+// ============================================================
+// MODULE INFO
+// ============================================================
+(function showModInfo(){
+  const info = els.modInfo;
+  const cal = RisoAmt.CALIBRATION;
+  info.innerHTML = `
+    <div class="k">stencil</div><div class="v">${RisoAmt.DEFAULTS.stencil === RisoAmt.STENCILS.fs ? 'FS' : 'other'}</div>
+    <div class="k">serpentine</div><div class="v">${RisoAmt.DEFAULTS.serpentine}</div>
+    <div class="k">matrix size</div><div class="v">${RisoAmt.DEFAULTS.matrixSize}×${RisoAmt.DEFAULTS.matrixSize}</div>
+    <div class="k">curve points</div><div class="v">${RisoAmt.TONE_CURVE.length}</div>
+    <div class="k">stencil_src</div><div class="v" style="font-size:9px">Ghidra-confirmed</div>
+  `;
+})();
+
+// ============================================================
+// FILE DROP
+// ============================================================
+function setupDrop(dropEl, fileEl, cb) {
+  fileEl.addEventListener('change', e => cb(e.target.files[0]));
+  ['dragover','dragenter'].forEach(ev => dropEl.addEventListener(ev, e => { e.preventDefault(); dropEl.classList.add('drag'); }));
+  ['dragleave','dragend','drop'].forEach(ev => dropEl.addEventListener(ev, e => { e.preventDefault(); dropEl.classList.remove('drag'); }));
+  dropEl.addEventListener('drop', e => { e.preventDefault(); cb(e.dataTransfer.files[0]); });
+}
+setupDrop(els.drop, els.file, loadSource);
+setupDrop(els.drop2, els.file2, loadReal);
+
+function loadSource(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      sourceImg = img;
+      els.dropText.textContent = `${file.name} · ${img.width}×${img.height}`;
+      els.status.textContent = `Source loaded: ${img.width}×${img.height}.`;
+      run();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function loadReal(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      realImg = img;
+      els.dropText2.textContent = file.name;
+      els.realPane.style.display = '';
+      drawRealAndDiff();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// ============================================================
+// MAIN RUN
+// ============================================================
+els.width.addEventListener('input', () => { els.widthV.textContent = els.width.value; });
+els.runBtn.addEventListener('click', run);
+
+function run() {
+  if (!sourceImg) { els.status.textContent = 'No source loaded.'; return; }
+  const W = +els.width.value;
+  const ratio = sourceImg.height / sourceImg.width;
+  const H = Math.round(W * ratio);
+
+  els.status.className = 'status running';
+  els.status.textContent = `Running ${W}×${H} = ${(W*H/1e6).toFixed(2)} Mpx through AMT…`;
+
+  // Resample source to W×H, extract luminance
+  setTimeout(() => {
+    const t0 = performance.now();
+    const tmp = document.createElement('canvas');
+    tmp.width = W; tmp.height = H;
+    const tctx = tmp.getContext('2d');
+    tctx.imageSmoothingEnabled = true;
+    tctx.imageSmoothingQuality = 'high';
+    tctx.drawImage(sourceImg, 0, 0, W, H);
+    const id = tctx.getImageData(0, 0, W, H);
+    const lum = RisoAmt.rgbaToLuminance(id.data, W, H);
+
+    // Display source
+    els.srcCanvas.width = W; els.srcCanvas.height = H;
+    const sctx = els.srcCanvas.getContext('2d');
+    const srcImg = sctx.createImageData(W, H);
+    for (let i = 0; i < W*H; i++) {
+      const v = lum[i];
+      srcImg.data[i*4] = v; srcImg.data[i*4+1] = v; srcImg.data[i*4+2] = v; srcImg.data[i*4+3] = 255;
+    }
+    sctx.putImageData(srcImg, 0, 0);
+    els.srcMeta.textContent = `${W}×${H}`;
+    const avgLum = lum.reduce((a,b)=>a+b,0) / lum.length;
+    els.srcStats.innerHTML = `<b>${W*H}</b> pixels, mean lum <b>${avgLum.toFixed(1)}</b> / 255`;
+
+    const t1 = performance.now();
+
+    // Run AMT
+    const opts = {
+      stencil: RisoAmt.STENCILS[els.stencil.value],
+      serpentine: els.serpentine.value === 'true',
+      applyToneCurve: els.toneCurve.value === 'true'
+    };
+    const bits = RisoAmt.runAmt(lum, W, H, opts);
+    const t2 = performance.now();
+
+    simBits = bits; simW = W; simH = H;
+
+    // Display sim master
+    els.simCanvas.width = W; els.simCanvas.height = H;
+    const ictx = els.simCanvas.getContext('2d');
+    const imgData = RisoAmt.bitsToImageData(bits, W, H);
+    ictx.putImageData(imgData, 0, 0);
+    const cov = RisoAmt.coverage(bits, W * H) * 100;
+    els.simMeta.textContent = `${W}×${H} 1-bit`;
+    els.simStats.innerHTML = `Coverage: <b>${cov.toFixed(2)}%</b>  ·  Resample: ${(t1-t0).toFixed(0)} ms  ·  AMT: ${(t2-t1).toFixed(0)} ms`;
+
+    els.status.className = 'status done';
+    els.status.textContent = `Done. ${((t2-t0)/1000).toFixed(2)}s total.`;
+    els.overall.textContent = `${W*H} px · ${cov.toFixed(1)}% coverage · ${((t2-t1)/1000).toFixed(2)}s halftone`;
+
+    drawRealAndDiff();
+  }, 30);
+}
+
+// ============================================================
+// REAL + DIFF
+// ============================================================
+function drawRealAndDiff() {
+  if (!realImg || !simBits) return;
+  // Display real (scaled to match sim canvas)
+  els.realCanvas.width = simW; els.realCanvas.height = simH;
+  const rctx = els.realCanvas.getContext('2d');
+  rctx.fillStyle = 'white'; rctx.fillRect(0, 0, simW, simH);
+  rctx.imageSmoothingEnabled = true;
+  rctx.imageSmoothingQuality = 'high';
+  rctx.drawImage(realImg, 0, 0, simW, simH);
+  els.realMeta.textContent = `${realImg.width}×${realImg.height} → ${simW}×${simH}`;
+
+  // Compute diff
+  const realData = rctx.getImageData(0, 0, simW, simH).data;
+  const diffCtx = els.diffCanvas.getContext('2d');
+  els.diffCanvas.width = simW; els.diffCanvas.height = simH;
+  const diffImg = diffCtx.createImageData(simW, simH);
+  const dd = diffImg.data;
+  let agree = 0, simOnly = 0, realOnly = 0, simOn = 0, realOn = 0;
+  for (let y = 0; y < simH; y++) {
+    for (let x = 0; x < simW; x++) {
+      const i = y * simW + x;
+      const sBit = (simBits[i >> 3] >> (7 - (i & 7))) & 1;
+      const rBase = i * 4;
+      // Real: thresholded from luminance < 128
+      const rLum = (54*realData[rBase] + 183*realData[rBase+1] + 19*realData[rBase+2]) >> 8;
+      const rBit = rLum < 128 ? 1 : 0;
+      if (sBit) simOn++;
+      if (rBit) realOn++;
+      if (sBit === rBit) { agree++; const v = sBit ? 80 : 240; dd[rBase]=v; dd[rBase+1]=v; dd[rBase+2]=v; }
+      else if (sBit) { simOnly++; dd[rBase]=255; dd[rBase+1]=120; dd[rBase+2]=120; }
+      else { realOnly++; dd[rBase]=120; dd[rBase+1]=120; dd[rBase+2]=255; }
+      dd[rBase+3] = 255;
+    }
+  }
+  diffCtx.putImageData(diffImg, 0, 0);
+  const total = simW * simH;
+  els.diffPane.style.display = '';
+  els.diffMeta.textContent = `match ${(agree/total*100).toFixed(1)}%`;
+  els.diffStats.innerHTML =
+    `Agreement: <b>${(agree/total*100).toFixed(2)}%</b>  ·  ` +
+    `Sim-only: <b>${(simOnly/total*100).toFixed(2)}%</b>  ·  ` +
+    `Real-only: <b>${(realOnly/total*100).toFixed(2)}%</b>  ·  ` +
+    `Sim cov <b>${(simOn/total*100).toFixed(1)}%</b> vs Real <b>${(realOn/total*100).toFixed(1)}%</b>`;
+  els.realStats.innerHTML = `Coverage: <b>${(realOn/total*100).toFixed(2)}%</b>`;
+}
+
+// ============================================================
+// DOWNLOAD
+// ============================================================
+els.dlSim.addEventListener('click', () => {
+  if (!simBits) return;
+  els.simCanvas.toBlob(b => {
+    const a = document.createElement('a');
+    a.download = `amt_sim_${simW}x${simH}.png`;
+    a.href = URL.createObjectURL(b);
+    a.click();
+  });
+});
+els.dlSrc.addEventListener('click', () => {
+  if (!simBits) return;
+  els.srcCanvas.toBlob(b => {
+    const a = document.createElement('a');
+    a.download = `amt_source_${simW}x${simH}.png`;
+    a.href = URL.createObjectURL(b);
+    a.click();
+  });
+});
+</script>
+</body>
+</html>

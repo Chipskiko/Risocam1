@@ -34,7 +34,20 @@ function restoreState(json){
     channels=s.channels;
     layerAngles=s.angles;
     cached.layerDens=s.dens;
-    mode=s.mode;
+    // Mode + AMT sync. Bare `mode=s.mode` left the mode buttons and the RISO
+    // master out of sync with the restored state. Route a mode CHANGE through
+    // setMode (syncs UI; flat re-triggers the prepass, non-flat normalizes
+    // u_useAmt). If the mode is unchanged but we're in RISO, restored inks can
+    // still alter the master — invalidate + rebake explicitly.
+    if(s.mode!==mode && window.R && window.R.setMode){
+      window.R.setMode(s.mode);
+    } else {
+      mode=s.mode;
+      if(mode==='flat' && window.R && window.R.invalidateAmt){
+        window.R.invalidateAmt();
+        if(window.R.runAmtPrepass) setTimeout(window.R.runAmtPrepass, 0);
+      }
+    }
     cached.grainSize=s.grainSize; cached.dotGain=s.dotGain; cached.inkNoise=s.inkNoise;
     cached.paperTex=s.paperTex; cached.lpi=s.lpi||65; cached.grainStatic=s.grainStatic; if(s.ghosting!==undefined)cached.ghosting=s.ghosting; cached.sepType=s.sepType||0;
     cached.imgBright=s.imgBright; cached.imgContrast=s.imgContrast; cached.imgSat=s.imgSat;
