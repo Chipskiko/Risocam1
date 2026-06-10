@@ -637,12 +637,13 @@ function setRenderUniforms(dw, dh, scale, isPhone){
     gl.uniform2f(locs.u_paperShift, psx, psy);
     cached._lastPaperShiftX = psx;
     cached._lastPaperShiftY = psy;
-    // PBR single-sheet: a SLIGHT normalized UV jitter so each printed frame sits
-    // on a slightly different patch of the sheet (different feed). Kept within
-    // the ±4% margin left by PAPER_ZOOM so it never reaches the clamped edge.
+    // PBR single-sheet: per-frame UV reposition so each printed frame sits on a
+    // clearly different patch of the sheet (each pass = a fresh sheet feed).
+    // ±0.07 of the sheet per axis, within the ±8% margin left by PAPER_ZOOM so
+    // it never reaches the clamped edge.
     if(locs.u_paperPbrShift){
-      var ppx = (Math.abs((Math.sin(frameSeed * 311.7) * 43758.5453) % 1) - 0.5) * 0.05; // ±0.025
-      var ppy = (Math.abs((Math.sin(frameSeed * 521.3) * 43758.5453) % 1) - 0.5) * 0.05;
+      var ppx = (Math.abs((Math.sin(frameSeed * 311.7) * 43758.5453) % 1) - 0.5) * 0.14; // ±0.07
+      var ppy = (Math.abs((Math.sin(frameSeed * 521.3) * 43758.5453) % 1) - 0.5) * 0.14;
       gl.uniform2f(locs.u_paperPbrShift, ppx, ppy);
     }
   } else {

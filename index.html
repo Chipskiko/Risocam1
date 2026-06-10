@@ -2346,9 +2346,9 @@ vec3 applyPaperPBR(vec3 result, vec2 uv){
   vec2 vis = (boxAR > PAPER_AR) ? vec2(1.0, PAPER_AR / boxAR)
                                 : vec2(boxAR / PAPER_AR, 1.0);
   // PAPER_ZOOM (<1) samples a sub-region, leaving a margin on BOTH axes so the
-  // per-frame sheet-feed jitter (u_paperPbrShift, ~±0.03) can move the sheet
+  // per-frame sheet-feed jitter (u_paperPbrShift, up to ±0.07) can move the sheet
   // without ever reaching the clamped edge. Zoom is uniform → fibers stay round.
-  const float PAPER_ZOOM = 0.92;        // ~4% margin per side
+  const float PAPER_ZOOM = 0.84;        // ~8% margin per side
   vec2 puv = (uv - 0.5) * vis * PAPER_ZOOM + 0.5 + u_paperPbrShift;
   vec4 p = texture2D(u_paperPBR, puv);
   float strength = clamp(u_paperTex * 0.04, 0.0, 1.0); // slider 0..25 → 0..1
@@ -2827,7 +2827,7 @@ void main(){
 <script src="js/undo.js?v=4"></script>
 <script src="js/compare.js?v=5"></script>
 <script src="js/riso-amt.js?v=22"></script>
-<script src="js/renderer.js?v=95"></script>
+<script src="js/renderer.js?v=96"></script>
 <script src="js/source.js?v=45"></script>
 <script src="js/save.js?v=45"></script>
 <script src="js/ui-controls.js?v=50"></script>
