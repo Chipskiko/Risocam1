@@ -1476,6 +1476,70 @@ async function _runAmtPrepassImpl(){
 
   await _yield(); await _yield();
 
+  // ── (#4) FULL-GPU PREPASS (experimental, window._amtWebGPU = true) ──
+  // The ENTIRE chain — paper→ink projection, tone curve, solid fill, wavefront
+  // FS — runs as WebGPU compute from one RGBA upload. The main thread does no
+  // per-pixel math (the old serial projection pass is skipped entirely).
+  // Raster scan order (a wavefront can't serpentine); Tables A/B/C mask most
+  // of the directional difference — A/B before finals. WebGL2-only (the
+  // strided upload needs UNPACK_ROW_LENGTH). Falls back to the CPU band path
+  // on any failure.
+  if (window._amtWebGPU && window.RisoAmtGPU && (window._amtMasterFmt || {}).channels === 1) {
+    try {
+      const okGpu = await window.RisoAmtGPU.ready();
+      if (okGpu) {
+        const _mfG = window._amtMasterFmt;
+        const PRg = paperRGB[0]*255, PGg = paperRGB[1]*255, PBg = paperRGB[2]*255;
+        const chans = [];
+        for (let chIdx = 0; chIdx < 4; chIdx++) {
+          if (!activeChans.includes(chIdx)) continue;
+          const ink = inkRGB[chIdx];
+          const IR = ink[0]*255, IG = ink[1]*255, IB = ink[2]*255;
+          const dr = IR-PRg, dg = IG-PGg, db = IB-PBg;
+          if (dr*dr + dg*dg + db*db < 0.5) {
+            // Ink ≈ paper — bind 1×1 dummy, skip (same as the CPU path).
+            gl.activeTexture(gl.TEXTURE9 + chIdx);
+            gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[chIdx]);
+            gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+            gl.texImage2D(gl.TEXTURE_2D, 0, _mfG.internal, 1, 1, 0, _mfG.format, gl.UNSIGNED_BYTE, new Uint8Array([0]));
+            continue;
+          }
+          chans.push({ chIdx: chIdx, ink: [IR, IG, IB], paper: [PRg, PGg, PBg] });
+        }
+        if (chans.length) {
+          // Shader sampling params (normally set just before the CPU dispatch).
+          const inkSpreadG = window._inkSpread != null ? window._inkSpread : 0.5;
+          if (locs.u_amtTexel) gl.uniform2f(locs.u_amtTexel, 1.0 / W, 1.0 / H);
+          if (locs.u_amtInkSpread) gl.uniform1f(locs.u_amtInkSpread, (window._gpuInkSpread ?? true) ? inkSpreadG : 0.0);
+          const D = window.RisoAmt.DEFAULTS;
+          const res = await window.RisoAmtGPU.runChannelsFromRGBA(src, W, H, chans, {
+            coverageScale: _runOpts.coverageScale,
+            solidFillThreshold: D.solidFillThreshold,
+            solidFillRadius: (typeof D.solidFillRadius === 'number') ? D.solidFillRadius : 5,
+            solidFillStrength: (typeof D.solidFillStrength === 'number') ? D.solidFillStrength : 1.0,
+          });
+          for (const r of res) {
+            gl.activeTexture(gl.TEXTURE9 + r.chIdx);
+            gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[r.chIdx]);
+            gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+            gl.pixelStorei(gl.UNPACK_ROW_LENGTH, r.strideW);
+            gl.texImage2D(gl.TEXTURE_2D, 0, _mfG.internal, W, H, 0, _mfG.format, gl.UNSIGNED_BYTE, r.plane);
+            gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
+          }
+        }
+        const totalMsG = performance.now() - t0;
+        console.log(`[RisoAmt] all channels done in ${totalMsG.toFixed(0)} ms (WebGPU full pipeline: projection+solidfill+FS on GPU)`);
+        gl.uniform1f(locs.u_useAmt, 1.0);
+        window._amtMasterValid = true;
+        markDirty();
+        try { R.toast && R.toast('RISO ready (GPU)', 1200); } catch(e){}
+        return;
+      }
+    } catch (e) {
+      console.warn('[RisoAmt] WebGPU path failed, falling back to CPU:', e.message || e);
+    }
+  }
+
   // ── PASS 1: Project source RGB onto each channel's paper→ink direction ──
   // Produces 4 inputGray buffers (or null for inactive channels).
   const tProj0 = performance.now();
@@ -1546,53 +1610,6 @@ async function _runAmtPrepassImpl(){
   // then each band lands via texSubImage2D as its worker resolves — uploads
   // overlap the still-running FS of other bands, and on WebGL2/R8 the worker
   // plane IS the texel data (no pack).
-  // (#4) WEBGPU WAVEFRONT ED (experimental, window._amtWebGPU = true):
-  // density planes build in the worker pool, then true FS runs as a WebGPU
-  // compute wavefront (raster order — Tables A/B/C mask the serpentine
-  // difference; A/B before trusting for finals). Falls back to the CPU band
-  // path on any failure.
-  // (UNPACK_ROW_LENGTH for the strided upload is WebGL2-only — same condition
-  // as the R8 master format, so gate on it.)
-  if (window._amtWebGPU && window.RisoAmtGPU && (window._amtMasterFmt || {}).channels === 1) {
-    try {
-      const okGpu = await window.RisoAmtGPU.ready();
-      if (okGpu) {
-        const _mfG = window._amtMasterFmt || { internal: gl.RGBA, format: gl.RGBA, channels: 4 };
-        const gjobs = [];
-        for (let chIdx = 0; chIdx < 4; chIdx++) {
-          const meta = channelMeta[chIdx];
-          if (!meta) continue;
-          const slice = inputGrays[chIdx].slice(); // transferable copy
-          const job = new Promise((resolve, reject) => {
-            const id = _amtWorkerNextId++;
-            _amtWorkerPending.set(id, { resolve, reject });
-            const w = _amtWorkerPool[(_amtWorkerRR++) % _amtWorkerPool.length];
-            w.postMessage({ id, op: 'density', input: slice.buffer, W, H, opts: _runOpts }, [slice.buffer]);
-          }).then(res => window.RisoAmtGPU.runChannel(res.plane, W, H))
-            .then(g => {
-              gl.activeTexture(gl.TEXTURE9 + chIdx);
-              gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[chIdx]);
-              gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-              gl.pixelStorei(gl.UNPACK_ROW_LENGTH, g.strideW);
-              gl.texImage2D(gl.TEXTURE_2D, 0, _mfG.internal, W, H, 0, _mfG.format, gl.UNSIGNED_BYTE, g.plane);
-              gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
-            });
-          gjobs.push(job);
-        }
-        await Promise.all(gjobs);
-        const totalMsG = performance.now() - t0;
-        console.log(`[RisoAmt] all channels done in ${totalMsG.toFixed(0)} ms (WebGPU wavefront ED) — projection(main,serial) ${tProj.toFixed(0)}ms`);
-        gl.uniform1f(locs.u_useAmt, 1.0);
-        window._amtMasterValid = true;
-        markDirty();
-        try { R.toast && R.toast('RISO ready (GPU)', 1200); } catch(e){}
-        return;
-      }
-    } catch (e) {
-      console.warn('[RisoAmt] WebGPU path failed, falling back to CPU:', e.message || e);
-    }
-  }
-
   const WARMUP = 32;
   const numActive = channelMeta.filter(Boolean).length;
   const poolN = Math.max(1, _amtWorkerPool.length || 1);
