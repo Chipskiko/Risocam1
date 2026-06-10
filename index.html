@@ -162,7 +162,7 @@
           <button class="regmark-btn" id="lineEdgeBtn" onclick="R.cycleLineEdgeThickness()" title="Edge thickness — outer rings/spokes get progressively thicker than the ones near the center."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="2.5" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="10" cy="10" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="8.5" fill="none" stroke="currentColor" stroke-width="2.2"/></svg><span class="regmark-val" id="lineEdgeBtnVal">Off</span></button>
         </div>
         <input type="range" id="grainSize" min="1.5" max="9" value="3" step="0.5" style="display:none"><span id="grainSizeVal" style="display:none">3</span>
-        <input type="range" id="lpi" min="20" max="120" value="70" step="5" style="display:none"><span id="lpiVal" style="display:none">70</span>
+        <input type="range" id="lpi" min="10" max="120" value="70" step="5" style="display:none"><span id="lpiVal" style="display:none">70</span>
         <div class="regmark-row">
           <button class="regmark-btn" id="ghostingBtn" onclick="R.cycleGhosting()" title="Ghosting"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><path d="M10 2C6.5 2 4 5 4 8v7c0 0 1-1.5 2-1.5s1.5 1.5 2.5 1.5 1.5-1.5 2.5-1.5 1.5 1.5 2.5 1.5S15 14 16 15.5V8c0-3-2.5-6-6-6z" fill="currentColor" opacity="0.7"/><circle cx="8" cy="8" r="1.2" fill="white"/><circle cx="12" cy="8" r="1.2" fill="white"/></svg><span class="regmark-val" id="ghostingBtnVal">OFF</span></button>
           <input type="range" id="ghosting" min="0" max="100" value="0" step="2" style="display:none"><span id="ghostingVal" style="display:none">0</span>
@@ -2848,7 +2848,7 @@ void main(){
 <!-- mp4-muxer for proper MP4 (H.264) output via WebCodecs in Chrome/Edge -->
 <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.min.js"></script>
 <script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
-<script src="js/data.js?v=13"></script>
+<script src="js/data.js?v=14"></script>
 <script src="js/state.js?v=12"></script>
 <script src="js/undo.js?v=4"></script>
 <script src="js/compare.js?v=5"></script>
