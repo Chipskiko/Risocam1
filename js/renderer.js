@@ -1276,19 +1276,22 @@ let _amtWorkerPool = [];
 let _amtWorkerPending = new Map();
 let _amtWorkerNextId = 0;
 let _amtWorkerRR = 0;
-const _AMT_POOL_SIZE = Math.max(1, Math.min(4, (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) ? navigator.hardwareConcurrency : 4));
+// Pool sized to physical parallelism (was capped at 4): with band-parallel FS
+// every core gets a band, so the cap is the limiter. Leave 2 cores for the
+// main thread + compositor, cap at 8 (diminishing returns past that).
+const _AMT_POOL_SIZE = Math.max(2, Math.min(8, ((typeof navigator !== 'undefined' && navigator.hardwareConcurrency) ? navigator.hardwareConcurrency : 4) - 2));
 function _initAmtWorker(){
   if (_amtWorkerPool.length || typeof Worker === 'undefined') return;
   try {
     for (let i = 0; i < _AMT_POOL_SIZE; i++) {
-      const w = new Worker('js/riso-amt-worker.js?v=2');
+      const w = new Worker('js/riso-amt-worker.js?v=3');
       w.onmessage = function(e){
-        const { id, plane, error } = e.data;
+        const { id, plane, error, on, outH } = e.data;
         const resolver = _amtWorkerPending.get(id);
         if (!resolver) return;
         _amtWorkerPending.delete(id);
         if (error) resolver.reject(new Error(error));
-        else       resolver.resolve(new Uint8Array(plane));
+        else       resolver.resolve({ plane: new Uint8Array(plane), on: on || 0, outH: outH });
       };
       w.onerror = function(e){
         console.warn('[RisoAmt worker] error:', e.message);
@@ -1315,26 +1318,33 @@ function _initAmtWorker(){
 // sigma <= 0 skips the CPU ink-spread blur (D: spread is applied on the GPU in
 // the master-sampling loop instead — saves the per-channel blur entirely).
 // Falls back to synchronous main-thread path if the pool is unavailable.
-function runAmtAsync(input, W, H, opts, sigma){
+// Band-aware: `input` is a fresh slice copy (transferred zero-copy to the
+// worker — the old extra defensive copy is gone). globalRowOffset/discardRows
+// implement the warm-up-band protocol (see riso-amt-worker.js). Resolves
+// { plane, on, outH } where plane excludes the warm-up rows.
+function runAmtAsync(input, W, sliceH, opts, sigma, globalRowOffset, discardRows){
   if (!_amtWorkerPool.length) {
-    const bits = window.RisoAmt.runAmt(input, W, H, opts);
-    const plane = new Uint8Array(W * H);
-    for (let i = 0; i < W * H; i++) {
+    const runOpts = Object.assign({}, opts, { globalRowOffset: globalRowOffset || 0 });
+    const bits = window.RisoAmt.runAmt(input, W, sliceH, runOpts);
+    const skip = Math.max(0, discardRows | 0);
+    const outH = sliceH - skip;
+    const plane = new Uint8Array(W * outH);
+    let on = 0;
+    for (let i = skip * W, j = 0; j < W * outH; i++, j++) {
       const bit = (bits[i >> 3] >> (7 - (i & 7))) & 1;
-      plane[i] = bit ? 255 : 0;
+      if (bit) { plane[j] = 255; on++; }
     }
-    const blurred = (sigma > 0.01) ? gaussianBlurPlane(plane, W, H, sigma) : plane;
-    return Promise.resolve(blurred);
+    const blurred = (sigma > 0.01) ? gaussianBlurPlane(plane, W, outH, sigma) : plane;
+    return Promise.resolve({ plane: blurred, on: on, outH: outH });
   }
   return new Promise((resolve, reject) => {
     const id = _amtWorkerNextId++;
     _amtWorkerPending.set(id, { resolve, reject });
     const w = _amtWorkerPool[(_amtWorkerRR++) % _amtWorkerPool.length];
-    const copy = new Uint8Array(input.length);
-    copy.set(input);
     w.postMessage(
-      { id, input: copy.buffer, W, H, opts, sigma },
-      [copy.buffer]
+      { id, input: input.buffer, W, H: sliceH, opts, sigma,
+        globalRowOffset: globalRowOffset || 0, discardRows: discardRows | 0 },
+      [input.buffer]
     );
   });
 }
@@ -1524,43 +1534,72 @@ async function _runAmtPrepassImpl(){
   if(locs.u_amtTexel) gl.uniform2f(locs.u_amtTexel, 1.0 / W, 1.0 / H);
   if(locs.u_amtInkSpread) gl.uniform1f(locs.u_amtInkSpread, gpuSpread ? inkSpread : 0.0);
 
-  // Dispatch every active channel concurrently, then pack+upload as each
-  // resolves. The pack/upload (main-thread, must be on the GL thread) for one
-  // channel overlaps the still-running FS of the others.
+  // (#3) BAND-PARALLEL FS: each channel splits into K horizontal bands that
+  // dither concurrently across the pool, so all cores work even on a 1-2 color
+  // job. Each band re-runs WARMUP rows above its slice (dithered, discarded) to
+  // build realistic FS error state — ED error memory decays in ~10-20 rows, so
+  // seams are statistically invisible; serpentine parity + the Table-A column
+  // counter are seeded per band (globalRowOffset) to match a full-image scan.
+  // Set window._amtBands = 1 to force the old single-band (bit-exact) path.
+  //
+  // (#5) The master texture is allocated ONCE at full size (texImage2D null),
+  // then each band lands via texSubImage2D as its worker resolves — uploads
+  // overlap the still-running FS of other bands, and on WebGL2/R8 the worker
+  // plane IS the texel data (no pack).
+  const WARMUP = 32;
+  const numActive = channelMeta.filter(Boolean).length;
+  const poolN = Math.max(1, _amtWorkerPool.length || 1);
+  let K = (window._amtBands | 0) > 0 ? (window._amtBands | 0)
+        : Math.max(1, Math.round(poolN / Math.max(1, numActive)));
+  K = Math.max(1, Math.min(K, Math.floor(H / 256) || 1)); // keep bands ≥ ~256 rows
+  const _mf = window._amtMasterFmt || { internal: gl.RGBA, format: gl.RGBA, channels: 4 };
   const jobs = [];
+  const chOn = [0, 0, 0, 0];
   for(let chIdx = 0; chIdx < 4; chIdx++){
     const meta = channelMeta[chIdx];
     if(!meta) continue;
-    const job = runAmtAsync(inputGrays[chIdx], W, H, _runOpts, sigma).then(plane => {
-      // (A) Upload the grayscale plane directly. On WebGL2 the master is R8 so
-      // the worker's plane IS the texture data — no RGBA pack (saves ~430ms at
-      // 600 dpi/4ch) and 4× less upload bandwidth. WebGL1 falls back to RGBA.
-      const _mf = window._amtMasterFmt || { internal: gl.RGBA, format: gl.RGBA, channels: 4 };
-      let data;
-      if(_mf.channels === 1){
-        data = plane; // R8: one byte per pixel, exactly the plane
-      } else {
-        data = new Uint8Array(W * H * 4);
-        for(let i = 0; i < W * H; i++){
-          const v = plane[i];
-          data[i*4] = v; data[i*4+1] = v; data[i*4+2] = v; data[i*4+3] = 255;
-        }
-      }
-      gl.activeTexture(gl.TEXTURE9 + chIdx);
-      gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[chIdx]);
-      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1); // R8 rows aren't 4-byte aligned
-      gl.texImage2D(gl.TEXTURE_2D, 0, _mf.internal, W, H, 0, _mf.format, gl.UNSIGNED_BYTE, data);
-      const ink = meta.ink;
-      let on = 0; for(let i = 0; i < W*H; i++) if(plane[i] > 127) on++;
-      const cov = (on / (W * H) * 100);
-      console.log(`[RisoAmt]   ch${chIdx} ink RGB(${(ink[0]*255)|0},${(ink[1]*255)|0},${(ink[2]*255)|0}) → cov ${cov.toFixed(1)}%`);
-    });
-    jobs.push(job);
+    // Allocate the full-size master now; bands fill it in as they finish.
+    gl.activeTexture(gl.TEXTURE9 + chIdx);
+    gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[chIdx]);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1); // R8 rows aren't 4-byte aligned
+    gl.texImage2D(gl.TEXTURE_2D, 0, _mf.internal, W, H, 0, _mf.format, gl.UNSIGNED_BYTE, null);
+    const inputGray = inputGrays[chIdx];
+    for(let b = 0; b < K; b++){
+      const y0 = Math.floor(H * b / K), y1 = Math.floor(H * (b + 1) / K);
+      const warm = Math.min(WARMUP, y0);
+      // slice() = fresh copy → transferable to the worker zero-copy.
+      const slice = inputGray.slice((y0 - warm) * W, y1 * W);
+      const bandH = y1 - y0;
+      const job = runAmtAsync(slice, W, y1 - (y0 - warm), _runOpts, sigma, y0 - warm, warm)
+        .then(res => {
+          chOn[chIdx] += res.on;
+          let data = res.plane; // R8: one byte per pixel, exactly the plane
+          if(_mf.channels !== 1){
+            data = new Uint8Array(W * bandH * 4);
+            for(let i = 0; i < W * bandH; i++){
+              const v = res.plane[i];
+              data[i*4] = v; data[i*4+1] = v; data[i*4+2] = v; data[i*4+3] = 255;
+            }
+          }
+          gl.activeTexture(gl.TEXTURE9 + chIdx);
+          gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[chIdx]);
+          gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+          gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, y0, W, bandH, _mf.format, gl.UNSIGNED_BYTE, data);
+        });
+      jobs.push(job);
+    }
   }
   await Promise.all(jobs);
+  for(let chIdx = 0; chIdx < 4; chIdx++){
+    const meta = channelMeta[chIdx];
+    if(!meta) continue;
+    const ink = meta.ink;
+    const cov = (chOn[chIdx] / (W * H) * 100);
+    console.log(`[RisoAmt]   ch${chIdx} ink RGB(${(ink[0]*255)|0},${(ink[1]*255)|0},${(ink[2]*255)|0}) → cov ${cov.toFixed(1)}%`);
+  }
   const tPar = performance.now() - tPar0;
   const totalMs = performance.now() - t0;
-  console.log(`[RisoAmt] all channels done in ${totalMs.toFixed(0)} ms (pool=${_amtWorkerPool.length}, gpuSpread=${gpuSpread}) — projection(main,serial) ${tProj.toFixed(0)}ms, FS+pack+upload(parallel) ${tPar.toFixed(0)}ms`);
+  console.log(`[RisoAmt] all channels done in ${totalMs.toFixed(0)} ms (pool=${_amtWorkerPool.length}, bands/ch=${K}, gpuSpread=${gpuSpread}) — projection(main,serial) ${tProj.toFixed(0)}ms, FS+pack+upload(parallel) ${tPar.toFixed(0)}ms`);
   gl.uniform1f(locs.u_useAmt, 1.0);
   window._amtMasterValid = true;
   markDirty();

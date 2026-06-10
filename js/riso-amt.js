@@ -152,6 +152,16 @@ const RISO_DRIVER_TABLE_C = (function() {
   return arr;
 })();
 
+// Pre-composed Table B∘A: TB[TA[k]] collapsed into one lookup. The FS inner
+// loop is strictly serial, so removing one dependent table load per pixel is
+// a direct win on its critical path.
+const RISO_DRIVER_TABLE_BA = (function() {
+  const n = RISO_DRIVER_TABLE_A.length;
+  const arr = new Int16Array(n);
+  for (let k = 0; k < n; k++) arr[k] = RISO_DRIVER_TABLE_B[RISO_DRIVER_TABLE_A[k]];
+  return arr;
+})();
+
 // -----------------------------------------------------------------------------
 // ERROR-DIFFUSION STENCILS
 //
@@ -283,68 +293,74 @@ const DEFAULTS = {
 //
 // Error buffer uses fixed-point (×256) so coefficient math is integer-only.
 // -----------------------------------------------------------------------------
-function _runFsDriver(buf, W, H, serpentine) {
-  const TA = RISO_DRIVER_TABLE_A;
-  const TB = RISO_DRIVER_TABLE_B;
+// Driver-faithful FS, optimized for the serial critical path:
+//  • dens is Uint8 (0..255 density) — built once in runAmt. The old Float32
+//    coverage buffer was 4 bytes/px (~300 MB at 600 dpi) and forced a
+//    round/clamp per pixel INSIDE the serial loop; both gone.
+//  • Composed Table B∘A (one lookup), wrap-counter instead of `%`.
+//  • No neighbor bounds checks: the error rows carry 1px padding each side, so
+//    out-of-image writes land in padding (never read — only indices 1..W are
+//    read; fill(0) clears padding on swap). Bit-identical to the checked loop.
+//  • Serpentine specialized into two straight-line inner loops.
+//  • globalRowOffset: when dithering a horizontal BAND of a larger image, pass
+//    the band's first row index so serpentine parity and the Table-A column
+//    counter match what a full-image scan would use at that row. With warm-up
+//    rows (see worker) this makes band seams statistically invisible.
+function _runFsDriver(dens, W, H, serpentine, globalRowOffset) {
+  const TBA = RISO_DRIVER_TABLE_BA;
   const TC = RISO_DRIVER_TABLE_C;
-  const TA_LEN = TA.length;
+  const TA_LEN = TBA.length;
+  const gy0 = globalRowOffset | 0;
   const bits = new Uint8Array((W * H + 7) >> 3);
   // Two error rows (current + next), fixed-point ×256, with 1px padding each side.
   let errCur = new Int32Array(W + 2);
   let errNext = new Int32Array(W + 2);
-  let colCounter = 0;
+  // Column counter continues as if rows 0..gy0-1 were already scanned.
+  let cc = (gy0 * W) % TA_LEN;
   for (let y = 0; y < H; y++) {
-    const goingRight = !serpentine || (y & 1) === 0;
-    const xStart = goingRight ? 0 : W - 1;
-    const xEnd   = goingRight ? W : -1;
-    const xStep  = goingRight ? 1 : -1;
-    const xDir   = goingRight ? 1 : -1;
-    for (let x = xStart; x !== xEnd; x += xStep) {
-      // buf[i] is the 0..1 ink-coverage target (after tone curve × coverageScale).
-      // Driver works in 0..255 density domain — convert.
-      const density = Math.min(255, Math.max(0, Math.round(buf[y * W + x] * 255)));
-      const pInv = density;  // driver's "pInv" — already inverted vs source
-
-      // Per-pixel threshold dither from Tables A/B/C.
-      // Env lookup uses density clamped to the saturated band top (192).
-      // Without this clamp, when the user pushes coverageScale > 1.6 (density
-      // exceeds 192), the tent envelope's high-end attenuation starts kicking
-      // in and the algorithm actually rejects MORE ink — opposite to slider
-      // intent. Clamping preserves authentic tone response at coverageScale=1
-      // (since real driver output peaks density at ~117, well below 192) while
-      // letting the slider monotonically increase coverage when pushed higher.
-      const envIdx = pInv > 192 ? 192 : pInv;
-      const colIdx = TA[colCounter % TA_LEN];
-      const scale = TB[colIdx];                    // 0..353
-      const env = TC[envIdx];                      // 0..256
-      const ditherAdj = (scale * env) >> 8;        // 0..353
-      colCounter++;
-
-      // Accumulated value from FS error buffer (fixed-point /256)
-      const errFx = errCur[x + 1];
-      const err = errFx >> 8;                      // signed shift
-      const base = err + pInv;
-      const total = base + ditherAdj;
-
-      // Quantize
-      let ink, newErr;
-      if (total > 254) { ink = 1; newErr = base - 255; }
-      else             { ink = 0; newErr = base; }
-      if (ink) bits[(y * W + x) >> 3] |= 1 << (7 - (x & 7));
-
-      // Distribute newErr × 256 in fixed-point with FS coefficients
-      if (newErr !== 0) {
-        const c7 = newErr * 112;   // ×7  /16 of err×256
-        const c5 = newErr * 80;    // ×5
-        const c3 = newErr * 48;    // ×3
-        const c1 = newErr * 16;    // ×1
-        const nx1 = x + xDir;
-        if (nx1 >= 0 && nx1 < W) errCur[nx1 + 1] += c7;
-        const nxA = x - xDir;
-        if (nxA >= 0 && nxA < W) errNext[nxA + 1] += c3;
-                                 errNext[x + 1]   += c5;
-        const nxB = x + xDir;
-        if (nxB >= 0 && nxB < W) errNext[nxB + 1] += c1;
+    const row = y * W;
+    const goingRight = !serpentine || ((y + gy0) & 1) === 0;
+    if (goingRight) {
+      for (let x = 0; x < W; x++) {
+        const pInv = dens[row + x];
+        // Env clamp at 192: see original notes — keeps coverageScale > 1.6
+        // monotonic (tent envelope would otherwise reject ink past the band).
+        const ditherAdj = (TBA[cc] * TC[pInv > 192 ? 192 : pInv]) >> 8;
+        if (++cc === TA_LEN) cc = 0;
+        const base = (errCur[x + 1] >> 8) + pInv;
+        let newErr;
+        if (base + ditherAdj > 254) {
+          bits[(row + x) >> 3] |= 1 << (7 - (x & 7));
+          newErr = base - 255;
+        } else {
+          newErr = base;
+        }
+        if (newErr !== 0) {
+          errCur[x + 2]  += newErr * 112;   // ×7/16 (right)
+          errNext[x]     += newErr * 48;    // ×3/16 (below-left)
+          errNext[x + 1] += newErr * 80;    // ×5/16 (below)
+          errNext[x + 2] += newErr * 16;    // ×1/16 (below-right)
+        }
+      }
+    } else {
+      for (let x = W - 1; x >= 0; x--) {
+        const pInv = dens[row + x];
+        const ditherAdj = (TBA[cc] * TC[pInv > 192 ? 192 : pInv]) >> 8;
+        if (++cc === TA_LEN) cc = 0;
+        const base = (errCur[x + 1] >> 8) + pInv;
+        let newErr;
+        if (base + ditherAdj > 254) {
+          bits[(row + x) >> 3] |= 1 << (7 - (x & 7));
+          newErr = base - 255;
+        } else {
+          newErr = base;
+        }
+        if (newErr !== 0) {
+          errCur[x]      += newErr * 112;   // ×7/16 (left — reversed row)
+          errNext[x + 2] += newErr * 48;    // ×3/16 (below-right)
+          errNext[x + 1] += newErr * 80;    // ×5/16 (below)
+          errNext[x]     += newErr * 16;    // ×1/16 (below-left)
+        }
       }
     }
     const tmp = errCur; errCur = errNext; errNext = tmp;
@@ -398,6 +414,63 @@ function _boxBlurMean(buf, W, H, r) {
 // of halftone dots. Edge pixels (where the local mean is between threshold
 // and threshold+0.15) get a smooth ramp so the transition looks like the
 // natural soak-out at the edge of a Riso fill, not a hard mask boundary.
+// Uint8-density variant of _applySolidFill for the driver-faithful path.
+// Same box-mean + smoothstep-ramp lift, but streaming: horizontal means are
+// kept in a (2r+2)-row Float32 ring and the vertical window is a rolling
+// per-column sum — O(rowBytes) extra memory instead of 3 full-image Float32
+// planes (~900 MB at 600 dpi). Output differs from the float version by at
+// most the ±0.5/255 density quantization — visually identical.
+function _applySolidFillU8(dens, W, H, threshold, radius, strength) {
+  if (threshold >= 1.0 || strength <= 0.0 || radius <= 0) return;
+  const r = radius | 0;
+  const thr = threshold * 255;
+  const rampInv = 1 / (0.15 * 255);
+  const slots = 2 * r + 2;                  // rows alive in [y-r-1 .. y+r]
+  const ring = new Float32Array(slots * W); // horizontal box means
+  const have = new Int32Array(slots).fill(-1);
+  function hRow(y) {                        // → ring offset of row y's h-means
+    const slot = y % slots, off = slot * W;
+    if (have[slot] === y) return off;
+    const base = y * W;
+    let sum = 0, count = 0;
+    for (let x = 0; x <= r && x < W; x++) { sum += dens[base + x]; count++; }
+    ring[off] = sum / count;
+    for (let x = 1; x < W; x++) {
+      const a = x + r, s = x - r - 1;
+      if (a < W)  { sum += dens[base + a]; count++; }
+      if (s >= 0) { sum -= dens[base + s]; count--; }
+      ring[off + x] = sum / count;
+    }
+    have[slot] = y;
+    return off;
+  }
+  const colSum = new Float64Array(W);
+  let cnt = 0;
+  for (let y = 0; y <= r && y < H; y++) {
+    const o = hRow(y);
+    for (let x = 0; x < W; x++) colSum[x] += ring[o + x];
+    cnt++;
+  }
+  for (let y = 0; y < H; y++) {
+    if (y > 0) {
+      const a = y + r, s = y - r - 1;
+      if (a < H)  { const o = hRow(a); for (let x = 0; x < W; x++) colSum[x] += ring[o + x]; cnt++; }
+      if (s >= 0) { const o = hRow(s); for (let x = 0; x < W; x++) colSum[x] -= ring[o + x]; cnt--; }
+    }
+    const base = y * W;
+    for (let x = 0; x < W; x++) {
+      const m = colSum[x] / cnt;
+      if (m <= thr) continue;
+      let t = (m - thr) * rampInv;
+      if (t > 1) t = 1;
+      t = t * t * (3 - 2 * t);
+      const lift = strength * t;
+      const v = dens[base + x];
+      dens[base + x] = (v + (255 - v) * lift + 0.5) | 0;
+    }
+  }
+}
+
 function _applySolidFill(buf, W, H, threshold, radius, strength) {
   if (threshold >= 1.0 || strength <= 0.0 || radius <= 0) return;
   const mean = _boxBlurMean(buf, W, H, radius);
@@ -436,8 +509,62 @@ function runAmt(input, W, H, opts) {
     o.applyToneCurve = !isFloat;
   }
 
-  // Build the per-pixel target coverage buffer (Float32 for diffusion accumulation)
   const N = W * H;
+  const covScaleEarly = (typeof o.coverageScale === 'number') ? o.coverageScale : 1.0;
+
+  // ── DRIVER-FAITHFUL FAST PATH (production) ──
+  // Builds the 0..255 density buffer directly as Uint8 — no intermediate
+  // Float32 coverage plane (was 4 bytes/px ≈ 300 MB at 600 dpi). Math.fround
+  // before quantizing reproduces the old store-to-Float32 exactly, so the
+  // FS output is bit-identical to the previous implementation.
+  if (o.driverFaithful && !o.multiLevel) {
+    const dens = new Uint8Array(N);
+    const flipD = !o.applyToneCurve && o.driverFaithful;
+    if (isFloat) {
+      if (o.applyToneCurve) {
+        for (let i = 0; i < N; i++) {
+          const idx = Math.min(255, Math.max(0, (input[i] * 255) | 0));
+          let v = o.toneCurve[idx] * covScaleEarly;
+          if (v > 1) v = 1; else if (v < 0) v = 0;
+          dens[i] = Math.round(Math.fround(v) * 255);
+        }
+      } else {
+        for (let i = 0; i < N; i++) {
+          let v = input[i] * covScaleEarly;
+          if (v > 1) v = 1; else if (v < 0) v = 0;
+          dens[i] = Math.round(Math.fround(v) * 255);
+        }
+      }
+    } else {
+      if (o.applyToneCurve) {
+        for (let i = 0; i < N; i++) {
+          const vIn = o.invertInput ? (255 - input[i]) : input[i];
+          let v = o.toneCurve[vIn & 0xFF] * covScaleEarly;
+          if (v > 1) v = 1; else if (v < 0) v = 0;
+          dens[i] = Math.round(Math.fround(v) * 255);
+        }
+      } else {
+        for (let i = 0; i < N; i++) {
+          let raw = o.invertInput ? (255 - input[i]) : input[i];
+          if (flipD) raw = 255 - raw;
+          let v = raw / 255 * covScaleEarly;
+          if (v > 1) v = 1; else if (v < 0) v = 0;
+          dens[i] = Math.round(Math.fround(v) * 255);
+        }
+      }
+    }
+    if (typeof o.solidFillThreshold === 'number' && o.solidFillThreshold < 1.0) {
+      _applySolidFillU8(
+        dens, W, H,
+        o.solidFillThreshold,
+        (typeof o.solidFillRadius === 'number') ? o.solidFillRadius : 5,
+        (typeof o.solidFillStrength === 'number') ? o.solidFillStrength : 1.0
+      );
+    }
+    return _runFsDriver(dens, W, H, o.serpentine !== false, o.globalRowOffset || 0);
+  }
+
+  // Build the per-pixel target coverage buffer (Float32 for diffusion accumulation)
   const buf = new Float32Array(N);
   // coverageScale: linear multiplier on the ink-density target. Applied in all
   // code paths. Clamped to [0, 1] after multiply.
@@ -504,14 +631,8 @@ function runAmt(input, W, H, opts) {
     );
   }
 
-  // ── DRIVER-FAITHFUL FAST PATH ──
-  // If enabled, run the exact rastertoRISO04A FUN_0x608b algorithm:
-  //   FS + per-pixel threshold dither from Tables A/B/C.
-  // The simpler "plain FS" path is kept below for backwards compatibility
-  // (set driverFaithful: false in opts to use it).
-  if (o.driverFaithful && !o.multiLevel) {
-    return _runFsDriver(buf, W, H, o.serpentine !== false);
-  }
+  // (Driver-faithful path returned above — below is the legacy/multi-level
+  // float-buffer pipeline, kept for driverFaithful:false and multiLevel.)
 
   // Matrix dimensions (used by both single-stage and multi-level paths)
   const M = o.matrixSize;

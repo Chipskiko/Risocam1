@@ -9,7 +9,7 @@
 // Returning the BLURRED plane (not raw bits) means the main thread only has
 // to do bit-packing into RGBA + texImage2D upload, both of which are fast.
 
-self.importScripts('./riso-amt.js?v=22');
+self.importScripts('./riso-amt.js?v=23');
 
 // Same Gaussian blur as renderer.js gaussianBlurPlane — replicated here so
 // the worker doesn't need a separate import. Two-pass separable filter.
@@ -58,21 +58,36 @@ function gaussianBlurPlane(src, W, H, sigma) {
 }
 
 self.onmessage = function(e) {
-  const { id, input, W, H, opts, sigma } = e.data;
+  // Band protocol: the input may be a horizontal BAND of a larger image.
+  //   globalRowOffset — index of this slice's first row in the full image
+  //                     (drives serpentine parity + Table-A column counter so
+  //                     the band dithers exactly as that region would in a
+  //                     full scan).
+  //   discardRows     — warm-up rows at the top of the slice: dithered (to
+  //                     build up realistic FS error state) but excluded from
+  //                     the returned plane. ED error memory decays in ~10-20
+  //                     rows, so 32 warm-up rows make band seams invisible.
+  const { id, input, W, H, opts, sigma, globalRowOffset, discardRows } = e.data;
   try {
     const inputArr = (input instanceof ArrayBuffer) ? new Uint8Array(input) : input;
-    // FS
-    const bits = self.RisoAmt.runAmt(inputArr, W, H, opts || {});
-    // Unpack bits → plane (0/255 per pixel)
-    const plane = new Uint8Array(W * H);
-    for (let i = 0; i < W * H; i++) {
+    const runOpts = Object.assign({}, opts || {}, { globalRowOffset: globalRowOffset || 0 });
+    // FS over the full slice (including warm-up rows)
+    const bits = self.RisoAmt.runAmt(inputArr, W, H, runOpts);
+    // Unpack bits → plane (0/255 per pixel), skipping warm-up rows.
+    const skip = Math.max(0, discardRows | 0);
+    const outH = H - skip;
+    const plane = new Uint8Array(W * outH);
+    let on = 0;
+    const i0 = skip * W;
+    for (let i = i0, j = 0; j < W * outH; i++, j++) {
       const bit = (bits[i >> 3] >> (7 - (i & 7))) & 1;
-      plane[i] = bit ? 255 : 0;
+      if (bit) { plane[j] = 255; on++; }
     }
-    // Optional ink-spread blur
-    const blurred = (sigma > 0.01) ? gaussianBlurPlane(plane, W, H, sigma) : plane;
-    // Transfer plane buffer to main thread (zero-copy)
-    self.postMessage({ id, plane: blurred.buffer }, [blurred.buffer]);
+    // Optional ink-spread blur (CPU path only; GPU spread passes sigma=0)
+    const blurred = (sigma > 0.01) ? gaussianBlurPlane(plane, W, outH, sigma) : plane;
+    // Transfer plane buffer to main thread (zero-copy). `on` = ink-on count
+    // for coverage stats (counted here so the main thread doesn't rescan).
+    self.postMessage({ id, plane: blurred.buffer, on: on, outH: outH }, [blurred.buffer]);
   } catch (err) {
     self.postMessage({ id, error: err.message || String(err) });
   }
