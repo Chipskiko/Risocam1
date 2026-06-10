@@ -137,6 +137,10 @@
             <button class="regmark-btn active" id="lpiBtnLines" onclick="R.cycleLpi()" title="Lines Per Inch"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><line x1="2" y1="5" x2="18" y2="5" stroke="currentColor" stroke-width="1.4"/><line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" stroke-width="1.4"/><line x1="2" y1="15" x2="18" y2="15" stroke="currentColor" stroke-width="1.4"/></svg><span class="regmark-val" id="lpiBtnLinesVal">35</span></button>
             <button class="regmark-btn active" id="lineShapeBtnPanel" onclick="R.cycleLineShape()" title="Line shape"><span class="regmark-icon" id="lineShapeIcon" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px"></span><span class="regmark-val" id="lineShapeBtnPanelVal">STRAIGHT</span></button>
           </div>
+          <!-- RISO: master density (FS prepass DPI) -->
+          <div id="flatPrimary" style="display:none;gap:6px">
+            <button class="regmark-btn active" id="amtDpiBtn" onclick="R.cycleAmtDpi()" title="Master density — resolution the 1-bit master is burned at. Real Riso = 600 dpi. Lower = faster prepass, coarser dots."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="4" cy="4" r="1.1" fill="currentColor"/><circle cx="10" cy="4" r="1.1" fill="currentColor"/><circle cx="16" cy="4" r="1.1" fill="currentColor"/><circle cx="4" cy="10" r="1.1" fill="currentColor"/><circle cx="10" cy="10" r="1.1" fill="currentColor"/><circle cx="16" cy="10" r="1.1" fill="currentColor"/><circle cx="4" cy="16" r="1.1" fill="currentColor"/><circle cx="10" cy="16" r="1.1" fill="currentColor"/><circle cx="16" cy="16" r="1.1" fill="currentColor"/></svg><span class="regmark-val" id="amtDpiBtnVal">600dpi</span></button>
+          </div>
           <span class="regmark-link" id="primaryDivider">&ndash;</span>
           <button class="regmark-btn" id="inkSpreadBtn" onclick="R.cycleInkSpread()" title="Drum Pressure"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="9.5" r="6.6" stroke="currentColor" stroke-width="1.2" fill="none"/><line x1="2" y1="16.6" x2="18" y2="16.6" stroke="currentColor" stroke-width="1"/><circle cx="10" cy="10" r="1" stroke="currentColor" stroke-width="1.2" fill="none"/><line x1="10" y1="11.1" x2="10" y2="15" stroke="currentColor" stroke-width="0.7"/><path d="M8.9,14.2 L10,15.5 L11.1,14.2" fill="currentColor"/></svg><span class="regmark-val" id="inkSpreadBtnVal">Low</span></button>
           <input type="range" id="dotGain" min="0" max="40" value="12" step="2" style="display:none"><span class="slider-value" id="dotGainVal" style="display:none">12</span>
@@ -2830,7 +2834,7 @@ void main(){
 <script src="js/renderer.js?v=96"></script>
 <script src="js/source.js?v=45"></script>
 <script src="js/save.js?v=45"></script>
-<script src="js/ui-controls.js?v=50"></script>
+<script src="js/ui-controls.js?v=51"></script>
 <script src="js/ui-paper.js?v=12"></script>
 <script src="js/phone.js?v=17"></script>
 <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');</script>

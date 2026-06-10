@@ -611,10 +611,11 @@ function setMode(m){
   //   Row 3 — shape-specific sub-settings (e.g. radial center/density/edge)
   // Show the right primary block, hide the others.
   const screenLike = m==='screen' || m==='lines';
-  const grnP=el('grainPrimary'), scrP=el('screenPrimary'), lnsP=el('linesPrimary');
+  const grnP=el('grainPrimary'), scrP=el('screenPrimary'), lnsP=el('linesPrimary'), fltP=el('flatPrimary');
   if(grnP) grnP.style.display = (m==='grain') ? 'flex' : 'none';
   if(scrP) scrP.style.display = (m==='screen') ? 'flex' : 'none';
   if(lnsP) lnsP.style.display = (m==='lines') ? 'flex' : 'none';
+  if(fltP) fltP.style.display = (m==='flat') ? 'flex' : 'none';
   // Row 2: dither scale (grain sub-mode), or line secondary (lines).
   const lnsSec = el('linesSecondary');
   if(lnsSec) lnsSec.style.display = (m==='lines') ? 'flex' : 'none';
@@ -1454,6 +1455,20 @@ function cycleInkSpread() {
   cyclePreset('dotGain', INK_SPREAD_PRESETS);
   updateRegmarkUI();
 }
+// RISO master density — DPI the 1-bit FS master is burned at. Cycles the same
+// _amtScanDpi the debug slider drives; setRisoParams invalidates + rebakes.
+const AMT_DPI_STEPS = [150, 300, 600];
+function cycleAmtDpi() {
+  const cur = window._amtScanDpi || 600;
+  // nearest step, then advance (handles odd values set via debug slider/console)
+  let idx = 0, best = Infinity;
+  AMT_DPI_STEPS.forEach((v, i) => { const d = Math.abs(v - cur); if (d < best) { best = d; idx = i; } });
+  const next = AMT_DPI_STEPS[(idx + 1) % AMT_DPI_STEPS.length];
+  R.setRisoParams({ dpi: next });
+  const lbl = el('amtDpiBtnVal'); if (lbl) lbl.textContent = next + 'dpi';
+  // Keep the debug slider in sync if it exists
+  const dbg = el('risoDpi'); if (dbg) { dbg.value = next; const dv = el('risoDpiVal'); if (dv) dv.textContent = next; }
+}
 function toggleCropMarks() {
   const cb = el('cropMarksToggle');
   if (!cb) return;
@@ -1939,6 +1954,7 @@ R.cycleSkew = cycleSkew;
 R.cycleGhosting = cycleGhosting;
 R.cycleInkNoise = cycleInkNoise;
 R.cycleInkSpread = cycleInkSpread;
+R.cycleAmtDpi = cycleAmtDpi;
 R.toggleCropMarks = toggleCropMarks;
 R.toggleMarginSlider = toggleMarginSlider;
 R.updateRegmarkUI = updateRegmarkUI;
