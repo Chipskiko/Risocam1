@@ -3,6 +3,11 @@
 "use strict";
 
 // ======================== WEBGL INIT ========================
+// Context-loss listeners must be registered exactly once — the restored
+// handler re-runs initGL, so registering inside initGL without a guard
+// doubles the listeners on every restore (and each extra initGL run
+// allocates a full duplicate texture set on the live context).
+let _ctxLossHooked = false;
 function initGL(){
   const c=el('gl');
   // Try WebGL2 first — enables AMT-GPU to share the context (Metaxas wavefront
@@ -18,16 +23,16 @@ function initGL(){
     gl=c.getContext('webgl',{preserveDrawingBuffer:true,antialias:false});
   }
   if(!gl){R.toast('WebGL not supported — cannot render');return;}
-  if (isWebGL2 && window.RisoAmt && window.RisoAmt.setAmtGpuContext) {
-    window.RisoAmt.setAmtGpuContext(gl);
-  }
   // Spin up the RISO FS Web Worker — runs off main thread so animations
   // (drum noise, video frames, paper drift) keep playing during prepass.
   try { _initAmtWorker(); } catch(e){}
 
-  // Handle WebGL context loss/restore
-  c.addEventListener('webglcontextlost',e=>{e.preventDefault();_rafId=0;R.toast('GPU context lost — will recover');});
-  c.addEventListener('webglcontextrestored',()=>{R.toast('GPU restored');initGL();scheduleRender();});
+  // Handle WebGL context loss/restore (registered once — see _ctxLossHooked)
+  if(!_ctxLossHooked){
+    _ctxLossHooked = true;
+    c.addEventListener('webglcontextlost',e=>{e.preventDefault();_rafId=0;R.toast('GPU context lost — will recover');});
+    c.addEventListener('webglcontextrestored',()=>{R.toast('GPU restored');initGL();scheduleRender();});
+  }
 
   function mkShader(type,src){
     const s=gl.createShader(type);
@@ -65,7 +70,7 @@ function initGL(){
    'u_off0','u_off1','u_off2','u_off3',
    'u_angle0','u_angle1','u_angle2','u_angle3','u_screenCell',
    'u_chan0','u_chan1','u_chan2','u_chan3',
-   'u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_useLabResidual','u_useCalChord','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_screenClean','u_simNoise',
+   'u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_useLabResidual','u_useCalChord','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
    'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_paperShift','u_paperPbrShift','u_paperPbrMul','u_crop','u_paper',
    'u_paperPBR','u_usePaperPBR',
    'u_lutA0','u_lutA1','u_lutA2','u_lutA3',
@@ -85,7 +90,7 @@ function initGL(){
    'u_inkOpacity','u_layerDeplete','u_pressVar','u_densFlicker',
    'u_tonalGamma','u_dotMin','u_opacityCap',
    'u_toneCurve','u_useToneCurve','u_textMask','u_textLayerIdx','u_srcOrig','u_textKnockout','u_trappingPx',
-   'u_dbgP100','u_dbgLutDirect','u_dbgNoDotMin','u_dbgNoOpaque','u_dbgShowCov','u_dbgFixedCov','u_dbgBinaryGrain','u_dbgFMDots','u_dbgLinearize','u_dbgLumMono','u_dbgYNArea','u_dbgNeutralBypass','u_dbgTrcSCurve','u_ditherMode',
+   'u_dbgP100','u_dbgLutDirect','u_dbgNoDotMin','u_dbgNoOpaque','u_dbgShowCov','u_dbgFixedCov','u_dbgBinaryGrain','u_dbgFMDots','u_dbgLinearize','u_dbgYNArea','u_dbgNeutralBypass','u_dbgTrcSCurve','u_ditherMode',
    'u_driverLUT','u_useDriverLUT',
    'u_ht5Matrix',
    'u_amtMaster0','u_amtMaster1','u_amtMaster2','u_amtMaster3','u_useAmt','u_liveSource',
@@ -283,8 +288,6 @@ function initGL(){
   // (D) GPU ink-spread radius in master texels. 0 = no spread (CPU blur path).
   // Set per-prepass from the ink-spread slider; default seeded here.
   if(locs.u_amtInkSpread) gl.uniform1f(locs.u_amtInkSpread, 0.5);
-  window._amtMasterValid = false;
-  window._amtMasterKey = '';
 
   // V&C blue-noise threshold mask (tex unit 13) — used by GPU Grain Touch path.
   // Replaces the JS-side per-frame AMT pre-pass with a single-sample threshold
@@ -613,7 +616,6 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   gl.uniform1f(locs.u_simNoise, _cleanRender ? 0 : 1);
   gl.uniform1f(locs.u_dotGain,   cached.dotGain);
   gl.uniform1f(locs.u_inkNoise,  cached.inkNoise);
-  gl.uniform1f(locs.u_screenClean, (mode === 'screen' && window._screenClean) ? 1.0 : 0.0);
   // SCREEN engine: 0 = procedural round-dot (DEFAULT), 1 = RISO authentic matrix (console: R.setScreenType(1)).
   if(locs.u_screenType) gl.uniform1f(locs.u_screenType, (window._screenType ?? 0) ? 1.0 : 0.0);
   // Unit 8 holds the AM matrix in SCREEN mode, the Grain-Touch ht5 matrix
@@ -1048,9 +1050,6 @@ var DRIVER_LUTS = {
   // LUT L: γ≈0.62 — Backlight correction / shadow lift (inverse curve)
   5: [0,1,2,3,5,6,7,9,10,11,13,14,15,16,18,19,20,22,23,24,26,27,28,29,31,32,33,35,36,37,39,40,41,42,44,45,46,48,49,50,52,53,54,55,57,58,59,61,62,63,65,66,67,68,70,71,72,74,75,76,78,79,80,81,83,84,85,87,88,89,91,92,93,94,96,97,98,100,101,102,104,105,106,107,109,110,111,113,114,115,117,118,119,120,122,123,124,126,127,128,130,131,132,133,135,136,137,139,140,141,143,144,145,146,148,149,150,152,153,154,156,157,158,159,161,162,163,165,166,167,167,168,169,169,170,171,171,172,173,173,174,175,176,176,177,178,178,179,180,180,181,182,182,183,184,185,185,186,187,187,188,189,189,190,191,191,192,193,194,194,195,196,196,197,198,198,199,200,200,201,202,202,203,204,205,205,206,207,207,208,209,209,210,211,211,212,213,214,214,215,216,216,217,218,218,219,220,220,221,222,222,223,224,225,225,226,227,227,228,229,229,230,231,231,232,233,234,234,235,236,236,237,238,238,239,240,240,241,242,242,243,244,245,245,246,247,247,248,249,249,250,251,251,252,253,255]
 };
-// Labels for the UI
-var DRIVER_LUT_NAMES = {0:'OFF', 1:'γ1.1 (Level1)', 2:'γ1.4 (Level2)', 3:'γ2.0 (Level3)', 4:'γ2.6 (Default)', 5:'γ0.6 (Backlight)'};
-
 function setDriverLUT(level){
   if(!gl||!window._driverLUTTex) return;
   if(level === 0 || !DRIVER_LUTS[level]){
@@ -1162,6 +1161,12 @@ function _initCalLutWorker(){
   _calLutWorker.onerror = function(e){
     console.warn('[CalLut worker] error:', e.message);
     _calLutWorker = null;
+    // Drop stranded in-flight bakes — their callbacks will never fire now —
+    // and reset the cache key so the next bakeCalLutIfNeeded call re-bakes
+    // (via the sync fallback, since the worker is gone) instead of leaving
+    // the stale/seed LUT in place.
+    _calLutWorkerPending.clear();
+    window._calLutLastKey = '';
   };
 }
 
@@ -1291,7 +1296,7 @@ function _initAmtWorker(){
   if (_amtWorkerPool.length || typeof Worker === 'undefined') return;
   try {
     for (let i = 0; i < _AMT_POOL_SIZE; i++) {
-      const w = new Worker('js/riso-amt-worker.js?v=3');
+      const w = new Worker('js/riso-amt-worker.js?v=4');
       w.onmessage = function(e){
         const { id, plane, error, on, outH } = e.data;
         const resolver = _amtWorkerPending.get(id);
@@ -1387,8 +1392,10 @@ async function runAmtPrepass(){
     // false, schedule a fresh draw so the canvas updates with the new masters.
     try { markDirty(); } catch(e) {}
     try { scheduleRender(); } catch(e) {}
-    // Source/ink/mode changed during the bake → this master is stale. Re-run.
-    if ((window._amtSeq || 0) !== startSeq) {
+    // Source/ink/mode changed during the bake → this master is stale. Re-run —
+    // but only if we're still in RISO mode; switching away mid-bake would
+    // otherwise trigger one full wasted rebake.
+    if ((window._amtSeq || 0) !== startSeq && window._mode === 'flat') {
       console.log('[RisoAmt] source changed during prepass — requeuing');
       setTimeout(runAmtPrepass, 0);
     }
@@ -1406,7 +1413,6 @@ async function _runAmtPrepassImpl(){
   if (camActive || videoActive) {
     console.log('[RisoAmt] skipping prepass — live source (camera/video), using shader fallback');
     try { gl.uniform1f(locs.u_useAmt, 0.0); } catch(e) {}
-    window._amtMasterValid = false;
     return;
   }
   // Show a small toast/indicator if available
@@ -1454,6 +1460,10 @@ async function _runAmtPrepassImpl(){
   catch(e){ gl.uniform1f(locs.u_useAmt, 0.0); return; }
   const src = tctx.getImageData(0, 0, W, H).data;
   console.log(`[RisoAmt] AMT@${scanDpi}dpi → ${W}×${H} (source was ${srcCanvas.width}×${srcCanvas.height})`);
+  // Pixels now live in `src` — release the full-size scratch backing
+  // (~278 MB at 600 dpi) instead of pinning it for the whole session.
+  // The next prepass sets width/height again anyway.
+  tmp.width = tmp.height = 1;
 
   // Get ink colors + paper color from risocam state. cached.inkRGB is [4][3]
   // floats in 0..1. cached.paperColor is [3] floats in 0..1.
@@ -1537,7 +1547,6 @@ async function _runAmtPrepassImpl(){
         const totalMsG = performance.now() - t0;
         console.log(`[RisoAmt] all channels done in ${totalMsG.toFixed(0)} ms (WebGPU full pipeline: projection+solidfill+FS on GPU)`);
         gl.uniform1f(locs.u_useAmt, 1.0);
-        window._amtMasterValid = true;
         markDirty();
         try { R.toast && R.toast('RISO ready (GPU)', 1200); } catch(e){}
         return;
@@ -1672,7 +1681,6 @@ async function _runAmtPrepassImpl(){
   const totalMs = performance.now() - t0;
   console.log(`[RisoAmt] all channels done in ${totalMs.toFixed(0)} ms (pool=${_amtWorkerPool.length}, bands/ch=${K}, gpuSpread=${gpuSpread}) — projection(main,serial) ${tProj.toFixed(0)}ms, FS+pack+upload(parallel) ${tPar.toFixed(0)}ms`);
   gl.uniform1f(locs.u_useAmt, 1.0);
-  window._amtMasterValid = true;
   markDirty();
   try { R.toast && R.toast('RISO ready', 1200); } catch(e){}
 }
@@ -1683,7 +1691,6 @@ R.runAmtPrepass = runAmtPrepass;
 // can be ~100s). Without this the previous image's halftone composites on
 // top of the new source = "ghost overlay" bug on every fresh upload.
 R.invalidateAmt = function(){
-  window._amtMasterValid = false;
   window._amtSeq = (window._amtSeq||0) + 1;
   try {
     if (gl && locs && locs.u_useAmt) {

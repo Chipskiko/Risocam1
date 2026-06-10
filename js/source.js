@@ -510,12 +510,6 @@ function pdfProgressHide(){
   if(el) el.style.display='none';
 }
 
-// Load only the first page (legacy alias used during initial load before
-// the multi-page UI was added)
-async function loadPdfFirstPage(file){
-  const res=await loadPdfAllPages(file);
-  return res ? res.hiRes : null;
-}
 // Accept either a change event (from <input type=file>) or a File directly (drag/drop)
 function handleFile(e){
   let f, isInput=false;
@@ -580,7 +574,6 @@ function handleFile(e){
       pdfRenderPageActions();
     }).catch(err=>{console.error('PDF load error:',err);R.toast('PDF load failed');});
     if(isInput) e.target.value='';
-    hideOnboarding();
     return;
   }
   // Loading anything other than a PDF clears PDF state
@@ -755,7 +748,6 @@ function handleFile(e){
     r.readAsDataURL(f);
   }
   e.target.value='';
-  hideOnboarding();
 }
 
 function loadSampleImage(){
@@ -814,15 +806,6 @@ function loadSampleImage(){
   img.src=c.toDataURL('image/png');
 }
 
-function showOnboarding(){
-  const hint=document.createElement('div');
-  hint.id='onboardHint';
-  hint.className='onboard-hint';
-  hint.innerHTML='<div class="onboard-inner"><div class="onboard-icon">◉</div><div class="onboard-title">RISO/CAM</div><div class="onboard-text">Upload an image or use your camera<br>to simulate risograph printing</div><div class="onboard-actions"><button class="onboard-btn" onclick="R.pickFile();R.hideOnboarding()">UPLOAD</button><button class="onboard-btn" onclick="R.toggleCam();R.hideOnboarding()">CAMERA</button></div></div>';
-  el('viewfinder').appendChild(hint);
-}
-function hideOnboarding(){const h=document.getElementById('onboardHint');if(h)h.remove();}
-
 async function toggleCam(){
   if(window._pdfDoc&&!camOn){R.toast('Camera disabled in PDF mode');return;}
   if(camOn){
@@ -863,7 +846,6 @@ async function toggleCam(){
     $gl.classList.toggle('mirrored',facingMode==='user');
     el('camBtn').textContent='STOP CAM';
     $status.textContent='● LIVE';
-    hideOnboarding();
     // Use requestVideoFrameCallback if available (Chrome/Edge)
     if($vid.requestVideoFrameCallback){
       R.onVideoFrame(); // start the generation-guarded rVFC loop (once)
@@ -1561,19 +1543,6 @@ async function rotateSource(){
     $res.textContent=rotated.width+'×'+rotated.height;
   }
 }
-// Render a PDF page WITH rotation applied (used by rotateSource)
-async function rotatedPdfPage(pdfDoc, pageIdx, targetW){
-  const page=await pdfDoc.getPage(pageIdx);
-  const baseVp=page.getViewport({scale:1, rotation:window._sourceRotation});
-  const scale=Math.max(0.1, targetW/baseVp.width);
-  const vp=page.getViewport({scale, rotation:window._sourceRotation});
-  const c=document.createElement('canvas');
-  c.width=Math.round(vp.width); c.height=Math.round(vp.height);
-  const ctx=c.getContext('2d');
-  ctx.fillStyle='#fff'; ctx.fillRect(0,0,c.width,c.height);
-  await page.render({canvasContext:ctx, viewport:vp}).promise;
-  return c;
-}
 // Reset rotation when loading a new source
 function resetSourceRotation(){window._sourceRotation=0;}
 
@@ -1696,7 +1665,5 @@ R.stopVideo = stopVideo;
 R.toggleCam = toggleCam;
 R.startGifLoop = startGifLoop;
 R.loadSampleImage = loadSampleImage;
-R.showOnboarding = showOnboarding;
-R.hideOnboarding = hideOnboarding;
 
 })(window.R);

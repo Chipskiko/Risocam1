@@ -193,6 +193,13 @@ function startCompareLoop(){
   stopCompareLoop();
   function tick(){
     if(!compareOn||!_compareLive){stopCompareLoop();return;}
+    if(!(camOn||videoOn)){
+      // Live source gone — exit the loop instead of spinning at 60fps forever.
+      // Fall back to a static snapshot if one exists; otherwise keep last frame.
+      _compareLive=false;
+      if(srcImg){sizeCompareOverlay();drawCompareFrame(srcImg);}
+      stopCompareLoop();return;
+    }
     sizeCompareOverlay();
     drawCompareFrame($vid);
     _compareRAF=requestAnimationFrame(tick);

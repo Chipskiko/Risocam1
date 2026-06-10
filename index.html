@@ -47,7 +47,6 @@
   </div>
   </div>
 </header>
-<span id="versionTag" style="display:none">v1.6 (2026-05-02)</span>
 <div class="app-container">
   <div class="left-col">
   <div class="viewfinder-wrap">
@@ -56,7 +55,6 @@
     <div id="paperOverlay" style="position:absolute;inset:0;pointer-events:none;mix-blend-mode:multiply;background-size:cover;background-position:center;background-repeat:repeat;opacity:0.5"></div>
     <video id="vid" autoplay playsinline muted style="display:none"></video>
     <div class="compare-overlay" id="compareOverlay"><img id="compareImg" /><canvas id="compareCanvas" style="display:none"></canvas><div class="compare-handle" id="compareHandle"></div><div class="compare-label compare-label-l">ADJUSTED</div><div class="compare-label compare-label-r">RISO</div></div>
-    <div class="crop-guide" id="deskCropGuide"><div class="crop-guide-inner" id="deskCropInner"></div></div>
     <div class="fps-counter" id="fps" style="display:none">--</div>
     <!-- Hidden elements kept for JS references -->
     <div id="captureInfo" style="display:none"></div>
@@ -262,7 +260,6 @@
             <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgBinaryGrain" onchange="R.setDbgToggle('u_dbgBinaryGrain',this.checked)"> Binary grain (real riso)</label>
             <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgFMDots" onchange="R.setDbgToggle('u_dbgFMDots',this.checked)"> FM dots (stochastic screening)</label>
             <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgLinearize" onchange="R.setDbgToggle('u_dbgLinearize',this.checked)"> Linearize before CMYK</label>
-            <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgLumMono" onchange="R.setDbgToggle('u_dbgLumMono',this.checked)"> Luminance mono (bypass CMYK weights)</label>
             <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgNeutralBypass" onchange="R.setDbgToggle('u_dbgNeutralBypass',this.checked)"> Neutral bypass (grayscale accuracy)</label>
             <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgTrcSCurve" onchange="R.setDbgToggle('u_dbgTrcSCurve',this.checked)"> TRC S-curve (midtone contrast)</label>
             <label style="display:block;font-size:10px;margin:3px 0;cursor:pointer"><input type="checkbox" id="dbgYNArea" onchange="R.setDbgToggle('u_dbgYNArea',this.checked)"> YN scattering (replace Beer-Lambert)</label>
@@ -453,7 +450,6 @@ uniform float u_dbgShowCov;    // visualize raw coverage as grayscale
 uniform float u_dbgFixedCov;   // force fixed coverage (0 = disabled, >0 = override)
 uniform float u_dbgBinaryGrain; // binary grain mode (real riso: all dots same density)
 uniform float u_dbgLinearize;  // linearize sRGB before CMYK conversion
-uniform float u_dbgLumMono;   // luminance-based mono coverage (bypass CMYK weights)
 uniform float u_dbgYNArea;    // Yule-Nielsen area mixing (replace Beer-Lambert + opaque)
 uniform float u_dbgNeutralBypass; // neutral/grayscale bypass — skip CMYK weights for near-gray pixels
 uniform float u_dbgTrcSCurve;    // TRC S-curve — replace pow(gamma) with S-curve for midtone contrast
@@ -562,7 +558,6 @@ uniform float u_useCalChord;     // 0=naive delta (ink100-paper), 1=calibrated c
                                  //   correcting Risocam's biggest separation error: ink response is
                                  //   concave near 100%, so linear-from-paper-to-ink100 overestimates
                                  //   ink power at low/mid coverage → NNLS prescribes too little ink.
-uniform float u_screenClean;    // 1.0 = SCREEN mode without simulation noise (clean halftone preview)
 uniform float u_simNoise;       // master noise multiplier — scales every hardcoded noise source (0 = none, 1 = full)
 uniform float u_warmCool;       // -1..1 — bias the CMYK split: <0 cool (more C+K), >0 warm (more M+Y)
 uniform int u_stampShape;       // SCREEN dot shape: 0=circle, 1=square, 2=diamond, 3=plus, 4=star, 5=heart
@@ -1340,7 +1335,6 @@ float risoMatrixDither(float val, vec2 pix, int idx){
 // Each function returns a "distance from shape center" in 0..~1. Threshold
 // against `val` decides which pixels are inside the stamp. Each shape has
 // the same compositing math (smoothstep edge) so they share roughness.
-float dist_circle(vec2 c){ return length(c) * 1.15; }
 float dist_square(vec2 c){ return max(abs(c.x), abs(c.y)) * 2.0; }
 float dist_diamond(vec2 c){ return (abs(c.x) + abs(c.y)) * 1.4; }
 float dist_plus(vec2 c){
@@ -1600,15 +1594,6 @@ float lineDither(float val, vec2 pix, float cellPx, float angle, int idx){
   // coverage w — the correct average of the unresolvable lines — instead of
   // showing moiré or fading to white.
   return mix(w, lineOut, aaFade);
-}
-
-// Sample the source per-pixel (standard halftone). Previously this snapped the
-// source UV to each cell's centre so every cell got one coverage value — which
-// quantised image edges into square cell-steps (visible as blocky boundaries on
-// dark regions at low LPI). Sampling per-pixel lets the dots near an edge be
-// clipped by the actual source contour, so boundaries stay smooth.
-vec2 snapToCellCenter(vec2 pix, vec2 layerUV, float cellPx, float angle){
-  return layerUV;
 }
 
 // Reference resolution for resolution-independent textures
@@ -2513,7 +2498,7 @@ void main(){
     vec2 lrpx = (skUV0 * REF) + off0 * REF;
     vec2 lpix = (skUV0 * u_res) + off0 * u_res;
     float n0 = hash(lrpx * 1.7);
-    vec2 snapUV0 = snapToCellCenter(lpix, uv0, u_screenCell, u_angle0);
+    vec2 snapUV0 = uv0; // per-pixel sampling (replaced cell-centre snapping)
     float cov;
     if(u_sepType == 1){
       vec3 src0a = texture2D(u_src, srcUV(snapUV0)).rgb;
@@ -2556,7 +2541,7 @@ void main(){
     vec2 lrpx = (skUV1 * REF) + off1 * REF;
     vec2 lpix = (skUV1 * u_res) + off1 * u_res;
     float n1 = hash(lrpx * 1.7 + 100.0);
-    vec2 snapUV1 = snapToCellCenter(lpix, uv1, u_screenCell, u_angle1);
+    vec2 snapUV1 = uv1; // per-pixel sampling (replaced cell-centre snapping)
     float cov;
     if(u_sepType == 1){
       vec3 src1a = texture2D(u_src, srcUV(snapUV1)).rgb;
@@ -2594,7 +2579,7 @@ void main(){
     vec2 lrpx = (skUV2 * REF) + off2 * REF;
     vec2 lpix = (skUV2 * u_res) + off2 * u_res;
     float n2 = hash(lrpx * 1.7 + 200.0);
-    vec2 snapUV2 = snapToCellCenter(lpix, uv2, u_screenCell, u_angle2);
+    vec2 snapUV2 = uv2; // per-pixel sampling (replaced cell-centre snapping)
     float cov;
     if(u_sepType == 1){
       vec3 src2a = texture2D(u_src, srcUV(snapUV2)).rgb;
@@ -2632,7 +2617,7 @@ void main(){
     vec2 lpix = (skUV3 * u_res) + off3 * u_res;
     float n3 = hash(lrpx * 1.7 + 300.0);
     vec2 uv3 = skUV3 + off3;
-    vec2 snapUV3 = snapToCellCenter(lpix, uv3, u_screenCell, u_angle3);
+    vec2 snapUV3 = uv3; // per-pixel sampling (replaced cell-centre snapping)
     float cov;
     if(u_sepType == 1){
       vec3 src3a = texture2D(u_src, srcUV(snapUV3)).rgb;
@@ -2885,17 +2870,17 @@ void main(){
 <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.min.js"></script>
 <script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
 <script src="js/data.js?v=14"></script>
-<script src="js/state.js?v=12"></script>
-<script src="js/undo.js?v=4"></script>
-<script src="js/compare.js?v=5"></script>
-<script src="js/riso-amt.js?v=23"></script>
-<script src="js/riso-amt-webgpu.js?v=4"></script>
-<script src="js/renderer.js?v=101"></script>
-<script src="js/source.js?v=45"></script>
-<script src="js/save.js?v=45"></script>
-<script src="js/ui-controls.js?v=51"></script>
+<script src="js/state.js?v=13"></script>
+<script src="js/undo.js?v=5"></script>
+<script src="js/compare.js?v=6"></script>
+<script src="js/riso-amt.js?v=24"></script>
+<script src="js/riso-amt-webgpu.js?v=5"></script>
+<script src="js/renderer.js?v=102"></script>
+<script src="js/source.js?v=46"></script>
+<script src="js/save.js?v=46"></script>
+<script src="js/ui-controls.js?v=52"></script>
 <script src="js/ui-paper.js?v=13"></script>
-<script src="js/phone.js?v=17"></script>
+<script src="js/phone.js?v=18"></script>
 <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');</script>
 </body>
 </html>

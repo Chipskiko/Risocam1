@@ -442,8 +442,6 @@ function findSlotAt(slots,clientY){
   return -1;
 }
 
-function renderColors(){}
-
 // Custom user profiles (saved to localStorage)
 let customProfiles=JSON.parse(localStorage.getItem('risocam_custom_profiles')||'[]');
 function allProfiles(){ return PROFILES.concat(customProfiles); }
@@ -731,26 +729,6 @@ function cycleLineRoughness(){
 const LINE_CENTER_STEPS = [0.0, 0.25, 0.5, 0.75, 1.0];
 window._lineCenterX = window._lineCenterX ?? 0.5;
 window._lineCenterY = window._lineCenterY ?? 0.5;
-function cycleLineCenterX(){
-  let i = LINE_CENTER_STEPS.findIndex(v => Math.abs(v - window._lineCenterX) < 0.05);
-  if(i < 0) i = 2;
-  i = (i + 1) % LINE_CENTER_STEPS.length;
-  window._lineCenterX = LINE_CENTER_STEPS[i];
-  const pct = Math.round(LINE_CENTER_STEPS[i] * 100) + '%';
-  const v = el('lineCxBtnVal'); if(v) v.textContent = 'X ' + pct;
-  R.toast('Center X: ' + pct);
-  markDirty();
-}
-function cycleLineCenterY(){
-  let i = LINE_CENTER_STEPS.findIndex(v => Math.abs(v - window._lineCenterY) < 0.05);
-  if(i < 0) i = 2;
-  i = (i + 1) % LINE_CENTER_STEPS.length;
-  window._lineCenterY = LINE_CENTER_STEPS[i];
-  const pct = Math.round(LINE_CENTER_STEPS[i] * 100) + '%';
-  const v = el('lineCyBtnVal'); if(v) v.textContent = 'Y ' + pct;
-  R.toast('Center Y: ' + pct);
-  markDirty();
-}
 // Density multiplier for CONCENTRIC rings + RADIAL spokes. 1× preserves
 // the default behavior (rings derived from cellPx, spokes from base
 // formula). 0.25× = quarter density, 8× = eight times more.
@@ -859,7 +837,6 @@ function cycleFps(){
   setRisoFps(fpsSteps[(i+1)%fpsSteps.length]);
 }
 const resSteps=[6]; // always max
-function cycleRes(){ /* disabled — always max res */ }
 // ─── Halftone stamp shape (SCREEN mode dot replacement) ───
 const STAMP_SHAPES = ['Circle', 'Square', 'Diamond', 'Plus', 'Star', 'Heart'];
 window._stampShape = window._stampShape ?? 0;
@@ -934,15 +911,6 @@ function refreshDitherScaleVisibility(){
 // Off = full range; 32/16/8 = N levels per channel. Lower = chunkier.
 const COLOR_QUANT_STEPS = [{v:0, l:'Off'}, {v:32, l:'32'}, {v:16, l:'16'}, {v:8, l:'8'}];
 window._colorQuant = window._colorQuant ?? 0;
-function cycleColorQuant(){
-  let i = COLOR_QUANT_STEPS.findIndex(s => s.v === window._colorQuant);
-  if(i < 0) i = 0;
-  i = (i + 1) % COLOR_QUANT_STEPS.length;
-  window._colorQuant = COLOR_QUANT_STEPS[i].v;
-  const v = el('colorQuantBtnVal'); if(v) v.textContent = COLOR_QUANT_STEPS[i].l;
-  R.toast('Quantize: ' + COLOR_QUANT_STEPS[i].l);
-  markDirty();
-}
 // ─── Perceptual Lab residual toggle ───
 // When on, NNLS picks the best ink subset using Lab color distance instead
 // of raw RGB. Better hue fidelity (e.g. yellow vs orange when both are close
@@ -1237,18 +1205,6 @@ function toggleLayerVisible(ch){
   markDirty();
 }
 
-function toggleLayerKnockout(ch){
-  layerKnockout[ch] = !layerKnockout[ch];
-  // Sync same-color channels — sharing a color means sharing the cutout flag
-  const color = channels[ch];
-  if(color){
-    for(let i=0;i<4;i++){ if(channels[i]===color) layerKnockout[i] = layerKnockout[ch]; }
-  }
-  buildChannelUI();
-  if(el('phChannelList')&&el('phChannelList').children.length) buildChannelUI('phChannelList');
-  R.toast('Knockout ' + (layerKnockout[ch] ? 'ON' : 'OFF'));
-  markDirty();
-}
 function setAngle(ch,deg){
   layerAngles[ch]=deg;
   // Sync same-color channels to the same angle
@@ -1447,10 +1403,6 @@ function cycleGhosting() {
   cyclePreset('ghosting', STEP_PRESETS.ghosting);
   updateRegmarkUI();
 }
-function cycleInkNoise() {
-  cyclePreset('inkNoise', INK_NOISE_PRESETS);
-  updateRegmarkUI();
-}
 function cycleInkSpread() {
   cyclePreset('dotGain', INK_SPREAD_PRESETS);
   updateRegmarkUI();
@@ -1541,7 +1493,6 @@ function updateRegmarkUI() {
   const inVal = parseFloat(el('inkNoise')?.value || 0);
   let inLabel = inVal;
   INK_NOISE_PRESETS.forEach(p => { if (Math.abs(p.v - inVal) < 0.01) inLabel = p.l; });
-  syncBtn('inkNoiseBtn', inLabel, inVal > 0, false);
 
   // ── Dynamic SVG: Misreg icon ──
   // 4 CMYK-colored registration marks that spread apart as misreg increases
@@ -1891,7 +1842,6 @@ R.setMonoAngle = setMonoAngle;
 R.mapProfileToSlots = mapProfileToSlots;
 R.buildChannelUI = buildChannelUI;
 R.initLayerDrag = initLayerDrag;
-R.renderColors = renderColors;
 R.allProfiles = allProfiles;
 R.renderProfiles = renderProfiles;
 R.deleteCustomProfile = deleteCustomProfile;
@@ -1908,10 +1858,8 @@ R.setSepType = setSepType;
 R.setScale = setScale;
 R.setRisoFps = setRisoFps;
 R.cycleFps = cycleFps;
-R.cycleRes = cycleRes;
 R.setAngle = setAngle;
 R.lockCmykAngles = lockCmykAngles;
-R.toggleLayerKnockout = toggleLayerKnockout;
 R.toggleLayerVisible = toggleLayerVisible;
 R.setLineCenterX = setLineCenterX;
 R.setLineCenterY = setLineCenterY;
@@ -1923,7 +1871,6 @@ R.pickTextChannelColor = pickTextChannelColor;
 R.clearTextChannel = clearTextChannel;
 R.toggleTextKnockout = toggleTextKnockout;
 R.cycleTrapping = cycleTrapping;
-R.cycleColorQuant = cycleColorQuant;
 R.toggleLabResidual = toggleLabResidual;
 R.cycleDitherMode = cycleDitherMode;
 R.cycleDitherScale = cycleDitherScale;
@@ -1945,14 +1892,11 @@ R.cycleLineShape = cycleLineShape;
 R.cycleLineWeight = cycleLineWeight;
 R.cycleLineAmount = cycleLineAmount;
 R.cycleLineRoughness = cycleLineRoughness;
-R.cycleLineCenterX = cycleLineCenterX;
-R.cycleLineCenterY = cycleLineCenterY;
 R.cycleLineEdgeThickness = cycleLineEdgeThickness;
 R.cycleLineCount = cycleLineCount;
 R.cycleMisreg = cycleMisreg;
 R.cycleSkew = cycleSkew;
 R.cycleGhosting = cycleGhosting;
-R.cycleInkNoise = cycleInkNoise;
 R.cycleInkSpread = cycleInkSpread;
 R.cycleAmtDpi = cycleAmtDpi;
 R.toggleCropMarks = toggleCropMarks;

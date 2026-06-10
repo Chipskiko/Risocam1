@@ -16,7 +16,7 @@ function getState(){
     grainSize:cached.grainSize, dotGain:cached.dotGain, inkNoise:cached.inkNoise,
     paperTex:cached.paperTex, lpi:cached.lpi, grainStatic:cached.grainStatic, ghosting:cached.ghosting, sepType:cached.sepType,
     imgBright:cached.imgBright, imgContrast:cached.imgContrast, imgSat:cached.imgSat,
-    paper:curPaper, paperColor:curPaperColor
+    paperColor:curPaperColor
   });
 }
 function pushUndo(){

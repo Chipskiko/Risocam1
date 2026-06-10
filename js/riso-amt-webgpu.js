@@ -21,9 +21,6 @@
 //
 // API (window.RisoAmtGPU):
 //   ready()                    → Promise<bool> (lazy device + pipeline init)
-//   runChannel(dens, W, H)     → Promise<{plane: Uint8Array, strideW: number}>
-//     plane is row-padded to strideW = ceil(W/4)*4 px; upload with
-//     gl.pixelStorei(gl.UNPACK_ROW_LENGTH, strideW) — no repack needed.
 
 (function (root) {
 'use strict';
@@ -256,6 +253,7 @@ async function _init() {
     device.lost.then(() => {
       _device = null; _pipeline = null; _tableBufs = null;
       _pipeProject = null; _pipeHsum = null; _pipeVlift = null; _toneBuf = null;
+      _initPromise = null; _failed = false;   // let the next ready() re-init
     });
     const module = device.createShaderModule({ code: WGSL });
     _pipeline = await device.createComputePipelineAsync({
@@ -303,62 +301,6 @@ function ready() {
   return _initPromise;
 }
 
-// dens: tight Uint8Array (W*H). Returns { plane (strided), strideW }.
-async function runChannel(dens, W, H) {
-  const ok = await ready();
-  if (!ok) throw new Error('WebGPU unavailable');
-  const device = _device;
-  const strideW = (W + 3) & ~3;
-  const bytes = strideW * H;
-
-  // Upload density with row padding (so 4-px output words never straddle rows).
-  const densBuf = device.createBuffer({ size: bytes, usage: GPUBufferUsage.STORAGE, mappedAtCreation: true });
-  {
-    const dst = new Uint8Array(densBuf.getMappedRange());
-    if (strideW === W) dst.set(dens);
-    else for (let y = 0; y < H; y++) dst.set(dens.subarray(y * W, (y + 1) * W), y * strideW);
-    densBuf.unmap();
-  }
-  const outBuf = device.createBuffer({ size: bytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
-  const readBuf = device.createBuffer({ size: bytes, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
-
-  // Sequential band dispatches in one submit (warm-up rows discarded).
-  const enc = device.createCommandEncoder();
-  const pass = enc.beginComputePass();
-  pass.setPipeline(_pipeline);
-  let outY0 = 0;
-  while (outY0 < H) {
-    const warm = outY0 > 0 ? Math.min(WARM, outY0) : 0;
-    const bandStart = outY0 - warm;
-    const Hb = Math.min(WG, H - bandStart);
-    const params = new Uint32Array([W, strideW, Hb, bandStart, warm, _tableBufs.taLen, 0, 0]);
-    const pBuf = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM, mappedAtCreation: true });
-    new Uint32Array(pBuf.getMappedRange()).set(params);
-    pBuf.unmap();
-    const bg = device.createBindGroup({
-      layout: _pipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: pBuf } },
-        { binding: 1, resource: { buffer: densBuf } },
-        { binding: 2, resource: { buffer: _tableBufs.tba } },
-        { binding: 3, resource: { buffer: _tableBufs.tc } },
-        { binding: 4, resource: { buffer: outBuf } },
-      ],
-    });
-    pass.setBindGroup(0, bg);
-    pass.dispatchWorkgroups(1);
-    outY0 = bandStart + Hb;       // rows [bandStart+warm, bandStart+Hb) emitted
-  }
-  pass.end();
-  enc.copyBufferToBuffer(outBuf, 0, readBuf, 0, bytes);
-  device.queue.submit([enc.finish()]);
-  await readBuf.mapAsync(GPUMapMode.READ);
-  const plane = new Uint8Array(readBuf.getMappedRange().slice(0));
-  readBuf.unmap();
-  densBuf.destroy(); outBuf.destroy(); readBuf.destroy();
-  return { plane: plane, strideW: strideW };
-}
-
 // Full-GPU prepass: ONE RGBA upload, then per channel project → solid-fill →
 // wavefront FS → readback. The main thread does no per-pixel math at all —
 // this replaces both the serial projection pass and the worker density jobs.
@@ -384,8 +326,15 @@ async function runChannelsFromRGBA(rgba, W, H, chans, opts) {
   const sfStrength = (typeof o.solidFillStrength === 'number') ? o.solidFillStrength : 1.0;
   const solidFillOn = sfThr < 255;
 
+  // Every GPU buffer is destroyed in the finally below — null-checked and
+  // try/catch'd so destruction is idempotent even after a mid-flight throw.
+  let rgbaBuf = null, densBuf = null, tmpBuf = null, outBuf = null, readBuf = null;
+  const uniformBufs = [];   // per-band pBuf/fsBuf uniforms, destroyed in finally
+  const destroyBuf = function (b) { if (b) { try { b.destroy(); } catch (e) {} } };
+  try {
+
   // Source RGBA, row-padded to strideW px (1 u32 per px).
-  const rgbaBuf = device.createBuffer({ size: planeBytes * 4, usage: GPUBufferUsage.STORAGE, mappedAtCreation: true });
+  rgbaBuf = device.createBuffer({ size: planeBytes * 4, usage: GPUBufferUsage.STORAGE, mappedAtCreation: true });
   {
     const dst = new Uint8Array(rgbaBuf.getMappedRange());
     if (strideW === W) dst.set(rgba.subarray(0, W * H * 4));
@@ -393,9 +342,9 @@ async function runChannelsFromRGBA(rgba, W, H, chans, opts) {
     rgbaBuf.unmap();
   }
   // Reused per channel: density, solid-fill temp, FS output.
-  const densBuf = device.createBuffer({ size: planeBytes, usage: GPUBufferUsage.STORAGE });
-  const tmpBuf = device.createBuffer({ size: planeBytes * 4, usage: GPUBufferUsage.STORAGE });
-  const outBuf = device.createBuffer({ size: planeBytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+  densBuf = device.createBuffer({ size: planeBytes, usage: GPUBufferUsage.STORAGE });
+  tmpBuf = device.createBuffer({ size: planeBytes * 4, usage: GPUBufferUsage.STORAGE });
+  outBuf = device.createBuffer({ size: planeBytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
 
   const results = [];
   for (const ch of chans) {
@@ -412,6 +361,7 @@ async function runChannelsFromRGBA(rgba, W, H, chans, opts) {
     const pBuf = device.createBuffer({ size: 80, usage: GPUBufferUsage.UNIFORM, mappedAtCreation: true });
     new Uint8Array(pBuf.getMappedRange()).set(new Uint8Array(pData));
     pBuf.unmap();
+    uniformBufs.push(pBuf);
     // layout:'auto' creates a layout with ONLY the bindings each entry point
     // statically uses — passing extra entries fails bind-group validation
     // (async, silently no-ops the dispatch). So: exact lists per pipeline.
@@ -439,6 +389,7 @@ async function runChannelsFromRGBA(rgba, W, H, chans, opts) {
       const fsBuf = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM, mappedAtCreation: true });
       new Uint32Array(fsBuf.getMappedRange()).set(fsParams);
       fsBuf.unmap();
+      uniformBufs.push(fsBuf);
       pass.setBindGroup(0, device.createBindGroup({
         layout: _pipeline.getBindGroupLayout(0),
         entries: [
@@ -453,18 +404,23 @@ async function runChannelsFromRGBA(rgba, W, H, chans, opts) {
       outY0 = bandStart + Hb;
     }
     pass.end();
-    const readBuf = device.createBuffer({ size: planeBytes, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+    readBuf = device.createBuffer({ size: planeBytes, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
     enc.copyBufferToBuffer(outBuf, 0, readBuf, 0, planeBytes);
     device.queue.submit([enc.finish()]);
     await readBuf.mapAsync(GPUMapMode.READ);
     const plane = new Uint8Array(readBuf.getMappedRange().slice(0));
-    readBuf.unmap(); readBuf.destroy();
+    readBuf.unmap(); destroyBuf(readBuf); readBuf = null;
     results.push({ chIdx: ch.chIdx, plane: plane, strideW: strideW });
   }
-  rgbaBuf.destroy(); densBuf.destroy(); tmpBuf.destroy(); outBuf.destroy();
   return results;
+
+  } finally {
+    destroyBuf(rgbaBuf); destroyBuf(densBuf); destroyBuf(tmpBuf); destroyBuf(outBuf);
+    destroyBuf(readBuf);                       // in-flight readback, if any
+    for (const b of uniformBufs) destroyBuf(b);
+  }
 }
 
-root.RisoAmtGPU = { ready: ready, runChannel: runChannel, runChannelsFromRGBA: runChannelsFromRGBA };
+root.RisoAmtGPU = { ready: ready, runChannelsFromRGBA: runChannelsFromRGBA };
 
 })(typeof window !== 'undefined' ? window : self);

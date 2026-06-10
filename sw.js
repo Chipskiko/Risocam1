@@ -1,4 +1,4 @@
-const CACHE = 'risocam-v5';
+const CACHE = 'risocam-v6';
 const ASSETS = [
   '/',
   '/index.html',
@@ -14,10 +14,15 @@ const ASSETS = [
   '/js/ui-controls.js',
   '/js/ui-paper.js',
   '/js/phone.js',
+  '/js/riso-amt.js',
+  '/js/riso-amt-worker.js',
+  '/js/riso-amt-webgpu.js',
+  '/js/cal-lut-worker.js',
   '/textures/kraft.jpg',
   '/textures/riso_standard.jpg',
   '/textures/smooth.jpg',
   '/textures/textured.jpg',
+  '/textures/paper002_pbr_2k.png',
   '/icon-192.png',
   '/icon-512.png'
 ];

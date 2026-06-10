@@ -9,7 +9,7 @@
 // Returning the BLURRED plane (not raw bits) means the main thread only has
 // to do bit-packing into RGBA + texImage2D upload, both of which are fast.
 
-self.importScripts('./riso-amt.js?v=23');
+self.importScripts('./riso-amt.js?v=24');
 
 // Same Gaussian blur as renderer.js gaussianBlurPlane — replicated here so
 // the worker doesn't need a separate import. Two-pass separable filter.
@@ -67,16 +67,9 @@ self.onmessage = function(e) {
   //                     build up realistic FS error state) but excluded from
   //                     the returned plane. ED error memory decays in ~10-20
   //                     rows, so 32 warm-up rows make band seams invisible.
-  const { id, input, W, H, opts, sigma, globalRowOffset, discardRows, op } = e.data;
+  const { id, input, W, H, opts, sigma, globalRowOffset, discardRows } = e.data;
   try {
     const inputArr = (input instanceof ArrayBuffer) ? new Uint8Array(input) : input;
-    // op:'density' — build only the tone-curve/solid-fill density plane (the
-    // WebGPU path runs the FS stage on the GPU from this).
-    if (op === 'density') {
-      const dens = self.RisoAmt.buildDensity(inputArr, W, H, opts || {});
-      self.postMessage({ id, plane: dens.buffer, on: 0, outH: H }, [dens.buffer]);
-      return;
-    }
     const runOpts = Object.assign({}, opts || {}, { globalRowOffset: globalRowOffset || 0 });
     // FS over the full slice (including warm-up rows)
     const bits = self.RisoAmt.runAmt(inputArr, W, H, runOpts);

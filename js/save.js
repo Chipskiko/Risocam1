@@ -87,9 +87,8 @@ async function saveHiRes(format){
   }catch(e){console.error(ext.toUpperCase()+' save error:',e);R.toast('Save failed');}
   finally{_saving=false;}
 }
-// Convenience wrappers used by the toolbar buttons
+// Convenience wrapper used by the toolbar buttons
 function saveJpg(){ return saveHiRes('jpg'); }
-function savePng(){ return saveHiRes('png'); }
 
 // ─── Minimal GIF89a encoder (no external deps) ───
 function GIFEncoder(w,h,delay){
@@ -435,11 +434,18 @@ async function startWebCodecsRecording(){
     // Schedule next frame at the FPS rate
     setTimeout(captureLoop, 1000 / fps);
   };
-  // The "stop" function — captures everything, finalizes, downloads
+  // The "stop" function — captures everything, finalizes, downloads.
+  // Performs the FULL teardown (timers, flags, button) so every stop path
+  // (manual VID click, 30s auto-stop timeout, captureLoop length guard)
+  // cleans up identically. Idempotent via the `stopped` flag.
   const stopFn = async () => {
     if(stopped) return;
     stopped = true;
     isRecording = false;
+    clearTimeout(window._recState.autoStopId);
+    clearInterval(window._recState.timerId);
+    window._recState.recording = false;
+    updateRecordButton('VID');
     if(encodeError){
       R.toast('Encoder error — recording aborted');
       try { encoder.close(); } catch(_){}
@@ -530,6 +536,9 @@ function startMediaRecorderRecording(){
   recorder.onerror = (e) => {
     console.error('[REC] MediaRecorder error:', e);
     R.toast('Recorder error');
+    // Full teardown — clears pumpId/timerId/autoStopId, resets recording
+    // flags and the VID button, and stops the recorder/stream.
+    stopRecording();
   };
   recorder.onstart = () => { console.log('[REC] recorder started, state:', recorder.state); };
   recorder.onstop = () => {
@@ -600,6 +609,10 @@ function stopRecording(){
   try { if(s.recorder && s.recorder.state==='recording') s.recorder.requestData(); } catch(_){}
   setTimeout(() => {
     try { s.recorder.stop(); } catch(e){ console.error('[REC] stop err', e); }
+    // Safety net: recorder.onstop normally stops the capture-stream tracks,
+    // but if the recorder is already inactive (e.g. teardown after onerror)
+    // no stop event fires and the canvas captureStream track keeps running.
+    try { s.stream && s.stream.getTracks().forEach(t => t.stop()); } catch(_){}
   }, 100);
 }
 
@@ -618,9 +631,6 @@ function toggleRecording(){
   }
   startCountdown(startRecording);
 }
-
-// Legacy duration cycle — kept for backward-compat but no-op now
-function cycleGifDuration(){ R.toast('Recording is now press-to-start/stop'); }
 
 async function saveGif(){
   if(window._pdfDoc){R.toast('GIF export disabled in PDF mode');return;}
@@ -835,7 +845,6 @@ async function exportSeparations(){
   gl.uniform1f(locs.u_simNoise, _cleanRender ? 0 : 1);
   gl.uniform1f(locs.u_dotGain,   cached.dotGain);
   gl.uniform1f(locs.u_inkNoise,  cached.inkNoise);
-  gl.uniform1f(locs.u_screenClean, (mode === 'screen' && window._screenClean) ? 1.0 : 0.0);
   // Separations are per-ink halftone masters for actual printing — the paper is
   // the physical sheet, so the plates must be CLEAN of any paper texture
   // (both the legacy fiber field and the PBR substrate). Force both off.
@@ -1221,9 +1230,7 @@ async function savePdf(){
 R.getSaveAspect = getSaveAspect;
 R.saveHiRes = saveHiRes;
 R.saveJpg = saveJpg;
-R.savePng = savePng;
 R.saveGif = saveGif;
-R.cycleGifDuration = cycleGifDuration;
 R.toggleRecording = toggleRecording;
 R.savePdf = savePdf;
 R.exportSeparations = exportSeparations;

@@ -14,8 +14,6 @@ const ASPECT_CYCLE=[[1,1],[4,3],[3,4],[5,4],[4,5],[16,9],[9,16]];
 const ASPECT_LABELS=['1:1','4:3','3:4','5:4','4:5','16:9','9:16'];
 let aspectIdx=1; // default to 4:3
 
-const RES_CYCLE=[2,4,5];
-let resIdx=0;
 
 // Crop guide: shows what area will be saved when aspect is set
 function updateCropGuide(canvasW,canvasH,srcW,srcH){
@@ -26,24 +24,6 @@ function updateCropGuide(canvasW,canvasH,srcW,srcH){
 }
 
 // Desktop crop guide
-function updateDeskCropGuide(){
-  const guide=el('deskCropGuide');
-  const inner=el('deskCropInner');
-  if(!guide||!inner)return;
-  if(!cropAspect){guide.classList.remove('visible');return;}
-  const vf=el('viewfinder');
-  const vpW=vf.clientWidth, vpH=vf.clientHeight;
-  const vpAR=vpW/vpH;
-  const cropAR=cropAspect[0]/cropAspect[1];
-  let gW,gH;
-  if(cropAR>vpAR){ gW=1;gH=vpAR/cropAR; }
-  else { gH=1;gW=cropAR/vpAR; }
-  const px=(1-gW)/2*vpW, py=(1-gH)/2*vpH;
-  inner.style.left=px+'px';inner.style.top=py+'px';
-  inner.style.width=(gW*vpW)+'px';inner.style.height=(gH*vpH)+'px';
-  guide.classList.add('visible');
-}
-
 function setPhoneMode(m){
   phoneMode=m;
   const toggle=el('phModeToggle');
@@ -52,24 +32,6 @@ function setPhoneMode(m){
   if(m==='video'){
     const sh=el('phShutter');if(sh)sh.classList.remove('recording');
     if(!camOn) R.toggleCam();
-  }
-}
-
-function phTogglePhotoVideo(){
-  setPhoneMode(phoneMode==='photo'?'video':'photo');
-}
-
-function phFlipAspectOrientation(){
-  // Flip current aspect ratio (4:3 → 3:4, etc). Skip 1:1 (already square)
-  const cur=ASPECT_CYCLE[aspectIdx];
-  if(!cur||cur[0]===cur[1]) return; // skip square
-  const flipped=[cur[1],cur[0]];
-  const fi=ASPECT_CYCLE.findIndex(a=>a[0]===flipped[0]&&a[1]===flipped[1]);
-  if(fi>=0){
-    aspectIdx=fi;
-    setAspect(ASPECT_CYCLE[aspectIdx]);
-    const btn=el('phAspectBtn');
-    if(btn) btn.textContent=ASPECT_LABELS[aspectIdx];
   }
 }
 
@@ -102,13 +64,6 @@ function phCycleAspect(){
   setAspect(ASPECT_CYCLE[aspectIdx]);
   const btn=el('phAspectBtn');
   if(btn) btn.textContent=ASPECT_LABELS[aspectIdx];
-}
-
-function phCycleRes(){
-  resIdx=(resIdx+1)%RES_CYCLE.length;
-  R.setScale(RES_CYCLE[resIdx]);
-  const btn=el('phResBtn');
-  if(btn) btn.textContent=RES_CYCLE[resIdx]+'×';
 }
 
 const FPS_CYCLE=[0,4,8,12,24];
@@ -221,7 +176,7 @@ async function phFlipCam(){
       await $vid.play();
       camOn=true;needsAspectUpdate=true;computeCrop();scheduleRender();
       $gl.classList.toggle('mirrored',facingMode==='user');
-      if($vid.requestVideoFrameCallback) $vid.requestVideoFrameCallback(R.onVideoFrame);
+      if($vid.requestVideoFrameCallback) R.onVideoFrame(); // start the generation-guarded rVFC loop (once)
       else{if(window._camFallback)clearInterval(window._camFallback);window._camFallback=setInterval(()=>{if(camOn&&$vid.readyState>=2){videoFrameReady=true;scheduleRender();}else if(!camOn)clearInterval(window._camFallback);},50);}
       return;
     }catch(e){/* try next constraint */}
@@ -232,7 +187,7 @@ async function phFlipCam(){
     camStream=s;$vid.srcObject=s;await $vid.play();
     camOn=true;needsAspectUpdate=true;computeCrop();scheduleRender();
     $gl.classList.toggle('mirrored',facingMode==='user');
-    if($vid.requestVideoFrameCallback) $vid.requestVideoFrameCallback(R.onVideoFrame);
+    if($vid.requestVideoFrameCallback) R.onVideoFrame(); // start the generation-guarded rVFC loop (once)
     else{if(window._camFallback)clearInterval(window._camFallback);window._camFallback=setInterval(()=>{if(camOn&&$vid.readyState>=2){videoFrameReady=true;scheduleRender();}else if(!camOn)clearInterval(window._camFallback);},50);}
     R.toast('Only one camera available');
   }catch(e){R.toast('Camera error');}
@@ -478,38 +433,6 @@ function phBindSliders(){
   });
 }
 // Build step groups in phone settings overlay (mirrors desktop step groups)
-function phBuildStepGroups(){
-  const phStepMap={
-    phMarginSteps:'margin',
-  };
-  Object.entries(phStepMap).forEach(([phWrapId,id])=>{
-    const wrap=el(phWrapId);
-    if(!wrap)return;
-    const presets=STEP_PRESETS[id];
-    const slider=el(id); // reference the desktop hidden slider
-    if(!presets||!slider)return;
-    wrap.innerHTML='';
-    const curVal=parseFloat(slider.value);
-    let bestIdx=0,bestDist=Infinity;
-    presets.forEach((p,i)=>{const d=Math.abs(p.v-curVal);if(d<bestDist){bestDist=d;bestIdx=i;}});
-    presets.forEach((p,i)=>{
-      const btn=document.createElement('button');
-      btn.className='step-btn'+(i===bestIdx?' active':'');
-      btn.textContent=p.l;
-      btn.dataset.value=p.v;
-      btn.onclick=()=>{
-        wrap.querySelectorAll('.step-btn').forEach(b=>b.classList.remove('active'));
-        btn.classList.add('active');
-        slider.value=p.v;
-        if(slider.oninput)slider.oninput();
-        // Sync desktop step group too
-        R.syncStepGroup(id);
-      };
-      wrap.appendChild(btn);
-    });
-  });
-}
-
 // Move canvas between desktop/phone viewfinders
 function layoutSwitch(){
   const phone=R.isPhone();
@@ -562,7 +485,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   $gl=el('gl'); $vf=el('viewfinder'); $vid=el('vid');
   $fps=el('fps'); $res=el('resBadge'); $status=el('statusBadge');
 
-  R.renderColors();R.renderProfiles();R.renderPaperUI();R.bindSliders();R.buildStepGroups();R.initToneCurve();R.updateRegmarkUI();R.setRisoFps(risoFps);initShutter();initOverlaySwipe();
+  R.renderProfiles();R.renderPaperUI();R.bindSliders();R.buildStepGroups();R.initToneCurve();R.updateRegmarkUI();R.setRisoFps(risoFps);initShutter();initOverlaySwipe();
   // Sync settings-panel layout to current mode (correct primary sub-block
   // visible, initial shape icons painted, etc).
   if(R.setMode) R.setMode(mode);
@@ -573,7 +496,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   R.initGL();
 
   // Cache DOM refs used in render loop
-  $phCropGuide=el('phCropGuide');$deskCropGuide=el('deskCropGuide');
+  $phCropGuide=el('phCropGuide');
   cachedVfW=$vf.clientWidth;cachedVfH=$vf.clientHeight;
 
   // Pre-build uniform location arrays (avoids per-frame allocation)
@@ -710,14 +633,10 @@ R.ASPECT_CYCLE = ASPECT_CYCLE;
 R.ASPECT_LABELS = ASPECT_LABELS;
 R.FPS_CYCLE = FPS_CYCLE;
 R.updateCropGuide = updateCropGuide;
-R.updateDeskCropGuide = updateDeskCropGuide;
 R.setPhoneMode = setPhoneMode;
-R.phTogglePhotoVideo = phTogglePhotoVideo;
-R.phFlipAspectOrientation = phFlipAspectOrientation;
 R.phReset = phReset;
 R.phCycleMode = phCycleMode;
 R.phCycleAspect = phCycleAspect;
-R.phCycleRes = phCycleRes;
 R.phCycleFps = phCycleFps;
 R.phToggleBcs = phToggleBcs;
 R.syncArcSliders = syncArcSliders;
@@ -731,7 +650,6 @@ R.phCloseOverlay = phCloseOverlay;
 R.initOverlaySwipe = initOverlaySwipe;
 R.phPopulateOverlay = phPopulateOverlay;
 R.phBindSliders = phBindSliders;
-R.phBuildStepGroups = phBuildStepGroups;
 R.layoutSwitch = layoutSwitch;
 
 })(window.R);

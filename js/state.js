@@ -41,7 +41,7 @@ let textKnockout=false;
 // plate misregistration. Same UX/labels as Spectrolite. 0 = no trap.
 let trappingPx=0;
 let resScale=6; // always max resolution
-let curPaper=0, curPaperColor=0;
+let curPaperColor=0;
 let cropAspect=[4,3]; // default 4:3
 let cropRect=[0,0,1,1]; // UV crop: x,y,w,h
 
@@ -77,7 +77,7 @@ function markDirty(){
 const inkLocs=new Array(4), offLocs=new Array(4), angLocs=new Array(4), chanLocs=new Array(4), densLocs=new Array(4);
 // Pre-built uniform location arrays (populated in init, avoids per-frame allocation)
 let lutALocs,lutBLocs,lutCLocs,lutDLocs,grainMulLocs,inkGammaLocs,hasCalLocs,opaqueLocs,skewLocs;
-let $gl,$vf,$vid,$fps,$res,$status,$phCropGuide,$deskCropGuide;
+let $gl,$vf,$vid,$fps,$res,$status,$phCropGuide;
 let cachedVfW=0,cachedVfH=0; // cached viewfinder dimensions, updated on resize
 
 function hexRGB(h){return[parseInt(h.slice(1,3),16)/255,parseInt(h.slice(3,5),16)/255,parseInt(h.slice(5,7),16)/255];}
@@ -134,19 +134,6 @@ function cycleAspect(){
 }
 
 let paperOrient='landscape'; // 'landscape' or 'portrait'
-function setPaperOrient(orient){
-  paperOrient=orient;
-  // Aspect ratio is now on the canvas, not the panel
-  if($gl){
-    if(orient==='portrait'){
-      $gl.style.aspectRatio='1/1.414';
-    } else {
-      $gl.style.aspectRatio='1.414/1';
-    }
-  }
-  needsAspectUpdate=true;
-  markDirty();
-}
 
 // Phone mode detection — state-based, not screen-size
 let phoneActive=false;
@@ -167,9 +154,6 @@ function togglePhoneMode(){
   markDirty();needsAspectUpdate=true;
   R.layoutSwitch();
 }
-
-// Derive active layer count from channels
-function activeCount(){return channels.filter(c=>c!==null).length;}
 
 // Get ordered active layers for shader (follows layerOrder for print sequence)
 function activeLayers(){
@@ -230,10 +214,8 @@ R.el = el;
 R.computeCrop = computeCrop;
 R.setAspect = setAspect;
 R.cycleAspect = cycleAspect;
-R.setPaperOrient = setPaperOrient;
 R.isPhone = isPhone;
 R.togglePhoneMode = togglePhoneMode;
-R.activeCount = activeCount;
 R.activeLayers = activeLayers;
 R.cacheInkColors = cacheInkColors;
 R.cacheSlider = cacheSlider;
