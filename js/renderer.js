@@ -614,7 +614,7 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   gl.uniform1f(locs.u_dotGain,   cached.dotGain);
   gl.uniform1f(locs.u_inkNoise,  cached.inkNoise);
   gl.uniform1f(locs.u_screenClean, (mode === 'screen' && window._screenClean) ? 1.0 : 0.0);
-  // SCREEN engine: 1 = RISO authentic matrix (default), 0 = procedural round-dot.
+  // SCREEN engine: 0 = procedural round-dot (DEFAULT), 1 = RISO authentic matrix (console: R.setScreenType(1)).
   if(locs.u_screenType) gl.uniform1f(locs.u_screenType, (window._screenType ?? 0) ? 1.0 : 0.0);
   // Unit 8 holds the AM matrix in SCREEN mode, the Grain-Touch ht5 matrix
   // otherwise (never sampled in the same mode).
@@ -1782,7 +1782,7 @@ R.setPaperPBR = function(on){
   console.log('[paper] PBR substrate:', on ? 'ON (Paper002)' : 'OFF (legacy pf)');
 };
 
-// SCREEN engine toggle: 1 = RISO authentic matrix (default), 0 = procedural
+// SCREEN engine toggle: 0 = procedural round-dot (DEFAULT), 1 = RISO matrix
 // cross-faded round-dot. Pure uniform — redraw only, no prepass.
 R.setScreenType = function(t){
   window._screenType = t ? 1 : 0;
