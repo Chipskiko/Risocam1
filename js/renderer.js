@@ -1546,6 +1546,53 @@ async function _runAmtPrepassImpl(){
   // then each band lands via texSubImage2D as its worker resolves — uploads
   // overlap the still-running FS of other bands, and on WebGL2/R8 the worker
   // plane IS the texel data (no pack).
+  // (#4) WEBGPU WAVEFRONT ED (experimental, window._amtWebGPU = true):
+  // density planes build in the worker pool, then true FS runs as a WebGPU
+  // compute wavefront (raster order — Tables A/B/C mask the serpentine
+  // difference; A/B before trusting for finals). Falls back to the CPU band
+  // path on any failure.
+  // (UNPACK_ROW_LENGTH for the strided upload is WebGL2-only — same condition
+  // as the R8 master format, so gate on it.)
+  if (window._amtWebGPU && window.RisoAmtGPU && (window._amtMasterFmt || {}).channels === 1) {
+    try {
+      const okGpu = await window.RisoAmtGPU.ready();
+      if (okGpu) {
+        const _mfG = window._amtMasterFmt || { internal: gl.RGBA, format: gl.RGBA, channels: 4 };
+        const gjobs = [];
+        for (let chIdx = 0; chIdx < 4; chIdx++) {
+          const meta = channelMeta[chIdx];
+          if (!meta) continue;
+          const slice = inputGrays[chIdx].slice(); // transferable copy
+          const job = new Promise((resolve, reject) => {
+            const id = _amtWorkerNextId++;
+            _amtWorkerPending.set(id, { resolve, reject });
+            const w = _amtWorkerPool[(_amtWorkerRR++) % _amtWorkerPool.length];
+            w.postMessage({ id, op: 'density', input: slice.buffer, W, H, opts: _runOpts }, [slice.buffer]);
+          }).then(res => window.RisoAmtGPU.runChannel(res.plane, W, H))
+            .then(g => {
+              gl.activeTexture(gl.TEXTURE9 + chIdx);
+              gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[chIdx]);
+              gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+              gl.pixelStorei(gl.UNPACK_ROW_LENGTH, g.strideW);
+              gl.texImage2D(gl.TEXTURE_2D, 0, _mfG.internal, W, H, 0, _mfG.format, gl.UNSIGNED_BYTE, g.plane);
+              gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
+            });
+          gjobs.push(job);
+        }
+        await Promise.all(gjobs);
+        const totalMsG = performance.now() - t0;
+        console.log(`[RisoAmt] all channels done in ${totalMsG.toFixed(0)} ms (WebGPU wavefront ED) — projection(main,serial) ${tProj.toFixed(0)}ms`);
+        gl.uniform1f(locs.u_useAmt, 1.0);
+        window._amtMasterValid = true;
+        markDirty();
+        try { R.toast && R.toast('RISO ready (GPU)', 1200); } catch(e){}
+        return;
+      }
+    } catch (e) {
+      console.warn('[RisoAmt] WebGPU path failed, falling back to CPU:', e.message || e);
+    }
+  }
+
   const WARMUP = 32;
   const numActive = channelMeta.filter(Boolean).length;
   const poolN = Math.max(1, _amtWorkerPool.length || 1);
@@ -1625,6 +1672,14 @@ R.setAmtScanDpi = function(dpi){
   window._amtScanDpi = Math.max(50, Math.min(1200, dpi|0));
   console.log('[RisoAmt] scan DPI =', window._amtScanDpi, '(re-run dither mode to apply)');
   R.invalidateAmt();
+};
+// Experimental: run the FS master on the GPU (WebGPU wavefront ED). Raster
+// scan order (not serpentine) — A/B visually before using for finals.
+R.setAmtWebGPU = function(on){
+  window._amtWebGPU = !!on;
+  console.log('[RisoAmt] WebGPU wavefront ED', window._amtWebGPU ? 'ON (experimental)' : 'OFF');
+  R.invalidateAmt();
+  if(window._mode === 'flat' && R.runAmtPrepass) setTimeout(R.runAmtPrepass, 0);
 };
 
 // Toggle LCG threshold modulation in driver-faithful FS:

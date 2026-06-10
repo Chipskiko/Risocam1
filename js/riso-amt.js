@@ -491,6 +491,61 @@ function _applySolidFill(buf, W, H, threshold, radius, strength) {
   }
 }
 
+// Build the 0..255 Uint8 density buffer (tone curve × coverageScale, then
+// solid-fill lift) — the input to the driver-faithful FS. Shared by the CPU
+// path (runAmt) and the WebGPU path (which runs only the FS stage on GPU).
+// Math.fround before quantizing reproduces the legacy store-to-Float32, so the
+// downstream FS output is bit-identical to the historical implementation.
+function buildDensityU8(input, W, H, o) {
+  const N = W * H;
+  const isFloat = input instanceof Float32Array;
+  const covScale = (typeof o.coverageScale === 'number') ? o.coverageScale : 1.0;
+  const dens = new Uint8Array(N);
+  const flipD = !o.applyToneCurve && o.driverFaithful;
+  if (isFloat) {
+    if (o.applyToneCurve) {
+      for (let i = 0; i < N; i++) {
+        const idx = Math.min(255, Math.max(0, (input[i] * 255) | 0));
+        let v = o.toneCurve[idx] * covScale;
+        if (v > 1) v = 1; else if (v < 0) v = 0;
+        dens[i] = Math.round(Math.fround(v) * 255);
+      }
+    } else {
+      for (let i = 0; i < N; i++) {
+        let v = input[i] * covScale;
+        if (v > 1) v = 1; else if (v < 0) v = 0;
+        dens[i] = Math.round(Math.fround(v) * 255);
+      }
+    }
+  } else {
+    if (o.applyToneCurve) {
+      for (let i = 0; i < N; i++) {
+        const vIn = o.invertInput ? (255 - input[i]) : input[i];
+        let v = o.toneCurve[vIn & 0xFF] * covScale;
+        if (v > 1) v = 1; else if (v < 0) v = 0;
+        dens[i] = Math.round(Math.fround(v) * 255);
+      }
+    } else {
+      for (let i = 0; i < N; i++) {
+        let raw = o.invertInput ? (255 - input[i]) : input[i];
+        if (flipD) raw = 255 - raw;
+        let v = raw / 255 * covScale;
+        if (v > 1) v = 1; else if (v < 0) v = 0;
+        dens[i] = Math.round(Math.fround(v) * 255);
+      }
+    }
+  }
+  if (typeof o.solidFillThreshold === 'number' && o.solidFillThreshold < 1.0) {
+    _applySolidFillU8(
+      dens, W, H,
+      o.solidFillThreshold,
+      (typeof o.solidFillRadius === 'number') ? o.solidFillRadius : 5,
+      (typeof o.solidFillStrength === 'number') ? o.solidFillStrength : 1.0
+    );
+  }
+  return dens;
+}
+
 function runAmt(input, W, H, opts) {
   const o = Object.assign({}, DEFAULTS, opts || {});
   const isFloat = input instanceof Float32Array;
@@ -518,50 +573,8 @@ function runAmt(input, W, H, opts) {
   // before quantizing reproduces the old store-to-Float32 exactly, so the
   // FS output is bit-identical to the previous implementation.
   if (o.driverFaithful && !o.multiLevel) {
-    const dens = new Uint8Array(N);
-    const flipD = !o.applyToneCurve && o.driverFaithful;
-    if (isFloat) {
-      if (o.applyToneCurve) {
-        for (let i = 0; i < N; i++) {
-          const idx = Math.min(255, Math.max(0, (input[i] * 255) | 0));
-          let v = o.toneCurve[idx] * covScaleEarly;
-          if (v > 1) v = 1; else if (v < 0) v = 0;
-          dens[i] = Math.round(Math.fround(v) * 255);
-        }
-      } else {
-        for (let i = 0; i < N; i++) {
-          let v = input[i] * covScaleEarly;
-          if (v > 1) v = 1; else if (v < 0) v = 0;
-          dens[i] = Math.round(Math.fround(v) * 255);
-        }
-      }
-    } else {
-      if (o.applyToneCurve) {
-        for (let i = 0; i < N; i++) {
-          const vIn = o.invertInput ? (255 - input[i]) : input[i];
-          let v = o.toneCurve[vIn & 0xFF] * covScaleEarly;
-          if (v > 1) v = 1; else if (v < 0) v = 0;
-          dens[i] = Math.round(Math.fround(v) * 255);
-        }
-      } else {
-        for (let i = 0; i < N; i++) {
-          let raw = o.invertInput ? (255 - input[i]) : input[i];
-          if (flipD) raw = 255 - raw;
-          let v = raw / 255 * covScaleEarly;
-          if (v > 1) v = 1; else if (v < 0) v = 0;
-          dens[i] = Math.round(Math.fround(v) * 255);
-        }
-      }
-    }
-    if (typeof o.solidFillThreshold === 'number' && o.solidFillThreshold < 1.0) {
-      _applySolidFillU8(
-        dens, W, H,
-        o.solidFillThreshold,
-        (typeof o.solidFillRadius === 'number') ? o.solidFillRadius : 5,
-        (typeof o.solidFillStrength === 'number') ? o.solidFillStrength : 1.0
-      );
-    }
-    return _runFsDriver(dens, W, H, o.serpentine !== false, o.globalRowOffset || 0);
+    return _runFsDriver(buildDensityU8(input, W, H, o), W, H,
+                        o.serpentine !== false, o.globalRowOffset || 0);
   }
 
   // Build the per-pixel target coverage buffer (Float32 for diffusion accumulation)
@@ -1248,8 +1261,19 @@ function coverage(bits, totalPixels) {
 // EXPORTS
 // -----------------------------------------------------------------------------
 
+// Public wrapper: same DEFAULTS merge + applyToneCurve resolution as runAmt,
+// but stops after the density stage (for engines that run FS elsewhere, e.g.
+// the WebGPU wavefront path).
+function buildDensity(input, W, H, opts) {
+  const o = Object.assign({}, DEFAULTS, opts || {});
+  if (o.applyToneCurve === undefined) o.applyToneCurve = !(input instanceof Float32Array);
+  return buildDensityU8(input, W, H, o);
+}
+
 const api = {
   runAmt,
+  buildDensity,
+  buildDensityU8,
   runAmtGPU,
   runAmtGPU4,
   isAmtGpuAvailable,
