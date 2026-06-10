@@ -1395,11 +1395,23 @@ float screenDither(float val, vec2 pix, float cellPx, float angle){
     float d = length(centered);                    // 0 at centre .. ~0.74 at corner
     float v = clamp(val, 0.0, 1.0);
     float rA = sqrt(aspect);
-    float maxR = 0.7071 * aspect + edge;
-    float radius = (v < 0.785) ? sqrt(v * 0.3183099) * rA        // sqrt(cov/π): area=cov
-                               : mix(0.5 * rA, maxR, pow((v - 0.785) / 0.215, 1.6));
+    // Ink-dot representation (highlights → touching point): area-correct circle.
+    float radius = sqrt(min(v, 0.785) * 0.3183099) * rA;   // sqrt(cov/π): area=cov
     float e2 = min(edge, radius);
-    return 1.0 - smoothstep(radius - e2, radius + e2, d);
+    float dotInk = 1.0 - smoothstep(radius - e2, radius + e2, d);
+    if (v < 0.785) return dotInk;
+    // SHADOW AUTOCLAMP: past the touching point, growing circles merge into
+    // squares with 4-pointed star gaps. Switch to the complementary
+    // representation — round PAPER HOLES at the cell CORNERS (each corner hole
+    // is shared by 4 cells → one hole per cell), hole area = 1-v so tone stays
+    // area-correct, shrinking to nothing at v=1 (true solid, no lattice).
+    // Crossfaded over 0.785..0.86 so there is no visible representation seam.
+    float dc = length(vec2(0.5 * aspect, 0.5) - abs(centered)); // dist to nearest corner
+    float holeR = sqrt((1.0 - v) * 0.3183099) * rA;
+    float eh = min(edge, max(holeR, 0.001));
+    float holeInk = smoothstep(holeR - eh, holeR + eh, dc);
+    float blend = smoothstep(0.785, 0.86, v);
+    return mix(dotInk, holeInk, blend);
   }
 
   // Per-cell hash roughness + angular wobble — DECORATIVE shapes only (the
@@ -1701,6 +1713,19 @@ float printMaskCell(vec2 uv, vec2 layerOff, vec2 pix, float cellPx, float angle)
     cuv = uv - pixOffset / u_res;   // snap to this cell's centre
   }
   vec2 p = cuv + layerOff;
+  if(cellPx >= 3.0 && hasMargin){
+    // SOFT whole-dot inclusion: a binary per-cell step turns a straight margin
+    // into a STAIRCASE against the rotated dot grid (runs of ~1/tan(angle)
+    // dots per step). Instead, ramp the cell's coverage over one cell width
+    // around the boundary — edge dots SHRINK along the line (what real edge
+    // cells do) — no staircase, still never a sliced dot.
+    vec2 cw = vec2(cellPx) / u_res;
+    float l = clamp((p.x - u_printArea.x) / cw.x + 0.5, 0.0, 1.0);
+    float r = clamp((1.0 - p.x - u_printArea.z) / cw.x + 0.5, 0.0, 1.0);
+    float t = clamp((p.y - u_printArea.y) / cw.y + 0.5, 0.0, 1.0);
+    float b = clamp((1.0 - p.y - u_printArea.w) / cw.y + 0.5, 0.0, 1.0);
+    return l * r * t * b;
+  }
   float l = step(u_printArea.x, p.x);
   float r = step(u_printArea.z, 1.0 - p.x);
   float t = step(u_printArea.y, p.y);
