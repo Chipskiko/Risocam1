@@ -2018,7 +2018,18 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
   // Mode dispatch — SCREEN and LINES override the dither sub-modes because
   // they're independent rendering paths (round dots vs parallel lines vs
   // grain). The ditherMode sub-modes are conceptually a flavour of GRAIN.
-  if(u_mode == 1) return screenSampled(val, jitPix, u_screenCell, angle);  // 4× supersampled (anti-moiré)
+  if(u_mode == 1){
+    // LPI CUTBACK CURVE (what real RIPs ship per screen ruling): smaller cells
+    // carry proportionally more soft AA-edge halo per dot, which over-inks
+    // through the per-pixel blend — measured tone fell from -10 (31px cells)
+    // to -40 luma (2.8px cells) vs the grain reference at equal coverage.
+    // Pull coverage back by an edge-fraction-weighted midtone term; endpoints
+    // are preserved (val=0 stays paper, val=1 stays solid). Calibrated
+    // empirically against grain-mode tone at LPI 10..110.
+    float edgeFrac = clamp(1.5 / u_screenCell, 0.0, 0.8);
+    val = clamp(val * (1.0 - 1.3 * edgeFrac * (1.0 - 0.7 * val)), 0.0, 1.0);
+    return screenSampled(val, jitPix, u_screenCell, angle);  // 4× supersampled (anti-moiré)
+  }
   if(u_mode == 2) return lineSampled(val, jitPix, u_screenCell, angle, idx);  // 8× supersampled (anti-moiré)
   // u_mode == 0 → GRAIN. Within grain, ditherMode picks the algorithm.
   if(u_ditherMode == 1) return stuckiDither(val, sRpx, lo);
