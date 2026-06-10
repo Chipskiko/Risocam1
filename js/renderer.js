@@ -66,7 +66,7 @@ function initGL(){
    'u_angle0','u_angle1','u_angle2','u_angle3','u_screenCell',
    'u_chan0','u_chan1','u_chan2','u_chan3',
    'u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_useLabResidual','u_useCalChord','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_screenClean','u_simNoise',
-   'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_paperShift','u_paperPbrShift','u_crop','u_paper',
+   'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_paperShift','u_paperPbrShift','u_paperPbrMul','u_crop','u_paper',
    'u_paperPBR','u_usePaperPBR',
    'u_lutA0','u_lutA1','u_lutA2','u_lutA3',
    'u_lutB0','u_lutB1','u_lutB2','u_lutB3',
@@ -623,7 +623,14 @@ function setRenderUniforms(dw, dh, scale, isPhone){
     gl.bindTexture(gl.TEXTURE_2D, (mode==='screen') ? window._amScreenTex : window._ht5MatrixTex);
     gl.activeTexture(gl.TEXTURE0);
   }
-  gl.uniform1f(locs.u_paperTex,cached.paperTex);
+  // Paper type: 'blank' forces zero texture (kills BOTH the PBR substrate and
+  // the legacy procedural/scan path — both scale by u_paperTex). Other types
+  // shape the PBR character via u_paperPbrMul (tooth strength, sheen).
+  gl.uniform1f(locs.u_paperTex, window._paperBlank ? 0 : cached.paperTex);
+  if(locs.u_paperPbrMul){
+    const pm = window._paperPbrMul || [1, 1];
+    gl.uniform2f(locs.u_paperPbrMul, pm[0], pm[1]);
+  }
   // Set per-frame so a SEPS export (which forces it off) can't leave it stuck.
   if(locs.u_usePaperPBR) gl.uniform1f(locs.u_usePaperPBR, (window._usePaperPBR ?? true) ? 1.0 : 0.0);
   // Live source (camera/video): RISO mode uses the real-time GPU grain-touch

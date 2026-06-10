@@ -546,6 +546,7 @@ uniform sampler2D u_paperPBR;
 uniform float u_usePaperPBR;
 uniform vec2 u_paperShift;    // per-frame paper position offset (simulates different sheet feeds)
 uniform vec2 u_paperPbrShift; // per-frame PBR-sheet UV jitter (normalized, ~±0.03; 0 when static)
+uniform vec2 u_paperPbrMul;   // paper-type character: x = tooth-strength mul, y = sheen mul
 uniform vec4 u_crop;         // UV crop region: x, y, w, h (default 0,0,1,1)
 uniform sampler2D u_toneCurve; // 256×1 tone curve LUT texture
 uniform float u_useToneCurve;  // 1.0 when curve is non-identity
@@ -2355,7 +2356,10 @@ vec3 applyPaperPBR(vec3 result, vec2 uv){
   const float PAPER_ZOOM = 0.84;        // ~8% margin per side
   vec2 puv = (uv - 0.5) * vis * PAPER_ZOOM + 0.5 + u_paperPbrShift;
   vec4 p = texture2D(u_paperPBR, puv);
-  float strength = clamp(u_paperTex * 0.04, 0.0, 1.0); // slider 0..25 → 0..1
+  // Paper-type character: u_paperPbrMul.x scales the height tooth, .y the
+  // normal-mapped sheen (Smooth = low tooth / coated sheen, Kraft = heavy
+  // tooth / matte, etc). (1,1) = Standard.
+  float strength = clamp(u_paperTex * 0.04, 0.0, 1.0) * u_paperPbrMul.x;
   float h = p.r;                       // single sample → full tooth contrast
   vec2 nxy = (p.gb - 0.5) * 2.0;
   // Tone from height, centered on the map's mean so paper isn't globally darkened.
@@ -2363,7 +2367,7 @@ vec3 applyPaperPBR(vec3 result, vec2 uv){
   // Raking-light sheen from the packed normal (z reconstructed).
   vec3 n = normalize(vec3(nxy, 1.0));
   vec3 L = normalize(vec3(-0.35, -0.55, 0.78));
-  float sheen = (dot(n, L) - 0.62) * strength * 0.45;
+  float sheen = (dot(n, L) - 0.62) * strength * 0.45 * u_paperPbrMul.y;
   float pbrMod = clamp(tone + sheen, 0.55, 1.35);
   return result * pbrMod;
 }
@@ -2832,11 +2836,11 @@ void main(){
 <script src="js/compare.js?v=5"></script>
 <script src="js/riso-amt.js?v=23"></script>
 <script src="js/riso-amt-webgpu.js?v=4"></script>
-<script src="js/renderer.js?v=99"></script>
+<script src="js/renderer.js?v=100"></script>
 <script src="js/source.js?v=45"></script>
 <script src="js/save.js?v=45"></script>
 <script src="js/ui-controls.js?v=51"></script>
-<script src="js/ui-paper.js?v=12"></script>
+<script src="js/ui-paper.js?v=13"></script>
 <script src="js/phone.js?v=17"></script>
 <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');</script>
 </body>

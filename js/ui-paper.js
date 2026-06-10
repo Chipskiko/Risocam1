@@ -59,40 +59,51 @@ function renderPaperUI(){
   const texGrid=el('paperTexGrid');
   if(texGrid){
     let th='';
-    const texKeys=['procedural','riso_standard','smooth','kraft','textured'];
-    const texLabels={procedural:'Standard',riso_standard:'Natural',smooth:'Smooth',kraft:'Kraft',textured:'Textured'};
-    texKeys.forEach(k=>{
-      th+=`<button class="paper-tex-btn${k===activePaperTex?' active':''}" onclick="R.setPaperTex('${k}')">${texLabels[k]}</button>`;
+    PAPER_TEX_KEYS.forEach(k=>{
+      th+=`<button class="paper-tex-btn${k===activePaperTex?' active':''}" onclick="R.setPaperTex('${k}')">${PAPER_TEX_LABELS[k]}</button>`;
     });
     texGrid.innerHTML=th;
   }
   // Update cycling button labels
   const typeBtn=el('paperTypeBtn');
   if(typeBtn){
-    const labels={procedural:'Standard',riso_standard:'Natural',smooth:'Smooth',kraft:'Kraft',textured:'Textured'};
-    typeBtn.textContent=labels[activePaperTex]||activePaperTex;
+    typeBtn.textContent=PAPER_TEX_LABELS[activePaperTex]||activePaperTex;
   }
 }
+// Paper-type → PBR character preset: [tooth-strength mul, sheen mul] applied
+// to the Paper002 substrate in applyPaperPBR. 'blank' = no texture at all
+// (window._paperBlank forces u_paperTex → 0, killing PBR + legacy paths).
+const PAPER_PBR_PRESETS={
+  blank:         null,
+  procedural:    [1.0, 1.0],   // Standard — Paper002 as-is
+  smooth:        [0.35, 1.4],  // low tooth, coated sheen
+  riso_standard: [1.4, 0.75],  // Natural — more fiber, matte
+  kraft:         [2.0, 0.5],   // heavy tooth, matte
+  textured:      [2.8, 1.2],   // strongest relief
+};
 function setPaperTex(key){
-  loadPaperTexture(key);
+  window._paperBlank = (key==='blank');
+  window._paperPbrMul = PAPER_PBR_PRESETS[key] || [1,1];
+  // Keep the legacy scan path coherent (used when PBR is toggled off in
+  // debug); 'blank' has no scan — treat as procedural there.
+  loadPaperTexture(key==='blank' ? 'procedural' : key);
+  if(key==='blank') activePaperTex='blank';
   document.querySelectorAll('#paperTexGrid .paper-tex-btn').forEach(b=>b.classList.remove('active'));
   const btns=document.querySelectorAll('#paperTexGrid .paper-tex-btn');
-  const keys=['procedural','riso_standard','smooth','kraft','textured'];
-  const idx=keys.indexOf(key);
+  const idx=PAPER_TEX_KEYS.indexOf(key);
   if(idx>=0&&btns[idx]) btns[idx].classList.add('active');
   // Also update phone UI
   document.querySelectorAll('.ph-paper-tex-btn').forEach(b=>b.classList.toggle('active',b.dataset.tex===key));
   // Update cycling button label
-  const TEX_LABELS={procedural:'Standard',riso_standard:'Natural',smooth:'Smooth',kraft:'Kraft',textured:'Textured'};
   const btn=el('paperTypeBtn');
-  if(btn) btn.textContent=TEX_LABELS[key]||key;
+  if(btn) btn.textContent=PAPER_TEX_LABELS[key]||key;
   // Update viewfinder background with new texture
   updatePaperBg();
   markDirty();
 }
 // Cycling controls for paper type and texture intensity
-const PAPER_TEX_KEYS=['procedural','riso_standard','smooth','kraft','textured'];
-const PAPER_TEX_LABELS={procedural:'Standard',riso_standard:'Natural',smooth:'Smooth',kraft:'Kraft',textured:'Textured'};
+const PAPER_TEX_KEYS=['blank','procedural','smooth','riso_standard','kraft','textured'];
+const PAPER_TEX_LABELS={blank:'Blank',procedural:'Standard',smooth:'Smooth',riso_standard:'Natural',kraft:'Kraft',textured:'Textured'};
 function cyclePaperTex(){
   const i=PAPER_TEX_KEYS.indexOf(activePaperTex);
   const next=PAPER_TEX_KEYS[(i+1)%PAPER_TEX_KEYS.length];
