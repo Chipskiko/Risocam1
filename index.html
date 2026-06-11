@@ -1413,9 +1413,20 @@ float screenDither(float val, vec2 pix, float cellPx, float angle){
     float seed = floor(u_frameSeed * 96.0) * step(0.5, u_static);
     float grow = floor(v * 15.0 + 0.5);
     float gcol = floor(hash(cellID * 31.7 + seed) * 8.0);
-    // cell-local uv; flip y (atlas rows are top-down, GL uv is bottom-up)
-    vec2 cuv = vec2(cellPos.x, 1.0 - cellPos.y);
-    vec2 guv = (vec2(gcol, grow) + 0.0234 + cuv * 0.9532) / vec2(8.0, 16.0);
+    // Flip x AND y so letters stand upright at angle 0 — atlas rows are
+    // top-down and the rotated cell axes run mirrored vs atlas columns
+    // (without the x-flip, N rendered as И).
+    vec2 cuv = vec2(1.0 - cellPos.x, 1.0 - cellPos.y);
+    // SIZE follows tone: positive letters grow with darkness; knockout
+    // letters (inverse rows, v>0.5) shrink toward solid. Gives continuous
+    // tone WITHIN each of the 16 density levels — kills flat-pack banding.
+    float gscale = (v < 0.5) ? mix(0.55, 1.1, v * 2.0)
+                             : mix(1.1, 0.4, (v - 0.5) * 2.0);
+    vec2 cs = (cuv - 0.5) / gscale + 0.5;
+    if(cs.x < 0.0 || cs.x > 1.0 || cs.y < 0.0 || cs.y > 1.0){
+      return (v < 0.5) ? 0.0 : 1.0;   // outside the scaled glyph: paper / ink
+    }
+    vec2 guv = (vec2(gcol, grow) + 0.0234 + cs * 0.9532) / vec2(8.0, 16.0);
     // Samples u_ht5Matrix: unit 8 is time-shared (a 17th sampler would
     // exceed MAX_TEXTURE_IMAGE_UNITS); JS binds the glyph atlas here whenever
     // screen mode + procedural engine + ASCII stamp are active.
@@ -1696,6 +1707,19 @@ float printMask(vec2 uv, vec2 layerOff, vec2 rpx){
 // print area renders WHOLE and one outside doesn't render at all — a clean
 // round-dot edge instead of sliced halves. Genuine image-content edges still
 // taper/clip naturally through coverage; this only governs the print margin.
+// Cell-centre source sampling for the ASCII stamp: a glyph needs ONE coverage
+// value per screen cell. Per-pixel sampling lets image detail + noise flip the
+// quantized glyph row mid-cell — speckled/torn letters, and a mid-tone "stroke"
+// ring on cells straddling hard edges (half-dark cells averaged to ~50%).
+// Returns layerUV shifted so the source is sampled at this cell's centre.
+vec2 cellSnapUV(vec2 pix, vec2 layerUV, float cellPx, float angle){
+  float c = cos(angle), s = sin(angle);
+  vec2 rp = vec2(pix.x*c - pix.y*s, pix.x*s + pix.y*c);
+  vec2 cellOffset = mod(rp, cellPx) - cellPx * 0.5;   // rp − cell centre
+  vec2 pixOffset = vec2(cellOffset.x*c + cellOffset.y*s, -cellOffset.x*s + cellOffset.y*c);
+  return layerUV - pixOffset / u_res;
+}
+
 float printMaskCell(vec2 uv, vec2 layerOff, vec2 pix, float cellPx, float angle){
   vec2 cuv = uv;
   // Full bleed (margin≈0): skip the cell snap — snapping would cull every
@@ -1992,7 +2016,9 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
   // Paper field perturbs dither threshold — fibers affect where ink lands.
   // Scaled by u_simNoise so "clean" modes (RISO/flat, clean-screen) get a true
   // unperturbed halftone — previously this leaked fiber noise into clean output.
-  val += (pf - 1.0) * 0.15 * u_simNoise;
+  // (ASCII stamp excluded: per-pixel threshold noise flips the per-cell glyph
+  // row at density-level boundaries → speckled, torn letters.)
+  if(!(u_mode == 1 && u_stampShape == 5)) val += (pf - 1.0) * 0.15 * u_simNoise;
   val = clamp(val, 0.0, 1.0);
 
   // Stencil perforation irregularity — scaled by u_simNoise.
@@ -2510,7 +2536,8 @@ void main(){
     vec2 lrpx = (skUV0 * REF) + off0 * REF;
     vec2 lpix = (skUV0 * u_res) + off0 * u_res;
     float n0 = hash(lrpx * 1.7);
-    vec2 snapUV0 = uv0; // per-pixel sampling (replaced cell-centre snapping)
+    vec2 snapUV0 = (u_mode == 1 && u_stampShape == 5 && u_screenType < 0.5)
+                 ? cellSnapUV(lpix, uv0, u_screenCell, u_angle0) : uv0; // ASCII: one coverage per cell
     float cov;
     if(u_sepType == 1){
       vec3 src0a = texture2D(u_src, srcUV(snapUV0)).rgb;
@@ -2553,7 +2580,8 @@ void main(){
     vec2 lrpx = (skUV1 * REF) + off1 * REF;
     vec2 lpix = (skUV1 * u_res) + off1 * u_res;
     float n1 = hash(lrpx * 1.7 + 100.0);
-    vec2 snapUV1 = uv1; // per-pixel sampling (replaced cell-centre snapping)
+    vec2 snapUV1 = (u_mode == 1 && u_stampShape == 5 && u_screenType < 0.5)
+                 ? cellSnapUV(lpix, uv1, u_screenCell, u_angle1) : uv1; // ASCII: one coverage per cell
     float cov;
     if(u_sepType == 1){
       vec3 src1a = texture2D(u_src, srcUV(snapUV1)).rgb;
@@ -2591,7 +2619,8 @@ void main(){
     vec2 lrpx = (skUV2 * REF) + off2 * REF;
     vec2 lpix = (skUV2 * u_res) + off2 * u_res;
     float n2 = hash(lrpx * 1.7 + 200.0);
-    vec2 snapUV2 = uv2; // per-pixel sampling (replaced cell-centre snapping)
+    vec2 snapUV2 = (u_mode == 1 && u_stampShape == 5 && u_screenType < 0.5)
+                 ? cellSnapUV(lpix, uv2, u_screenCell, u_angle2) : uv2; // ASCII: one coverage per cell
     float cov;
     if(u_sepType == 1){
       vec3 src2a = texture2D(u_src, srcUV(snapUV2)).rgb;
@@ -2629,7 +2658,8 @@ void main(){
     vec2 lpix = (skUV3 * u_res) + off3 * u_res;
     float n3 = hash(lrpx * 1.7 + 300.0);
     vec2 uv3 = skUV3 + off3;
-    vec2 snapUV3 = uv3; // per-pixel sampling (replaced cell-centre snapping)
+    vec2 snapUV3 = (u_mode == 1 && u_stampShape == 5 && u_screenType < 0.5)
+                 ? cellSnapUV(lpix, uv3, u_screenCell, u_angle3) : uv3; // ASCII: one coverage per cell
     float cov;
     if(u_sepType == 1){
       vec3 src3a = texture2D(u_src, srcUV(snapUV3)).rgb;
