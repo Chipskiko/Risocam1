@@ -71,7 +71,9 @@ function redo(){
   restoreState(s);
 }
 
-function newMisreg(){
+// Quiet variant: re-rolls plate offsets/skews WITHOUT markDirty — called from
+// inside render() (a markDirty there would self-perpetuate the render loop).
+function rollMisregQuiet(){
   const m=cached.misreg/500;
   // When misreg is 0, skew should also be 0 (no plate rotation without misregistration)
   const skewMax= cached.misreg > 0 ? cached.skew * Math.PI / 180.0 : 0;
@@ -80,7 +82,6 @@ function newMisreg(){
     const mx=(Math.random()-.5)*m*2, my=(Math.random()-.5)*m*2;
     const sk=(Math.random()-.5)*2*skewMax;
     for(let i=0;i<4;i++){ misreg[i]=[mx,my]; layerSkews[i]=sk; }
-    markDirty();
     return;
   }
   for(let i=0;i<4;i++){
@@ -89,8 +90,12 @@ function newMisreg(){
   }
   // Same-color plates share one master = same misreg offset + skew
   syncSameColorPlates();
+}
+function newMisreg(){
+  rollMisregQuiet();
   markDirty();
 }
+R.rollMisregQuiet = rollMisregQuiet;
 
 // Lock same-color channels: shared misreg, screen angles, and skew
 function syncSameColorPlates(){

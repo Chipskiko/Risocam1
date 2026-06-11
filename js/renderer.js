@@ -1030,6 +1030,13 @@ function _renderInner(){
     } else {
       frame++;
       frameSeed = Math.random(); window._stampSeed = ((window._stampSeed || 17) + 1.0) % 1021.0;
+      // STILL = every adjustment is a fresh print: any dirty re-render
+      // (slider, button) also re-rolls plate misregistration/skew, so the
+      // view visibly re-seeds like the dice button (user request). Quiet
+      // variant — markDirty here would self-perpetuate the render loop.
+      // Skipped for live sources at FPS=STILL (the frozen frame must not
+      // shimmer per camera frame).
+      if(!camOn && !videoOn && R.rollMisregQuiet) R.rollMisregQuiet();
     }
   }
   needsRedraw=false;
