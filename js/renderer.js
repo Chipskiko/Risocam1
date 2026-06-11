@@ -602,25 +602,42 @@ function _buildGlyphAtlas(){
   const atlas = document.createElement('canvas'); atlas.width = COLS * CELL; atlas.height = (ROWS + 1) * CELL;
   const ac = atlas.getContext('2d', { willReadFrequently: true });
   ac.fillStyle = '#000'; ac.fillRect(0, 0, atlas.width, atlas.height); // paper = 0
-  for (let row = 1; row < ROWS; row++){
-    const t = row / (ROWS - 1); // target ink coverage for this level
-    if (row === ROWS - 1){ ac.globalCompositeOperation = 'source-over'; ac.fillStyle = '#fff'; ac.fillRect(0, row * CELL, COLS * CELL, CELL); continue; }
-    if (t < 0.5){
-      // positive: white glyph on black
+  // Rows 1-9: LETTERS — classic deterministic ramp. Each row spans the glyph
+  // pool's coverage range; within a row the 16 alternates are sorted by
+  // measured coverage ASCENDING so the shader's sub-level index adds fine
+  // tonal steps (16 levels x 16 sub-steps) with pure tone logic, no hash.
+  // Rows 10-14: DITHER-BLOCK shading (the ░▒▓ practice — ordered dot fills),
+  // replacing inverse-video knockouts which read as weird flipped blocks.
+  // Row 15: solid.
+  ac.globalCompositeOperation = 'source-over';
+  const LETTER_ROWS = 9;
+  const maxCov = glyphs[glyphs.length - 1].cov;
+  for (let row = 1; row <= LETTER_ROWS; row++){
+    ac.fillStyle = '#fff';
+    const t = (row - 0.5) / LETTER_ROWS * maxCov;
+    const set = pick(t).sort((a, b) => a.cov - b.cov);
+    for (let col = 0; col < COLS; col++) drawGlyph(ac, set[col].ch, col * CELL, row * CELL);
+  }
+  // Shading rows 10-14: SOLID ink with a round PAPER HOLE shrinking to
+  // nothing — the same shadow regime the round-dot screen uses (holes at
+  // high coverage), so darks read as familiar halftone rather than inverted
+  // letters, and two plates overprint cleanly (ordered-dither blocks at
+  // matching frequency interfered into checker mush — tried and rejected).
+  for (let row = LETTER_ROWS + 1; row < ROWS - 1; row++){
+    const f = (row - LETTER_ROWS) / (ROWS - 1 - LETTER_ROWS); // 0..1 across shading rows
+    const dens = 0.45 + f * 0.52;                              // ~45% .. ~97%
+    const holeR = Math.sqrt(Math.max(0, 1 - dens) / Math.PI) * CELL;
+    for (let col = 0; col < COLS; col++){
       ac.globalCompositeOperation = 'source-over'; ac.fillStyle = '#fff';
-      const set = pick(t);
-      for (let col = 0; col < COLS; col++) drawGlyph(ac, set[col].ch, col * CELL, row * CELL);
-    } else {
-      // inverse video: solid cell, glyph knocked out (ink = 1 - glyphCov)
-      const set = pick(1 - t);
-      for (let col = 0; col < COLS; col++){
-        ac.globalCompositeOperation = 'source-over'; ac.fillStyle = '#fff';
-        ac.fillRect(col * CELL, row * CELL, CELL, CELL);
-        ac.globalCompositeOperation = 'destination-out';
-        drawGlyph(ac, set[col].ch, col * CELL, row * CELL);
-      }
+      ac.fillRect(col * CELL, row * CELL, CELL, CELL);
+      ac.globalCompositeOperation = 'destination-out';
+      ac.beginPath();
+      ac.arc(col * CELL + CELL / 2, row * CELL + CELL / 2, holeR, 0, 6.2832);
+      ac.fill();
     }
   }
+  ac.globalCompositeOperation = 'source-over';
+  ac.fillStyle = '#fff'; ac.fillRect(0, (ROWS - 1) * CELL, COLS * CELL, CELL);
   ac.globalCompositeOperation = 'source-over';
 
   // ── COVERAGE-TRUE LUT (research: Artistic Screening / measured ramps) ──
@@ -636,17 +653,19 @@ function _buildGlyphAtlas(){
     // Mirror the shader EXACTLY: inversion point INV, FS-flavoured size curve
     // (small sparse -> big packed/clipped -> shrinking knockouts), plus the
     // highlight presence probability, so the LUT bakes EXPECTED ink.
-    const INV = 0.62;
-    const sCurve = v => (v < INV) ? 0.35 + (1.35 - 0.35) * (v / INV) : 1.2 + (0.4 - 1.2) * ((v - INV) / (1 - INV));
+    // Letters grow 0.35->1.35 across the low half; shading-block rows render
+    // full-cell (scale 1). Presence (highlight sparsity) applies to letter
+    // rows only. Mirrors the shader exactly.
+    const sCurve = v => 0.35 + (1.35 - 0.35) * Math.min(1, v * 2);
     const presence = v => Math.min(1, v * 5.0 + 0.04);
     const INSET = 0.0234, SPAN = 0.9532, N = 16; // mirror the shader's uv mapping
     function emitted(row, v){
-      const s = sCurve(v);
+      const s = (row >= 1 && row <= 9) ? sCurve(v) : 1.0; // blocks render full-cell
       let sum = 0;
       for (let j = 0; j < N; j++) for (let i = 0; i < N; i++){
         const cx = (i + 0.5) / N, cy = (j + 0.5) / N;          // cell-local uv
         const sx = (cx - 0.5) / s + 0.5, sy = (cy - 0.5) / s + 0.5;
-        if (sx < 0 || sx > 1 || sy < 0 || sy > 1){ sum += (row >= 8 ? 1 : 0); continue; }
+        if (sx < 0 || sx > 1 || sy < 0 || sy > 1){ sum += 0; continue; } // letter rows clip to paper; block rows never clip (s=1)
         const ax = Math.min(CELL - 1, Math.floor((INSET + sx * SPAN) * CELL));
         const ay = Math.min(ROWS * CELL - 1, row * CELL + Math.floor((INSET + sy * SPAN) * CELL));
         sum += img[(ay * W + ax) * 4] / 255; // RED = ink (atlas bg is opaque black, so alpha is 255 everywhere; the GL sampler reads .r too)
@@ -663,7 +682,7 @@ function _buildGlyphAtlas(){
       const target = v * (0.78 + 0.22 * v);
       let best = 0, bestErr = 2;
       for (let row = 0; row < ROWS; row++){
-        const p = (row < 8) ? presence(v) : 1.0; // sparse cells exist only in the positive regime
+        const p = (row >= 1 && row <= 9) ? presence(v) : 1.0; // sparsity: letter rows only
         const e = Math.abs(p * emitted(row, v) - target);
         if (e < bestErr){ bestErr = e; best = row; }
       }

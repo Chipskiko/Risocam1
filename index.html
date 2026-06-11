@@ -1410,7 +1410,6 @@ float screenDither(float val, vec2 pix, float cellPx, float angle, float lidx){
   // texels per cell edge so LINEAR sampling never bleeds across atlas cells.
   if(u_stampShape == 5){
     float v = clamp(val, 0.0, 1.0);
-    float seed = floor(u_frameSeed * 96.0); // letters re-roll every printed frame
     // Coverage-true row: LUT strip baked into atlas row 16 maps requested
     // coverage -> density row, compensating measured glyph ink AND the size
     // curve (research: Artistic Screening / measured ramps — index-linear
@@ -1418,12 +1417,16 @@ float screenDither(float val, vec2 pix, float cellPx, float angle, float lidx){
     float grow = floor(texture2D(u_ht5Matrix, vec2(mix(0.002, 0.998, v), 16.5 / 17.0)).r * 15.0 + 0.5);
     // Per-plate seed decorrelates letter choice across plates (riso plates
     // are independent masters; correlated letters read as letter-moiré).
-    float gcol = floor(hash(cellID * 31.7 + seed + lidx * 101.3) * 16.0);
-    // FS-flavoured sparsity: in highlights some cells stay EMPTY (scattered
-    // small letters); presence rises with coverage. Folded into the tone LUT
-    // measurement so mean ink stays coverage-true.
+    // CLASSIC DETERMINISTIC RAMP (how ASCII art is actually done): the glyph
+    // is a pure function of tone — equal tone, same letter, everywhere. The
+    // within-row sub-level picks among 16 coverage-SORTED alternates, adding
+    // fine tonal steps. No randomness.
+    float sub = clamp(v * 15.0 + 1.0 - grow, 0.0, 0.999);
+    float gcol = floor(sub * 16.0);
+    bool letterRow = (grow > 0.5 && grow < 9.5);
+    // Highlight sparsity (letter rows only): stable per-cell, no frame shimmer.
     float presence = clamp(v * 5.0 + 0.04, 0.0, 1.0);
-    if(grow < 7.5 && hash(cellID * 17.3 + seed * 1.7 + lidx * 53.1) > presence) return 0.0;
+    if(letterRow && hash(cellID * 17.3 + lidx * 53.1) > presence) return 0.0;
     // NO flips: shader uv.y runs TOP-DOWN (the print-margin math confirms:
     // top = step(margin, p.y)), matching the atlas canvas — so the identity
     // mapping renders letters upright at angle 0. (History: a y-flip here
@@ -1433,17 +1436,12 @@ float screenDither(float val, vec2 pix, float cellPx, float angle, float lidx){
     // SIZE follows tone: positive letters grow with darkness; knockout
     // letters (inverse rows, v>0.5) shrink toward solid. Gives continuous
     // tone WITHIN each of the 16 density levels — kills flat-pack banding.
-    // Size follows tone, FS-style: small sparse letters in light, BIG packed
-    // letters (clipped at cell edges, so they touch) through the mid-darks,
-    // then knockout letters shrinking to solid past the inversion point.
-    const float INV = 0.62;
-    float gscale = (v < INV) ? mix(0.35, 1.35, v / INV)
-                             : mix(1.2, 0.4, (v - INV) / (1.0 - INV));
+    // Size follows tone for LETTER rows (small sparse -> big packed/clipped);
+    // dither-block shading rows (10-14) and solid (15) render full-cell.
+    float gscale = letterRow ? mix(0.35, 1.35, min(v * 2.0, 1.0)) : 1.0;
     vec2 cs = (cuv - 0.5) / gscale + 0.5;
     if(cs.x < 0.0 || cs.x > 1.0 || cs.y < 0.0 || cs.y > 1.0){
-      // outside the scaled glyph: keyed on the ROW class (positive rows are
-      // letters on paper; inverse rows are letters knocked out of ink)
-      return (grow < 7.5) ? 0.0 : 1.0;
+      return 0.0;   // outside a scaled letter: paper (block rows never clip)
     }
     vec2 guv = (vec2(gcol, grow) + 0.0234 + cs * 0.9532) / vec2(16.0, 17.0);
     // Samples u_ht5Matrix: unit 8 is time-shared (a 17th sampler would
@@ -2938,7 +2936,7 @@ void main(){
 <script src="js/compare.js?v=6"></script>
 <script src="js/riso-amt.js?v=24"></script>
 <script src="js/riso-amt-webgpu.js?v=5"></script>
-<script src="js/renderer.js?v=107"></script>
+<script src="js/renderer.js?v=109"></script>
 <script src="js/source.js?v=47"></script>
 <script src="js/save.js?v=47"></script>
 <script src="js/ui-controls.js?v=53"></script>
