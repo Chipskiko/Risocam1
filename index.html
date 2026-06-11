@@ -1410,7 +1410,7 @@ float screenDither(float val, vec2 pix, float cellPx, float angle, float lidx){
   // texels per cell edge so LINEAR sampling never bleeds across atlas cells.
   if(u_stampShape == 5){
     float v = clamp(val, 0.0, 1.0);
-    float seed = floor(u_frameSeed * 96.0) * step(0.5, u_static);
+    float seed = floor(u_frameSeed * 96.0); // letters re-roll every printed frame
     // Coverage-true row: LUT strip baked into atlas row 16 maps requested
     // coverage -> density row, compensating measured glyph ink AND the size
     // curve (research: Artistic Screening / measured ramps — index-linear
@@ -1418,7 +1418,12 @@ float screenDither(float val, vec2 pix, float cellPx, float angle, float lidx){
     float grow = floor(texture2D(u_ht5Matrix, vec2(mix(0.002, 0.998, v), 16.5 / 17.0)).r * 15.0 + 0.5);
     // Per-plate seed decorrelates letter choice across plates (riso plates
     // are independent masters; correlated letters read as letter-moiré).
-    float gcol = floor(hash(cellID * 31.7 + seed + lidx * 101.3) * 8.0);
+    float gcol = floor(hash(cellID * 31.7 + seed + lidx * 101.3) * 16.0);
+    // FS-flavoured sparsity: in highlights some cells stay EMPTY (scattered
+    // small letters); presence rises with coverage. Folded into the tone LUT
+    // measurement so mean ink stays coverage-true.
+    float presence = clamp(v * 5.0 + 0.04, 0.0, 1.0);
+    if(grow < 7.5 && hash(cellID * 17.3 + seed * 1.7 + lidx * 53.1) > presence) return 0.0;
     // NO flips: shader uv.y runs TOP-DOWN (the print-margin math confirms:
     // top = step(margin, p.y)), matching the atlas canvas — so the identity
     // mapping renders letters upright at angle 0. (History: a y-flip here
@@ -1428,15 +1433,19 @@ float screenDither(float val, vec2 pix, float cellPx, float angle, float lidx){
     // SIZE follows tone: positive letters grow with darkness; knockout
     // letters (inverse rows, v>0.5) shrink toward solid. Gives continuous
     // tone WITHIN each of the 16 density levels — kills flat-pack banding.
-    float gscale = (v < 0.5) ? mix(0.55, 1.1, v * 2.0)
-                             : mix(1.1, 0.4, (v - 0.5) * 2.0);
+    // Size follows tone, FS-style: small sparse letters in light, BIG packed
+    // letters (clipped at cell edges, so they touch) through the mid-darks,
+    // then knockout letters shrinking to solid past the inversion point.
+    const float INV = 0.62;
+    float gscale = (v < INV) ? mix(0.35, 1.35, v / INV)
+                             : mix(1.2, 0.4, (v - INV) / (1.0 - INV));
     vec2 cs = (cuv - 0.5) / gscale + 0.5;
     if(cs.x < 0.0 || cs.x > 1.0 || cs.y < 0.0 || cs.y > 1.0){
       // outside the scaled glyph: keyed on the ROW class (positive rows are
       // letters on paper; inverse rows are letters knocked out of ink)
       return (grow < 7.5) ? 0.0 : 1.0;
     }
-    vec2 guv = (vec2(gcol, grow) + 0.0234 + cs * 0.9532) / vec2(8.0, 17.0);
+    vec2 guv = (vec2(gcol, grow) + 0.0234 + cs * 0.9532) / vec2(16.0, 17.0);
     // Samples u_ht5Matrix: unit 8 is time-shared (a 17th sampler would
     // exceed MAX_TEXTURE_IMAGE_UNITS); JS binds the glyph atlas here whenever
     // screen mode + procedural engine + ASCII stamp are active.
@@ -2061,7 +2070,9 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
     // empirically against grain-mode tone at LPI 10..110.
     float edgeFrac = clamp(1.5 / u_screenCell, 0.0, 0.8);
     val = clamp(val * (1.0 - 1.3 * edgeFrac * (1.0 - 0.7 * val)), 0.0, 1.0);
-    return screenSampled(val, jitPix, u_screenCell, angle, float(idx));  // 4× supersampled (anti-moiré)
+    // ASCII uses UN-jittered pix: the drum-slip x-wobble reads as organic on
+    // round dots but TEARS glyphs into horizontal speckle.
+    return screenSampled(val, (u_stampShape == 5) ? pix : jitPix, u_screenCell, angle, float(idx));  // 4× supersampled (anti-moiré)
   }
   if(u_mode == 2) return lineSampled(val, jitPix, u_screenCell, angle, idx);  // 8× supersampled (anti-moiré)
   // u_mode == 0 → GRAIN. Within grain, ditherMode picks the algorithm.
@@ -2927,7 +2938,7 @@ void main(){
 <script src="js/compare.js?v=6"></script>
 <script src="js/riso-amt.js?v=24"></script>
 <script src="js/riso-amt-webgpu.js?v=5"></script>
-<script src="js/renderer.js?v=106"></script>
+<script src="js/renderer.js?v=107"></script>
 <script src="js/source.js?v=47"></script>
 <script src="js/save.js?v=47"></script>
 <script src="js/ui-controls.js?v=53"></script>

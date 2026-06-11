@@ -557,7 +557,7 @@ function genVoidClusterMask(size){
 // by pixel signature (vs U+0378, an unassigned codepoint) and dropped, so a
 // platform without Georgian fonts silently falls back to the rest.
 function _buildGlyphAtlas(){
-  const COLS = 8, ROWS = 16, CELL = 64;
+  const COLS = 16, ROWS = 16, CELL = 64; // 16 random alternatives per density level
   const FONT = 'bold ' + Math.round(CELL * 0.72) + 'px "Helvetica Neue", Arial, sans-serif';
   // Measure each candidate's ink coverage on a scratch cell.
   const m = document.createElement('canvas'); m.width = m.height = CELL;
@@ -573,9 +573,11 @@ function _buildGlyphAtlas(){
     for (let i = 3; i < d.length; i += 4){ cov += d[i]; h = (h * 31 + d[i]) | 0; }
     return { cov: cov / (255 * CELL * CELL), h: h };
   }
-  const georgian = 'აბგდევზთიკლმნოპჟრსტუფქღყშჩცძწჭხჯჰ';
-  const latin = 'AEHKMNORSTWXZabegkqsxz0258';
-  const syms = '.,:;-~^"*+=!?/()[]%#&@$';
+  // English-first (user request); Georgian Mkhedruli joins the pool via
+  // console: R.setAsciiGeorgian(true) (atlas rebuilds on next frame).
+  const georgian = window._asciiGeorgian ? 'აბგდევზთიკლმნოპჟრსტუფქღყშჩცძწჭხჯჰ' : '';
+  const latin = 'ABCDEFGHJKLMNOPQRSTUVWXYZabcdefghkmnopqrstuvwxyz0123456789';
+  const syms = '.,:;-~^"*+=!?/()%#&@$';
   const tofu = sig('͸'); // unassigned codepoint → .notdef box signature
   const glyphs = [];
   for (const ch of (syms + latin + georgian)){
@@ -585,9 +587,13 @@ function _buildGlyphAtlas(){
   glyphs.sort((a, b) => a.cov - b.cov);
   // Pick COLS glyphs whose coverage is nearest a target (with variety).
   function pick(target){
-    const ranked = glyphs.slice().sort((a, b) => Math.abs(a.cov - target) - Math.abs(b.cov - target)).slice(0, COLS + 6);
+    // Random draw from the candidates nearest the target coverage — wider
+    // window + true shuffle gives far more letter variety per level than
+    // deterministic stepping did (M/W/N/O dominated).
+    const ranked = glyphs.slice().sort((a, b) => Math.abs(a.cov - target) - Math.abs(b.cov - target)).slice(0, COLS + 12);
+    for (let i = ranked.length - 1; i > 0; i--){ const j = (Math.random() * (i + 1)) | 0; const t = ranked[i]; ranked[i] = ranked[j]; ranked[j] = t; }
     const out = [];
-    for (let i = 0; out.length < COLS; i++) out.push(ranked[(i * 5) % ranked.length]);
+    for (let i = 0; out.length < COLS; i++) out.push(ranked[i % ranked.length]);
     return out;
   }
   // Atlas has ROWS glyph rows + 1 extra: a coverage→row LUT strip baked into
@@ -627,7 +633,12 @@ function _buildGlyphAtlas(){
   {
     const img = ac.getImageData(0, 0, COLS * CELL, ROWS * CELL).data;
     const W = COLS * CELL;
-    const sCurve = v => (v < 0.5) ? 0.55 + (1.1 - 0.55) * (v * 2) : 1.1 + (0.4 - 1.1) * ((v - 0.5) * 2);
+    // Mirror the shader EXACTLY: inversion point INV, FS-flavoured size curve
+    // (small sparse -> big packed/clipped -> shrinking knockouts), plus the
+    // highlight presence probability, so the LUT bakes EXPECTED ink.
+    const INV = 0.62;
+    const sCurve = v => (v < INV) ? 0.35 + (1.35 - 0.35) * (v / INV) : 1.2 + (0.4 - 1.2) * ((v - INV) / (1 - INV));
+    const presence = v => Math.min(1, v * 5.0 + 0.04);
     const INSET = 0.0234, SPAN = 0.9532, N = 16; // mirror the shader's uv mapping
     function emitted(row, v){
       const s = sCurve(v);
@@ -652,7 +663,8 @@ function _buildGlyphAtlas(){
       const target = v * (0.78 + 0.22 * v);
       let best = 0, bestErr = 2;
       for (let row = 0; row < ROWS; row++){
-        const e = Math.abs(emitted(row, v) - target);
+        const p = (row < 8) ? presence(v) : 1.0; // sparse cells exist only in the positive regime
+        const e = Math.abs(p * emitted(row, v) - target);
         if (e < bestErr){ bestErr = e; best = row; }
       }
       const g = Math.round(best * 255 / 15);
@@ -1847,6 +1859,13 @@ R.setAmtScanDpi = function(dpi){
 };
 // Experimental: run the FS master on the GPU (WebGPU wavefront ED). Raster
 // scan order (not serpentine) — A/B visually before using for finals.
+// ASCII stamp: include Georgian Mkhedruli in the glyph pool (English-only by
+// default while testing). Drops the atlas so it rebuilds on the next frame.
+R.setAsciiGeorgian = function(on){
+  window._asciiGeorgian = !!on;
+  window._glyphAtlasTex = null;
+  try { markDirty(); } catch(e) {}
+};
 R.setAmtWebGPU = function(on){
   window._amtWebGPU = !!on;
   console.log('[RisoAmt] WebGPU wavefront ED', window._amtWebGPU ? 'ON (experimental)' : 'OFF');
