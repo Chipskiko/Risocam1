@@ -627,18 +627,16 @@ function _buildGlyphAtlas(){
     const W = COLS * CELL;
     for (let x = 0; x < W; x++){
       const v = x / (W - 1);
-      // size: 0.5 → 1.5 cells across v 0..0.7 (encoded (s-0.3)/1.2)
-      const s = 0.5 + 1.0 * Math.min(1, v / 0.7);
+      // size: 0.5 → 1.5 cells across v 0..0.65 (encoded (s-0.3)/1.2) —
+      // saturates earlier since letters alone now carry the darks (no floor)
+      const s = 0.5 + 1.0 * Math.min(1, v / 0.65);
       // per-candidate covered fraction (clip factor ~0.85 once s>1 overflows cell)
       const q = Math.min(0.95, s * s * cMean * (s > 1 ? 0.85 : 1.0));
-      // Boolean target: lambda*a = -ln(1-v) capped at the K=3 ceiling
-      const la = -Math.log(1 - Math.min(v, 0.92));
+      // Boolean target: lambda*a = -ln(1-v); NO floor (user request: darks are
+      // pure bunched letters; deepest tone caps at the union ceiling ~0.9)
+      const la = -Math.log(1 - Math.min(v, 0.95));
       const p = Math.max(0, Math.min(1, la / (3 * q)));
-      // expected letter ink (binomial-ish correction 1.07 per review)
-      const E = 1 - Math.exp(-3 * p * q * 1.07);
-      // floor = measured residual, deep shadow only
-      const f = (v > 0.85) ? Math.max(0, Math.min(1, (v - E) / (1 - E))) : 0;
-      const r = Math.round(f * 255), g = Math.round(p * 255), b = Math.round(Math.max(0, Math.min(1, (s - 0.3) / 1.2)) * 255);
+      const r = 0, g = Math.round(p * 255), b = Math.round(Math.max(0, Math.min(1, (s - 0.3) / 1.2)) * 255);
       ac.fillStyle = 'rgb(' + r + ',' + g + ',' + b + ')';
       ac.fillRect(x, ROWS * CELL, 1, CELL);
     }

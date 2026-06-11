@@ -2433,7 +2433,9 @@ float asciiCov(vec2 suv, vec2 srpx, int idx, float pf){
 }
 
 float asciiStamp(vec2 skUVL, vec2 offL, int idx, float fragCov, float pf){
-  float cellPx = u_screenCell;
+  // ASCII pitch = 2x the dot-screen cell: at 10 LP letters are twice the old
+  // size, and the whole LP range scales the same way (user request).
+  float cellPx = u_screenCell * 2.0;
   float ca = cos(u_angle0), sa = sin(u_angle0);   // SHARED lattice angle
   vec2 lpixL = (skUVL + offL) * u_res;
   vec2 rp = vec2(lpixL.x*ca - lpixL.y*sa, lpixL.x*sa + lpixL.y*ca) / cellPx;
@@ -2489,9 +2491,11 @@ float asciiStamp(vec2 skUVL, vec2 offL, int idx, float fragCov, float pf){
       }
     }
   }
-  // measured-residual solid floor from the fragment's own coverage
-  float fl = texture2D(u_ht5Matrix, vec2(mix(0.002, 0.998, clamp(fragCov, 0.0, 1.0)), 16.5 / 17.0)).r;
-  return max(0.5 * (ink0 + ink1), fl);
+  // NO solid floor (user request): deep shadow stays pure bunched letters —
+  // the flat ink wash looked wrong, and driving it from per-pixel fragment
+  // coverage made it flicker in streaky drum-slip bands. Deepest tone caps
+  // at the letter-union ceiling (~0.9), a deliberate letterpress look.
+  return 0.5 * (ink0 + ink1);
 }
 
 void main(){
@@ -2966,7 +2970,7 @@ void main(){
 <script src="js/compare.js?v=6"></script>
 <script src="js/riso-amt.js?v=24"></script>
 <script src="js/riso-amt-webgpu.js?v=5"></script>
-<script src="js/renderer.js?v=112"></script>
+<script src="js/renderer.js?v=113"></script>
 <script src="js/source.js?v=47"></script>
 <script src="js/save.js?v=48"></script>
 <script src="js/ui-controls.js?v=53"></script>
