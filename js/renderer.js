@@ -70,7 +70,7 @@ function initGL(){
    'u_off0','u_off1','u_off2','u_off3',
    'u_angle0','u_angle1','u_angle2','u_angle3','u_screenCell',
    'u_chan0','u_chan1','u_chan2','u_chan3',
-   'u_stampSeed','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_useLabResidual','u_useCalChord','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
+   'u_stampSeed','u_asciiTonePass','u_aMin','u_aDims','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_useLabResidual','u_useCalChord','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
    'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_paperShift','u_paperPbrShift','u_paperPbrMul','u_crop','u_paper',
    'u_paperPBR','u_usePaperPBR',
    'u_lutA0','u_lutA1','u_lutA2','u_lutA3',
@@ -1085,6 +1085,58 @@ function _renderInner(){
 
   // ─── Uniforms — all from cached values, zero DOM access ───
   setRenderUniforms(dw, dh, resScale, isPhoneNow);
+
+  // ── ASCII anchor-tone prepass ──
+  // Renders per-anchor coverage (all plates packed RGBA) into a tiny
+  // lattice-resolution texture, so the main pass reads ONE texel per anchor
+  // instead of re-running the ink chain per fragment (was ~200ms/frame).
+  // The texture rides unit 9 (u_amtMaster0) — masters are RISO-only.
+  if(mode === 'screen' && (window._stampShape|0) === 5 && !(window._screenType ?? 0) && locs.u_asciiTonePass){
+    const cellPx = Math.max(1.5, Math.min(dw, dh) / (8.267 * cached.lpi)) * 2.0; // mirrors shader (2x pitch)
+    const ang = (layerAngles[0] || 0) * 0.01745329;
+    const ca = Math.cos(ang), sa = Math.sin(ang);
+    // lattice bounds of the screen quad corners (rotate, /cellPx)
+    let mnx = 1e9, mny = 1e9, mxx = -1e9, mxy = -1e9;
+    const corners = [[0,0],[dw,0],[0,dh],[dw,dh]];
+    for(const p of corners){
+      const rx = (p[0]*ca - p[1]*sa) / cellPx, ry = (p[0]*sa + p[1]*ca) / cellPx;
+      mnx = Math.min(mnx, rx); mny = Math.min(mny, ry);
+      mxx = Math.max(mxx, rx); mxy = Math.max(mxy, ry);
+    }
+    const aMinX = Math.floor(mnx) - 3, aMinY = Math.floor(mny) - 3;
+    const aW = Math.min(2048, Math.ceil(mxx) - aMinX + 4), aH = Math.min(2048, Math.ceil(mxy) - aMinY + 4);
+    // lazy FBO + texture, realloc on dims change
+    if(!window._asciiToneFbo){ window._asciiToneFbo = gl.createFramebuffer(); window._asciiToneTex = gl.createTexture(); window._asciiToneDims = [0,0]; }
+    gl.activeTexture(gl.TEXTURE9);
+    gl.bindTexture(gl.TEXTURE_2D, window._asciiToneTex);
+    if(window._asciiToneDims[0] !== aW || window._asciiToneDims[1] !== aH){
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, aW, aH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      window._asciiToneDims = [aW, aH];
+    }
+    gl.uniform2f(locs.u_aMin, aMinX, aMinY);
+    gl.uniform2f(locs.u_aDims, aW, aH);
+    // FEEDBACK GUARD: while the tone texture is the FBO attachment it must
+    // NOT also be bound on unit 9 (u_amtMaster0) — GL flags sampling-while-
+    // rendering as INVALID_OPERATION even if the branch never samples it.
+    gl.bindTexture(gl.TEXTURE_2D, (window._amtMasterTex && window._amtMasterTex[0]) || null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, window._asciiToneFbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, window._asciiToneTex, 0);
+    gl.viewport(0, 0, aW, aH);
+    gl.uniform1f(locs.u_asciiTonePass, 1.0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, dw, dh);
+    gl.uniform1f(locs.u_asciiTonePass, 0.0);
+    // NOW the tone texture rides unit 9 for the main pass
+    gl.bindTexture(gl.TEXTURE_2D, window._asciiToneTex);
+    gl.activeTexture(gl.TEXTURE0);
+  } else if(locs.u_asciiTonePass){
+    gl.uniform1f(locs.u_asciiTonePass, 0.0);
+  }
 
   gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
 
