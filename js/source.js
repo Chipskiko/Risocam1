@@ -807,6 +807,9 @@ function loadSampleImage(){
 }
 
 async function toggleCam(){
+  // In-flight guard: re-taps while getUserMedia is pending would either toggle
+  // the camera straight back off or race two streams (one leaks, LED stuck on).
+  if(window._camBusy) return;
   if(window._pdfDoc&&!camOn){R.toast('Camera disabled in PDF mode');return;}
   if(camOn){
     if(camStream)camStream.getTracks().forEach(t=>t.stop());
@@ -826,10 +829,12 @@ async function toggleCam(){
     $status.textContent=srcImg?'◉ IMAGE':'● READY';
     return;
   }
+  window._camBusy=true;
   try{
     stopVideo(); // stop any uploaded video before starting camera
     camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:R.isPhone()?640:1280}}});
     $vid.srcObject=camStream;
+    bindCamTrackEnd(camStream);
     // Wait for video to actually start playing
     await $vid.play();
     camOn=true;needsAspectUpdate=true;computeCrop();scheduleRender();
@@ -857,8 +862,56 @@ async function toggleCam(){
   }catch(e){
     R.toast('Camera not available');
     if(window._debugLog) window._debugLog('CAM: '+e.name+': '+e.message);
+  }finally{
+    window._camBusy=false;
   }
 }
+
+// ── Camera/video lifecycle (backgrounding, interruptions) ──
+// Without these, backgrounding on iOS (or a phone call stealing the camera)
+// left a frozen "● LIVE" viewfinder with the render loop redrawing the stale
+// frame at risoFps forever — battery burn with no recovery path.
+
+// Track-ended: the OS revoked the camera (call, camera app, permission change).
+// Drop to a clean non-live state instead of pretending we're still live.
+function bindCamTrackEnd(stream){
+  if(!stream) return;
+  stream.getVideoTracks().forEach(t=>{
+    t.onended=()=>{
+      if(!camOn) return;
+      camOn=false;
+      if(window._camFallback){clearInterval(window._camFallback);window._camFallback=null;}
+      $gl.classList.remove('mirrored');
+      try{ el('camBtn').textContent='CAMERA'; }catch(e){}
+      $status.textContent='○ CAM ENDED';
+      markDirty();scheduleRender();
+    };
+  });
+}
+R.bindCamTrackEnd = bindCamTrackEnd;
+
+// Returning to the foreground: resume the paused <video> and restart the
+// frame loop (the generation token makes R.onVideoFrame() safe to re-call);
+// if the camera track died while backgrounded, restart the camera outright.
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState !== 'visible') return;
+  if(camOn){
+    const t = camStream && camStream.getVideoTracks()[0];
+    if(!t || t.readyState === 'ended'){
+      camOn=false;
+      if(window._camFallback){clearInterval(window._camFallback);window._camFallback=null;}
+      toggleCam(); // fresh getUserMedia
+    } else {
+      try{ $vid.play(); }catch(e){}
+      if($vid.requestVideoFrameCallback) R.onVideoFrame();
+      markDirty();scheduleRender();
+    }
+  } else if(videoOn){
+    try{ $vid.play(); }catch(e){}
+    if($vid.requestVideoFrameCallback) R.onVideoFrame();
+    markDirty();scheduleRender();
+  }
+});
 
 
 

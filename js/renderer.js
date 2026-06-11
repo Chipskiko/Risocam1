@@ -939,7 +939,11 @@ function _renderInner(){
     cssW=cachedVfW||$vf.clientWidth;
     cssH=cachedVfH||$vf.clientHeight;
   }
-  if(isPhoneNow && cropAspect){
+  // String aspects ('fill'/'fit') must NOT take this branch: indexing a string
+  // gives 'f'/'i' → NaN → $gl.width=NaN→0 → permanently black canvas. (Hit by
+  // entering phone mode with FILL/FIT set, or any PDF load which sets 'fit'.)
+  // Strings fall through to full-viewfinder sizing, same as the style branch.
+  if(isPhoneNow && cropAspect && typeof cropAspect !== 'string'){
     const ar=cropAspect[0]/cropAspect[1];
     const containerAR=cssW/cssH;
     if(ar>containerAR) cssH=Math.round(cssW/ar);

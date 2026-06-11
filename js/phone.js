@@ -152,12 +152,18 @@ function phBindBcs(){
 }
 
 async function phFlipCam(){
+  // Re-entrancy guard: a double-tap on the flip button would interleave two
+  // async flips — tracks stopped twice, camStream overwritten, and the loser's
+  // stream leaked as an orphaned live track.
+  if(window._camBusy) return;
   if(!camOn){
     // Camera not active — start it
     R.stopVideo();
     R.toggleCam();
     return;
   }
+  window._camBusy=true;
+  try{
   const newFacing=facingMode==='environment'?'user':'environment';
   if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}
   $vid.srcObject=null;
@@ -172,6 +178,7 @@ async function phFlipCam(){
       const s=await navigator.mediaDevices.getUserMedia(c);
       facingMode=newFacing;
       camStream=s;
+      if(R.bindCamTrackEnd)R.bindCamTrackEnd(s);
       $vid.srcObject=s;
       await $vid.play();
       camOn=true;needsAspectUpdate=true;computeCrop();scheduleRender();
@@ -184,13 +191,14 @@ async function phFlipCam(){
   // All failed — try to restore previous camera
   try{
     const s=await navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:R.isPhone()?640:1280}}});
-    camStream=s;$vid.srcObject=s;await $vid.play();
+    camStream=s;if(R.bindCamTrackEnd)R.bindCamTrackEnd(s);$vid.srcObject=s;await $vid.play();
     camOn=true;needsAspectUpdate=true;computeCrop();scheduleRender();
     $gl.classList.toggle('mirrored',facingMode==='user');
     if($vid.requestVideoFrameCallback) R.onVideoFrame(); // start the generation-guarded rVFC loop (once)
     else{if(window._camFallback)clearInterval(window._camFallback);window._camFallback=setInterval(()=>{if(camOn&&$vid.readyState>=2){videoFrameReady=true;scheduleRender();}else if(!camOn)clearInterval(window._camFallback);},50);}
     R.toast('Only one camera available');
   }catch(e){R.toast('Camera error');}
+  }finally{window._camBusy=false;}
 }
 
 // Shutter: tap = save photo, long-press (hold) = record video until release
@@ -549,9 +557,12 @@ document.addEventListener('DOMContentLoaded',()=>{
     || window.navigator.standalone === true;
   const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
   if((isStandalone || isMobile) && !phoneActive){
+    // layoutSwitch() (via togglePhoneMode) already auto-starts the camera when
+    // there's no source. The old extra setTimeout(toggleCam, 300) raced it: if
+    // the first getUserMedia resolved within 300ms the camera was toggled
+    // straight back OFF; if not, two concurrent getUserMedia ran and the first
+    // stream leaked as an orphaned live track (camera LED stuck on).
     togglePhoneMode();
-    // Auto-start camera in PWA mode
-    if(isStandalone && !camOn) setTimeout(()=>R.toggleCam(),300);
   }
 
   // Redraw on resize/orientation change
