@@ -590,8 +590,11 @@ function _buildGlyphAtlas(){
     for (let i = 0; out.length < COLS; i++) out.push(ranked[(i * 5) % ranked.length]);
     return out;
   }
-  const atlas = document.createElement('canvas'); atlas.width = COLS * CELL; atlas.height = ROWS * CELL;
-  const ac = atlas.getContext('2d');
+  // Atlas has ROWS glyph rows + 1 extra: a coverage→row LUT strip baked into
+  // the atlas itself (the shader is at the 16-sampler hardware limit, so the
+  // LUT can't be its own texture).
+  const atlas = document.createElement('canvas'); atlas.width = COLS * CELL; atlas.height = (ROWS + 1) * CELL;
+  const ac = atlas.getContext('2d', { willReadFrequently: true });
   ac.fillStyle = '#000'; ac.fillRect(0, 0, atlas.width, atlas.height); // paper = 0
   for (let row = 1; row < ROWS; row++){
     const t = row / (ROWS - 1); // target ink coverage for this level
@@ -612,6 +615,52 @@ function _buildGlyphAtlas(){
       }
     }
   }
+  ac.globalCompositeOperation = 'source-over';
+
+  // ── COVERAGE-TRUE LUT (research: Artistic Screening / measured ramps) ──
+  // Index-linear row selection assumed each row's ink ≈ row/15 — but real
+  // glyph coverage is whatever the font gives, and the size-by-tone curve
+  // scales it further. Measure the EMITTED coverage of every (row, v) pair —
+  // sampling the drawn atlas through the same scaled-uv transform the shader
+  // applies — and bake the best row per coverage into LUT strip row 16.
+  // The shader then emits ink ≈ requested coverage by construction.
+  {
+    const img = ac.getImageData(0, 0, COLS * CELL, ROWS * CELL).data;
+    const W = COLS * CELL;
+    const sCurve = v => (v < 0.5) ? 0.55 + (1.1 - 0.55) * (v * 2) : 1.1 + (0.4 - 1.1) * ((v - 0.5) * 2);
+    const INSET = 0.0234, SPAN = 0.9532, N = 16; // mirror the shader's uv mapping
+    function emitted(row, v){
+      const s = sCurve(v);
+      let sum = 0;
+      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++){
+        const cx = (i + 0.5) / N, cy = (j + 0.5) / N;          // cell-local uv
+        const sx = (cx - 0.5) / s + 0.5, sy = (cy - 0.5) / s + 0.5;
+        if (sx < 0 || sx > 1 || sy < 0 || sy > 1){ sum += (row >= 8 ? 1 : 0); continue; }
+        const ax = Math.min(CELL - 1, Math.floor((INSET + sx * SPAN) * CELL));
+        const ay = Math.min(ROWS * CELL - 1, row * CELL + Math.floor((INSET + sy * SPAN) * CELL));
+        sum += img[(ay * W + ax) * 4] / 255; // RED = ink (atlas bg is opaque black, so alpha is 255 everywhere; the GL sampler reads .r too)
+      }
+      return sum / (N * N);
+    }
+    for (let x = 0; x < W; x++){
+      const v = x / (W - 1);
+      // Blend compensation: glyphs have far more AA edge perimeter than a
+      // round dot, so the per-pixel Beer-Lambert stage over-inks them
+      // (measured ~+20 luma at low-mid coverage vs the circle stamp). Aim the
+      // geometric coverage slightly LOW, fading to none at solid so endpoints
+      // hold (calibrated empirically against the circle stamp's tone).
+      const target = v * (0.78 + 0.22 * v);
+      let best = 0, bestErr = 2;
+      for (let row = 0; row < ROWS; row++){
+        const e = Math.abs(emitted(row, v) - target);
+        if (e < bestErr){ bestErr = e; best = row; }
+      }
+      const g = Math.round(best * 255 / 15);
+      ac.fillStyle = 'rgb(' + g + ',' + g + ',' + g + ')';
+      ac.fillRect(x, ROWS * CELL, 1, CELL);
+    }
+  }
+
   const tex = gl.createTexture();
   gl.activeTexture(gl.TEXTURE8);
   gl.bindTexture(gl.TEXTURE_2D, tex);
