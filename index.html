@@ -2653,8 +2653,14 @@ void main(){
     cov *= mask;
     cov = applyTextRouting(cov, uv, 0);
     float grain = (u_mode == 1 && u_stampShape == 5 && u_screenType < 0.5)
-                ? asciiStamp(skUV0, off0, 0, cov, pf)
+                ? asciiStamp(skUV0, off0, 0, cov, pf) * printMask(skUV0, off0, lrpx)
                 : getGrainTexture(cov, lrpx, lpix, 0, u_angle0, pf, u_grainMul0);
+    // Letters legitimately OVERHANG content edges (anchor carries the tone),
+    // but calBlend early-returns where the FRAGMENT's coverage is ~0 — which
+    // sliced every overhang exactly at the content boundary. Let stamp ink
+    // raise effective coverage; the printMask above still hard-clips at the
+    // SHEET margin (the one edge that physically should slice).
+    if(u_mode == 1 && u_stampShape == 5) cov = max(cov, grain);
     // Knockout: where this layer has ink, restore paper first so layers below
     // are cut away (cutout effect). cov drives the depth of the hole.
     if(u_knockout0 > 0.5) result = mix(result, u_paper, cov);
@@ -2695,8 +2701,14 @@ void main(){
     cov *= mask;
     cov = applyTextRouting(cov, uv, 1);
     float grain = (u_mode == 1 && u_stampShape == 5 && u_screenType < 0.5)
-                ? asciiStamp(skUV1, off1, 1, cov, pf)
+                ? asciiStamp(skUV1, off1, 1, cov, pf) * printMask(skUV1, off1, lrpx)
                 : getGrainTexture(cov, lrpx, lpix, 1, u_angle1, pf, u_grainMul1);
+    // Letters legitimately OVERHANG content edges (anchor carries the tone),
+    // but calBlend early-returns where the FRAGMENT's coverage is ~0 — which
+    // sliced every overhang exactly at the content boundary. Let stamp ink
+    // raise effective coverage; the printMask above still hard-clips at the
+    // SHEET margin (the one edge that physically should slice).
+    if(u_mode == 1 && u_stampShape == 5) cov = max(cov, grain);
     if(u_knockout1 > 0.5) result = mix(result, u_paper, cov);
     if (u_hasCal1 > 0.5) {
       if (u_opaque1 > 0.5) {
@@ -2735,8 +2747,14 @@ void main(){
     cov *= mask;
     cov = applyTextRouting(cov, uv, 2);
     float grain = (u_mode == 1 && u_stampShape == 5 && u_screenType < 0.5)
-                ? asciiStamp(skUV2, off2, 2, cov, pf)
+                ? asciiStamp(skUV2, off2, 2, cov, pf) * printMask(skUV2, off2, lrpx)
                 : getGrainTexture(cov, lrpx, lpix, 2, u_angle2, pf, u_grainMul2);
+    // Letters legitimately OVERHANG content edges (anchor carries the tone),
+    // but calBlend early-returns where the FRAGMENT's coverage is ~0 — which
+    // sliced every overhang exactly at the content boundary. Let stamp ink
+    // raise effective coverage; the printMask above still hard-clips at the
+    // SHEET margin (the one edge that physically should slice).
+    if(u_mode == 1 && u_stampShape == 5) cov = max(cov, grain);
     if(u_knockout2 > 0.5) result = mix(result, u_paper, cov);
     if (u_hasCal2 > 0.5) {
       if (u_opaque2 > 0.5) {
@@ -2773,8 +2791,14 @@ void main(){
     cov *= mask;
     cov = applyTextRouting(cov, uv, 3);
     float grain = (u_mode == 1 && u_stampShape == 5 && u_screenType < 0.5)
-                ? asciiStamp(skUV3, off3, 3, cov, pf)
+                ? asciiStamp(skUV3, off3, 3, cov, pf) * printMask(skUV3, off3, lrpx)
                 : getGrainTexture(cov, lrpx, lpix, 3, u_angle3, pf, u_grainMul3);
+    // Letters legitimately OVERHANG content edges (anchor carries the tone),
+    // but calBlend early-returns where the FRAGMENT's coverage is ~0 — which
+    // sliced every overhang exactly at the content boundary. Let stamp ink
+    // raise effective coverage; the printMask above still hard-clips at the
+    // SHEET margin (the one edge that physically should slice).
+    if(u_mode == 1 && u_stampShape == 5) cov = max(cov, grain);
     if(u_knockout3 > 0.5) result = mix(result, u_paper, cov);
     if (u_hasCal3 > 0.5) {
       if (u_opaque3 > 0.5) {
