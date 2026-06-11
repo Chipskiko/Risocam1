@@ -124,6 +124,7 @@ R.newMisreg = newMisreg;
 function reseedAll(){
   newMisreg();
   frameSeed = Math.random();
+  window._stampSeed = Math.floor(Math.random() * 1021); // ASCII letters re-roll on reseed
   R.toast && R.toast('Reseeded');
   markDirty();
 }

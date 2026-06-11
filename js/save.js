@@ -737,7 +737,7 @@ async function saveGif(){
       gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,$vid);
     }
     // Vary riso grain/misreg per frame
-    frameSeed=Math.random();
+    frameSeed=Math.random(); window._stampSeed = ((window._stampSeed || 17) + 1.0) % 1021.0; // letters re-roll per recorded frame
     frame=origFrame+i;
     R.newMisreg();
     gl.viewport(0,0,gw,gh);

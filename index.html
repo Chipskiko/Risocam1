@@ -420,6 +420,7 @@ uniform vec2 u_res;
 uniform float u_resScale; // 1x, 2x, 4x — scales grain detail
 uniform float u_time;
 uniform float u_frameSeed; // fresh random 0-1 each rendered frame
+uniform float u_stampSeed; // ASCII stamp layout seed — JS re-rolls on ANIMATION ticks only (not slider-drag re-renders); integer 0..1020
 
 uniform int u_layers;
 uniform vec3 u_ink0, u_ink1, u_ink2, u_ink3;
@@ -1402,62 +1403,6 @@ float screenDither(float val, vec2 pix, float cellPx, float angle, float lidx){
 
   vec2 cellID = floor(rp / cellPx);
 
-  // ── ASCII MAP (stamp 5): glyph-atlas halftone ──
-  // The atlas is 8 cols × 16 rows: row = density level (0 blank … 15 solid;
-  // upper rows are inverse-video letters so tone reaches 100%), column =
-  // per-cell hash (random letters incl. Georgian). When grain-static
-  // animation is on, letters re-roll each printed frame. UV is inset 1.5
-  // texels per cell edge so LINEAR sampling never bleeds across atlas cells.
-  if(u_stampShape == 5){
-    float v = clamp(val, 0.0, 1.0);
-    // Coverage-true row: LUT strip baked into atlas row 16 maps requested
-    // coverage -> density row, compensating measured glyph ink AND the size
-    // curve (research: Artistic Screening / measured ramps — index-linear
-    // selection assumed row ink ≈ row/15, which no font actually gives).
-    float grow = floor(texture2D(u_ht5Matrix, vec2(mix(0.002, 0.998, v), 16.5 / 17.0)).r * 15.0 + 0.5);
-    // Per-plate seed decorrelates letter choice across plates (riso plates
-    // are independent masters; correlated letters read as letter-moiré).
-    // CLASSIC DETERMINISTIC RAMP (how ASCII art is actually done): the glyph
-    // is a pure function of tone — equal tone, same letter, everywhere. The
-    // within-row sub-level picks among 16 coverage-SORTED alternates, adding
-    // fine tonal steps. No randomness.
-    float sub = clamp(v * 15.0 + 1.0 - grow, 0.0, 0.999);
-    // Deterministic target ± bounded per-cell jitter (±3 of 16 alternates):
-    // tone stays in-bin, but flat regions stop collapsing into a field of
-    // one identical letter.
-    float gcol = clamp(floor(sub * 16.0 + (hash(cellID * 23.3 + lidx * 11.1) - 0.5) * 6.0), 0.0, 15.0);
-    bool letterRow = (grow > 0.5 && grow < 9.5);
-    // Highlight sparsity (letter rows only): stable per-cell, no frame shimmer.
-    float presence = clamp(v * 5.0 + 0.04, 0.0, 1.0);
-    if(letterRow && hash(cellID * 17.3 + lidx * 53.1) > presence) return 0.0;
-    // NO flips: shader uv.y runs TOP-DOWN (the print-margin math confirms:
-    // top = step(margin, p.y)), matching the atlas canvas — so the identity
-    // mapping renders letters upright at angle 0. (History: a y-flip here
-    // mirrored N→И; "fixing" it by flipping both axes made a 180° rotation,
-    // invisible on the symmetric letters N/M/W/O used for verification.)
-    vec2 cuv = cellPos;
-    // SIZE follows tone: positive letters grow with darkness; knockout
-    // letters (inverse rows, v>0.5) shrink toward solid. Gives continuous
-    // tone WITHIN each of the 16 density levels — kills flat-pack banding.
-    // Size follows tone for LETTER rows (small sparse -> big packed/clipped);
-    // dither-block shading rows (10-14) and solid (15) render full-cell.
-    // Bigger baseline (letters were vanishing at low coverage), harder pack
-    // at the top (1.6, clipped at cell edges), plus ±15% per-cell size jitter
-    // so same-tone neighbours differ — the "vary and clump" look.
-    float gscale = letterRow ? mix(0.55, 1.6, min(v * 1.6, 1.0))
-                               * (0.85 + 0.3 * hash(cellID * 7.7 + lidx * 3.3))
-                             : 1.0;
-    vec2 cs = (cuv - 0.5) / gscale + 0.5;
-    if(cs.x < 0.0 || cs.x > 1.0 || cs.y < 0.0 || cs.y > 1.0){
-      return 0.0;   // outside a scaled letter: paper (block rows never clip)
-    }
-    vec2 guv = (vec2(gcol, grow) + 0.0234 + cs * 0.9532) / vec2(16.0, 17.0);
-    // Samples u_ht5Matrix: unit 8 is time-shared (a 17th sampler would
-    // exceed MAX_TEXTURE_IMAGE_UNITS); JS binds the glyph atlas here whenever
-    // screen mode + procedural engine + ASCII stamp are active.
-    return texture2D(u_ht5Matrix, guv).r;
-  }
-
   // Per-cell hash roughness + angular wobble — DECORATIVE shapes only (the
   // circle branch ignores them; computing them above it wasted 2 hashes + an
   // atan per tap, and atan(0,0) at the exact cell centre is undefined in
@@ -1732,19 +1677,6 @@ float printMask(vec2 uv, vec2 layerOff, vec2 rpx){
 // print area renders WHOLE and one outside doesn't render at all — a clean
 // round-dot edge instead of sliced halves. Genuine image-content edges still
 // taper/clip naturally through coverage; this only governs the print margin.
-// Cell-centre source sampling for the ASCII stamp: a glyph needs ONE coverage
-// value per screen cell. Per-pixel sampling lets image detail + noise flip the
-// quantized glyph row mid-cell — speckled/torn letters, and a mid-tone "stroke"
-// ring on cells straddling hard edges (half-dark cells averaged to ~50%).
-// Returns layerUV shifted so the source is sampled at this cell's centre.
-vec2 cellSnapUV(vec2 pix, vec2 layerUV, float cellPx, float angle){
-  float c = cos(angle), s = sin(angle);
-  vec2 rp = vec2(pix.x*c - pix.y*s, pix.x*s + pix.y*c);
-  vec2 cellOffset = mod(rp, cellPx) - cellPx * 0.5;   // rp − cell centre
-  vec2 pixOffset = vec2(cellOffset.x*c + cellOffset.y*s, -cellOffset.x*s + cellOffset.y*c);
-  return layerUV - pixOffset / u_res;
-}
-
 float printMaskCell(vec2 uv, vec2 layerOff, vec2 pix, float cellPx, float angle){
   vec2 cuv = uv;
   // Full bleed (margin≈0): skip the cell snap — snapping would cull every
@@ -2041,9 +1973,7 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
   // Paper field perturbs dither threshold — fibers affect where ink lands.
   // Scaled by u_simNoise so "clean" modes (RISO/flat, clean-screen) get a true
   // unperturbed halftone — previously this leaked fiber noise into clean output.
-  // (ASCII stamp excluded: per-pixel threshold noise flips the per-cell glyph
-  // row at density-level boundaries → speckled, torn letters.)
-  if(!(u_mode == 1 && u_stampShape == 5)) val += (pf - 1.0) * 0.15 * u_simNoise;
+  val += (pf - 1.0) * 0.15 * u_simNoise;
   val = clamp(val, 0.0, 1.0);
 
   // Stencil perforation irregularity — scaled by u_simNoise.
@@ -2076,9 +2006,7 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
     // empirically against grain-mode tone at LPI 10..110.
     float edgeFrac = clamp(1.5 / u_screenCell, 0.0, 0.8);
     val = clamp(val * (1.0 - 1.3 * edgeFrac * (1.0 - 0.7 * val)), 0.0, 1.0);
-    // ASCII uses UN-jittered pix: the drum-slip x-wobble reads as organic on
-    // round dots but TEARS glyphs into horizontal speckle.
-    return screenSampled(val, (u_stampShape == 5) ? pix : jitPix, u_screenCell, angle, float(idx));  // 4× supersampled (anti-moiré)
+    return screenSampled(val, jitPix, u_screenCell, angle, float(idx));  // 4× supersampled (anti-moiré)
   }
   if(u_mode == 2) return lineSampled(val, jitPix, u_screenCell, angle, idx);  // 8× supersampled (anti-moiré)
   // u_mode == 0 → GRAIN. Within grain, ditherMode picks the algorithm.
@@ -2476,6 +2404,96 @@ vec3 applyPaperPBR(vec3 result, vec2 uv){
   return result * pbrMod;
 }
 
+// ═══ ASCII v6: stochastic letter STAMPING (docs/ascii-screen-plan.md) ═══
+// Letters are texture-bombed ink stamps, not grid cells: K=3 jittered
+// candidates per lattice anchor, presence x size carry tone (curves baked in
+// the atlas strip, .g/.b), an explicit low-frequency clump field clusters
+// them (uniform jitter alone NEVER clumps — review finding), and a measured-
+// residual solid floor (.r) engages only in deep shadow. One SHARED layout
+// for all plates (lattice angle = u_angle0, one seed): plates print the SAME
+// letters, differentiated only by misregistration → riso colour fringing.
+
+// Per-ANCHOR coverage: the stamp's single tone decision, sampled at the
+// anchor centre (replaces v5's cellSnapUV). Branches per-layer uniforms by
+// idx like getCoverageApprox does.
+float asciiCov(vec2 suv, vec2 srpx, int idx, float pf){
+  float n1 = hash(srpx * 1.7);
+  float dens = idx == 0 ? u_dens0 : (idx == 1 ? u_dens1 : (idx == 2 ? u_dens2 : u_dens3));
+  vec3 src = texture2D(u_src, srcUV(suv)).rgb;
+  src = adjustRGB(src, srpx);
+  if(u_sepType == 1){
+    vec4 w = nnlsDecompose(u_layers, u_paperColor, src, u_ink0, u_ink1, u_ink2, u_ink3);
+    float wi = idx == 0 ? w.x : (idx == 1 ? w.y : (idx == 2 ? w.z : w.w));
+    return getCoverageApprox(wi, srpx, idx, n1, dens, pf);
+  }
+  int ch = idx == 0 ? u_chan0 : (idx == 1 ? u_chan1 : (idx == 2 ? u_chan2 : u_chan3));
+  float ig = idx == 0 ? u_inkGamma0 : (idx == 1 ? u_inkGamma1 : (idx == 2 ? u_inkGamma2 : u_inkGamma3));
+  vec4 cmyk = toCMYK(src);
+  return getCoverage(cmyk, srpx, idx, ch, n1, dens, pf, src, ig);
+}
+
+float asciiStamp(vec2 skUVL, vec2 offL, int idx, float fragCov, float pf){
+  float cellPx = u_screenCell;
+  float ca = cos(u_angle0), sa = sin(u_angle0);   // SHARED lattice angle
+  vec2 lpixL = (skUVL + offL) * u_res;
+  vec2 rp = vec2(lpixL.x*ca - lpixL.y*sa, lpixL.x*sa + lpixL.y*ca) / cellPx;
+  vec2 aBase = floor(rp - 0.5);                   // 3x3 ring covers reach 1.5
+  // two AA taps (in lattice units) — stamps are computed once, only the
+  // fragment-in-stamp test repeats (review: taps must not refetch tone)
+  vec2 tap = vec2(0.375, 0.25) / cellPx;
+  float ink0 = 0.0, ink1 = 0.0;
+  for(int oy = -1; oy <= 1; oy++){
+    for(int ox = -1; ox <= 1; ox++){
+      vec2 aId = aBase + vec2(float(ox), float(oy));
+      vec2 aW = mod(aId, 1021.0);                 // wrapped hash domain
+      // anchor centre, un-rotated back to layer space
+      vec2 aLat = (aId + 0.5) * cellPx;
+      vec2 aPix = vec2(aLat.x*ca + aLat.y*sa, -aLat.x*sa + aLat.y*ca);
+      vec2 aUV = aPix / u_res;
+      vec2 aRpx = aUV * REF;
+      float acov = asciiCov(aUV, aRpx, idx, pf);
+      // masks act on PRESENCE at the anchor (post-multiplying binary stamps
+      // would render grey half-letters along mask edges — review)
+      acov *= printMask(aUV - offL, offL, aRpx);
+      acov = applyTextRouting(acov, aUV - offL, idx);
+      acov = clamp(acov, 0.0, 1.0);
+      // tone curves + clump field
+      vec3 curves = texture2D(u_ht5Matrix, vec2(mix(0.002, 0.998, acov), 16.5 / 17.0)).rgb;
+      float pres = curves.g * (0.4 + 1.2 * valueNoise(aUV * 5.0 * REF * 0.01));
+      float size = 0.3 + curves.b * 1.2;
+      for(int k = 0; k < 3; k++){
+        vec2 hs = aW * 13.1 + vec2(float(k) * 37.7 + u_stampSeed * 0.917,
+                                   float(k) * 23.9 + u_stampSeed * 1.131);
+        if(hash(hs) <= pres){
+          vec2 jit = vec2(hash(hs + 7.3), hash(hs + 19.1)) - 0.5;      // EXACTLY ±0.5: stationary
+          float sz = size * (0.78 + 0.55 * hash(hs + 29.7));           // lognormal-ish ±30%
+          sz = min(sz, 1.5);                                            // reach invariant
+          float rot = (hash(hs + 41.3) - 0.5) * 0.28 * step(0.55, sz); // ±8°, off for small glyphs
+          float cr = cos(rot), sr = sin(rot);
+          vec2 centre = aId + 0.5 + jit;
+          float slot = floor(hash(hs + 53.9) * 224.0);                  // FREE glyph choice
+          vec2 cell = vec2(mod(slot, 16.0), 1.0 + floor(slot / 16.0));
+          // tap 0
+          vec2 d = (rp - centre) / sz;
+          d = vec2(d.x*cr - d.y*sr, d.x*sr + d.y*cr) + 0.5;
+          if(d.x > 0.0 && d.x < 1.0 && d.y > 0.0 && d.y < 1.0){
+            ink0 = max(ink0, texture2D(u_ht5Matrix, (cell + 0.0234 + d * 0.9532) / vec2(16.0, 17.0)).r);
+          }
+          // tap 1
+          d = (rp + tap - centre) / sz;
+          d = vec2(d.x*cr - d.y*sr, d.x*sr + d.y*cr) + 0.5;
+          if(d.x > 0.0 && d.x < 1.0 && d.y > 0.0 && d.y < 1.0){
+            ink1 = max(ink1, texture2D(u_ht5Matrix, (cell + 0.0234 + d * 0.9532) / vec2(16.0, 17.0)).r);
+          }
+        }
+      }
+    }
+  }
+  // measured-residual solid floor from the fragment's own coverage
+  float fl = texture2D(u_ht5Matrix, vec2(mix(0.002, 0.998, clamp(fragCov, 0.0, 1.0)), 16.5 / 17.0)).r;
+  return max(0.5 * (ink0 + ink1), fl);
+}
+
 void main(){
   vec2 uv = v_uv;
 
@@ -2563,8 +2581,7 @@ void main(){
     vec2 lrpx = (skUV0 * REF) + off0 * REF;
     vec2 lpix = (skUV0 * u_res) + off0 * u_res;
     float n0 = hash(lrpx * 1.7);
-    vec2 snapUV0 = (u_mode == 1 && u_stampShape == 5 && u_screenType < 0.5)
-                 ? cellSnapUV(lpix, uv0, u_screenCell, u_angle0) : uv0; // ASCII: one coverage per cell
+    vec2 snapUV0 = uv0;
     float cov;
     if(u_sepType == 1){
       vec3 src0a = texture2D(u_src, srcUV(snapUV0)).rgb;
@@ -2585,7 +2602,9 @@ void main(){
     float mask = (u_mode==1) ? printMaskCell(skUV0, off0, lpix, u_screenCell, u_angle0) : printMask(skUV0, off0, lrpx);
     cov *= mask;
     cov = applyTextRouting(cov, uv, 0);
-    float grain = getGrainTexture(cov, lrpx, lpix, 0, u_angle0, pf, u_grainMul0);
+    float grain = (u_mode == 1 && u_stampShape == 5 && u_screenType < 0.5)
+                ? asciiStamp(skUV0, off0, 0, cov, pf)
+                : getGrainTexture(cov, lrpx, lpix, 0, u_angle0, pf, u_grainMul0);
     // Knockout: where this layer has ink, restore paper first so layers below
     // are cut away (cutout effect). cov drives the depth of the hole.
     if(u_knockout0 > 0.5) result = mix(result, u_paper, cov);
@@ -2607,8 +2626,7 @@ void main(){
     vec2 lrpx = (skUV1 * REF) + off1 * REF;
     vec2 lpix = (skUV1 * u_res) + off1 * u_res;
     float n1 = hash(lrpx * 1.7 + 100.0);
-    vec2 snapUV1 = (u_mode == 1 && u_stampShape == 5 && u_screenType < 0.5)
-                 ? cellSnapUV(lpix, uv1, u_screenCell, u_angle1) : uv1; // ASCII: one coverage per cell
+    vec2 snapUV1 = uv1;
     float cov;
     if(u_sepType == 1){
       vec3 src1a = texture2D(u_src, srcUV(snapUV1)).rgb;
@@ -2626,7 +2644,9 @@ void main(){
     float mask = (u_mode==1) ? printMaskCell(skUV1, off1, lpix, u_screenCell, u_angle1) : printMask(skUV1, off1, lrpx);
     cov *= mask;
     cov = applyTextRouting(cov, uv, 1);
-    float grain = getGrainTexture(cov, lrpx, lpix, 1, u_angle1, pf, u_grainMul1);
+    float grain = (u_mode == 1 && u_stampShape == 5 && u_screenType < 0.5)
+                ? asciiStamp(skUV1, off1, 1, cov, pf)
+                : getGrainTexture(cov, lrpx, lpix, 1, u_angle1, pf, u_grainMul1);
     if(u_knockout1 > 0.5) result = mix(result, u_paper, cov);
     if (u_hasCal1 > 0.5) {
       if (u_opaque1 > 0.5) {
@@ -2646,8 +2666,7 @@ void main(){
     vec2 lrpx = (skUV2 * REF) + off2 * REF;
     vec2 lpix = (skUV2 * u_res) + off2 * u_res;
     float n2 = hash(lrpx * 1.7 + 200.0);
-    vec2 snapUV2 = (u_mode == 1 && u_stampShape == 5 && u_screenType < 0.5)
-                 ? cellSnapUV(lpix, uv2, u_screenCell, u_angle2) : uv2; // ASCII: one coverage per cell
+    vec2 snapUV2 = uv2;
     float cov;
     if(u_sepType == 1){
       vec3 src2a = texture2D(u_src, srcUV(snapUV2)).rgb;
@@ -2665,7 +2684,9 @@ void main(){
     float mask = (u_mode==1) ? printMaskCell(skUV2, off2, lpix, u_screenCell, u_angle2) : printMask(skUV2, off2, lrpx);
     cov *= mask;
     cov = applyTextRouting(cov, uv, 2);
-    float grain = getGrainTexture(cov, lrpx, lpix, 2, u_angle2, pf, u_grainMul2);
+    float grain = (u_mode == 1 && u_stampShape == 5 && u_screenType < 0.5)
+                ? asciiStamp(skUV2, off2, 2, cov, pf)
+                : getGrainTexture(cov, lrpx, lpix, 2, u_angle2, pf, u_grainMul2);
     if(u_knockout2 > 0.5) result = mix(result, u_paper, cov);
     if (u_hasCal2 > 0.5) {
       if (u_opaque2 > 0.5) {
@@ -2685,8 +2706,7 @@ void main(){
     vec2 lpix = (skUV3 * u_res) + off3 * u_res;
     float n3 = hash(lrpx * 1.7 + 300.0);
     vec2 uv3 = skUV3 + off3;
-    vec2 snapUV3 = (u_mode == 1 && u_stampShape == 5 && u_screenType < 0.5)
-                 ? cellSnapUV(lpix, uv3, u_screenCell, u_angle3) : uv3; // ASCII: one coverage per cell
+    vec2 snapUV3 = uv3;
     float cov;
     if(u_sepType == 1){
       vec3 src3a = texture2D(u_src, srcUV(snapUV3)).rgb;
@@ -2702,7 +2722,9 @@ void main(){
     float mask = (u_mode==1) ? printMaskCell(skUV3, off3, lpix, u_screenCell, u_angle3) : printMask(skUV3, off3, lrpx);
     cov *= mask;
     cov = applyTextRouting(cov, uv, 3);
-    float grain = getGrainTexture(cov, lrpx, lpix, 3, u_angle3, pf, u_grainMul3);
+    float grain = (u_mode == 1 && u_stampShape == 5 && u_screenType < 0.5)
+                ? asciiStamp(skUV3, off3, 3, cov, pf)
+                : getGrainTexture(cov, lrpx, lpix, 3, u_angle3, pf, u_grainMul3);
     if(u_knockout3 > 0.5) result = mix(result, u_paper, cov);
     if (u_hasCal3 > 0.5) {
       if (u_opaque3 > 0.5) {
@@ -2940,13 +2962,13 @@ void main(){
 <script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
 <script src="js/data.js?v=14"></script>
 <script src="js/state.js?v=13"></script>
-<script src="js/undo.js?v=5"></script>
+<script src="js/undo.js?v=6"></script>
 <script src="js/compare.js?v=6"></script>
 <script src="js/riso-amt.js?v=24"></script>
 <script src="js/riso-amt-webgpu.js?v=5"></script>
-<script src="js/renderer.js?v=110"></script>
+<script src="js/renderer.js?v=111"></script>
 <script src="js/source.js?v=47"></script>
-<script src="js/save.js?v=47"></script>
+<script src="js/save.js?v=48"></script>
 <script src="js/ui-controls.js?v=53"></script>
 <script src="js/ui-paper.js?v=13"></script>
 <script src="js/phone.js?v=19"></script>

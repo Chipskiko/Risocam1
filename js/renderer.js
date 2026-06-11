@@ -70,7 +70,7 @@ function initGL(){
    'u_off0','u_off1','u_off2','u_off3',
    'u_angle0','u_angle1','u_angle2','u_angle3','u_screenCell',
    'u_chan0','u_chan1','u_chan2','u_chan3',
-   'u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_useLabResidual','u_useCalChord','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
+   'u_stampSeed','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_useLabResidual','u_useCalChord','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
    'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_paperShift','u_paperPbrShift','u_paperPbrMul','u_crop','u_paper',
    'u_paperPBR','u_usePaperPBR',
    'u_lutA0','u_lutA1','u_lutA2','u_lutA3',
@@ -596,98 +596,50 @@ function _buildGlyphAtlas(){
     for (let i = 0; out.length < COLS; i++) out.push(ranked[i % ranked.length]);
     return out;
   }
-  // Atlas has ROWS glyph rows + 1 extra: a coverage→row LUT strip baked into
-  // the atlas itself (the shader is at the 16-sampler hardware limit, so the
-  // LUT can't be its own texture).
+  // ── ASCII v6 (docs/ascii-screen-plan.md): the atlas is a free GLYPH
+  // LIBRARY, not a density ramp. Rows 1-14 = 224 slots filled with the whole
+  // charset (shuffled, repeated); tone is carried by stamp PRESENCE × SIZE
+  // (curves below), not by glyph choice — free choice is what structurally
+  // kills the "all As" failure. Row 0 blank, row 15 solid (floor/reserved).
+  // Row 16 = curve strip: .r floor residual, .g presence(v), .b size(v).
   const atlas = document.createElement('canvas'); atlas.width = COLS * CELL; atlas.height = (ROWS + 1) * CELL;
   const ac = atlas.getContext('2d', { willReadFrequently: true });
   ac.fillStyle = '#000'; ac.fillRect(0, 0, atlas.width, atlas.height); // paper = 0
-  // Rows 1-9: LETTERS — classic deterministic ramp. Each row spans the glyph
-  // pool's coverage range; within a row the 16 alternates are sorted by
-  // measured coverage ASCENDING so the shader's sub-level index adds fine
-  // tonal steps (16 levels x 16 sub-steps) with pure tone logic, no hash.
-  // Rows 10-14: DITHER-BLOCK shading (the ░▒▓ practice — ordered dot fills),
-  // replacing inverse-video knockouts which read as weird flipped blocks.
-  // Row 15: solid.
-  ac.globalCompositeOperation = 'source-over';
-  const LETTER_ROWS = 9;
-  const maxCov = glyphs[glyphs.length - 1].cov;
-  for (let row = 1; row <= LETTER_ROWS; row++){
-    ac.fillStyle = '#fff';
-    const t = (row - 0.5) / LETTER_ROWS * maxCov;
-    const set = pick(t).sort((a, b) => a.cov - b.cov);
-    for (let col = 0; col < COLS; col++) drawGlyph(ac, set[col].ch, col * CELL, row * CELL);
-  }
-  // Shading rows 10-14: SOLID ink with a round PAPER HOLE shrinking to
-  // nothing — the same shadow regime the round-dot screen uses (holes at
-  // high coverage), so darks read as familiar halftone rather than inverted
-  // letters, and two plates overprint cleanly (ordered-dither blocks at
-  // matching frequency interfered into checker mush — tried and rejected).
-  for (let row = LETTER_ROWS + 1; row < ROWS - 1; row++){
-    const f = (row - LETTER_ROWS) / (ROWS - 1 - LETTER_ROWS); // 0..1 across shading rows
-    const dens = 0.62 + f * 0.36;                              // holes only in DEEP shadow (~62%..98%) — letters carry the mid-darks
-    const holeR = Math.sqrt(Math.max(0, 1 - dens) / Math.PI) * CELL;
-    for (let col = 0; col < COLS; col++){
-      ac.globalCompositeOperation = 'source-over'; ac.fillStyle = '#fff';
-      ac.fillRect(col * CELL, row * CELL, CELL, CELL);
-      ac.globalCompositeOperation = 'destination-out';
-      ac.beginPath();
-      ac.arc(col * CELL + CELL / 2, row * CELL + CELL / 2, holeR, 0, 6.2832);
-      ac.fill();
-    }
-  }
-  ac.globalCompositeOperation = 'source-over';
-  ac.fillStyle = '#fff'; ac.fillRect(0, (ROWS - 1) * CELL, COLS * CELL, CELL);
-  ac.globalCompositeOperation = 'source-over';
-
-  // ── COVERAGE-TRUE LUT (research: Artistic Screening / measured ramps) ──
-  // Index-linear row selection assumed each row's ink ≈ row/15 — but real
-  // glyph coverage is whatever the font gives, and the size-by-tone curve
-  // scales it further. Measure the EMITTED coverage of every (row, v) pair —
-  // sampling the drawn atlas through the same scaled-uv transform the shader
-  // applies — and bake the best row per coverage into LUT strip row 16.
-  // The shader then emits ink ≈ requested coverage by construction.
+  ac.fillStyle = '#fff';
   {
-    const img = ac.getImageData(0, 0, COLS * CELL, ROWS * CELL).data;
+    const pool = glyphs.slice();
+    for (let i = pool.length - 1; i > 0; i--){ const j = (Math.random() * (i + 1)) | 0; const t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
+    let gi = 0;
+    for (let row = 1; row < ROWS - 1; row++)
+      for (let col = 0; col < COLS; col++)
+        drawGlyph(ac, pool[(gi++) % pool.length].ch, col * CELL, row * CELL);
+  }
+  ac.fillRect(0, (ROWS - 1) * CELL, COLS * CELL, CELL); // row 15 solid
+
+  // ── Curve strip (P1: analytic initial guess; P2 replaces with Monte-Carlo
+  // of the real stamp process). Boolean-law-derived presence/size with the
+  // review's corrections: presence carries v≲0.3, size carries 0.3-0.8, both
+  // saturate above; the solid floor is the RESIDUAL (v − E_letters)/(1 −
+  // E_letters), clamped to engage only in deep shadow, so letters carry tone
+  // to ~0.9 and floor+letters never double-count.
+  {
+    const cMean = glyphs.reduce((a, g) => a + g.cov, 0) / glyphs.length; // mean glyph ink at scale 1
     const W = COLS * CELL;
-    // Mirror the shader EXACTLY: inversion point INV, FS-flavoured size curve
-    // (small sparse -> big packed/clipped -> shrinking knockouts), plus the
-    // highlight presence probability, so the LUT bakes EXPECTED ink.
-    // Letters grow 0.35->1.35 across the low half; shading-block rows render
-    // full-cell (scale 1). Presence (highlight sparsity) applies to letter
-    // rows only. Mirrors the shader exactly.
-    const sCurve = v => 0.55 + (1.6 - 0.55) * Math.min(1, v * 1.6); // jitter mean = 1, so base curve represents expected scale
-    const presence = v => Math.min(1, v * 5.0 + 0.04);
-    const INSET = 0.0234, SPAN = 0.9532, N = 16; // mirror the shader's uv mapping
-    function emitted(row, v){
-      const s = (row >= 1 && row <= 9) ? sCurve(v) : 1.0; // blocks render full-cell
-      let sum = 0;
-      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++){
-        const cx = (i + 0.5) / N, cy = (j + 0.5) / N;          // cell-local uv
-        const sx = (cx - 0.5) / s + 0.5, sy = (cy - 0.5) / s + 0.5;
-        if (sx < 0 || sx > 1 || sy < 0 || sy > 1){ sum += 0; continue; } // letter rows clip to paper; block rows never clip (s=1)
-        const ax = Math.min(CELL - 1, Math.floor((INSET + sx * SPAN) * CELL));
-        const ay = Math.min(ROWS * CELL - 1, row * CELL + Math.floor((INSET + sy * SPAN) * CELL));
-        sum += img[(ay * W + ax) * 4] / 255; // RED = ink (atlas bg is opaque black, so alpha is 255 everywhere; the GL sampler reads .r too)
-      }
-      return sum / (N * N);
-    }
     for (let x = 0; x < W; x++){
       const v = x / (W - 1);
-      // Blend compensation: glyphs have far more AA edge perimeter than a
-      // round dot, so the per-pixel Beer-Lambert stage over-inks them
-      // (measured ~+20 luma at low-mid coverage vs the circle stamp). Aim the
-      // geometric coverage slightly LOW, fading to none at solid so endpoints
-      // hold (calibrated empirically against the circle stamp's tone).
-      const target = v * (0.78 + 0.22 * v);
-      let best = 0, bestErr = 2;
-      for (let row = 0; row < ROWS; row++){
-        const p = (row >= 1 && row <= 9) ? presence(v) : 1.0; // sparsity: letter rows only
-        const e = Math.abs(p * emitted(row, v) - target);
-        if (e < bestErr){ bestErr = e; best = row; }
-      }
-      const g = Math.round(best * 255 / 15);
-      ac.fillStyle = 'rgb(' + g + ',' + g + ',' + g + ')';
+      // size: 0.5 → 1.5 cells across v 0..0.7 (encoded (s-0.3)/1.2)
+      const s = 0.5 + 1.0 * Math.min(1, v / 0.7);
+      // per-candidate covered fraction (clip factor ~0.85 once s>1 overflows cell)
+      const q = Math.min(0.95, s * s * cMean * (s > 1 ? 0.85 : 1.0));
+      // Boolean target: lambda*a = -ln(1-v) capped at the K=3 ceiling
+      const la = -Math.log(1 - Math.min(v, 0.92));
+      const p = Math.max(0, Math.min(1, la / (3 * q)));
+      // expected letter ink (binomial-ish correction 1.07 per review)
+      const E = 1 - Math.exp(-3 * p * q * 1.07);
+      // floor = measured residual, deep shadow only
+      const f = (v > 0.85) ? Math.max(0, Math.min(1, (v - E) / (1 - E))) : 0;
+      const r = Math.round(f * 255), g = Math.round(p * 255), b = Math.round(Math.max(0, Math.min(1, (s - 0.3) / 1.2)) * 255);
+      ac.fillStyle = 'rgb(' + r + ',' + g + ',' + b + ')';
       ac.fillRect(x, ROWS * CELL, 1, CELL);
     }
   }
@@ -751,6 +703,9 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   bakeCalLutIfNeeded(layers);
   gl.uniform1f(locs.u_warmCool, (cached.warmCool ?? 0) * 0.02); // slider -50..50 → -1..1
   gl.uniform1i(locs.u_stampShape, window._stampShape || 0);
+  // ASCII stamp layout seed: re-rolled by ANIMATION ticks only (grain-static
+  // ticks / live frames / recording) — slider-drag re-renders keep the layout.
+  if(locs.u_stampSeed) gl.uniform1f(locs.u_stampSeed, window._stampSeed || 17);
   gl.uniform1f(locs.u_ditherScale, window._ditherScale ?? 1.0);
   // Text layer index — which active layer (0..3) gets routed text pixels.
   // -1 disables the text path entirely (any non-PDF source, or PDF mode
@@ -1042,7 +997,7 @@ function _renderInner(){
     lastRisoFrame=now;
     if(cached.grainStatic > 0){
       frame += Math.floor(Math.random()*40)+15;
-      frameSeed = Math.random();
+      frameSeed = Math.random(); window._stampSeed = ((window._stampSeed || 17) + 1.0) % 1021.0;
       if(!R.isMono()){
         const m=cached.misreg/500;
         for(let i=0;i<4;i++){
@@ -1051,7 +1006,7 @@ function _renderInner(){
       }
     } else {
       frame++;
-      frameSeed = Math.random();
+      frameSeed = Math.random(); window._stampSeed = ((window._stampSeed || 17) + 1.0) % 1021.0;
     }
   } else {
     const animating = cached.grainStatic > 0 || videoOn;
@@ -1070,11 +1025,11 @@ function _renderInner(){
       }
       window._lastStaticFrame = now;
       frame++;
-      frameSeed = Math.random();
+      frameSeed = Math.random(); window._stampSeed = ((window._stampSeed || 17) + 1.0) % 1021.0;
       R.newMisreg();
     } else {
       frame++;
-      frameSeed = Math.random();
+      frameSeed = Math.random(); window._stampSeed = ((window._stampSeed || 17) + 1.0) % 1021.0;
     }
   }
   needsRedraw=false;
