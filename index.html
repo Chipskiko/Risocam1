@@ -1413,10 +1413,12 @@ float screenDither(float val, vec2 pix, float cellPx, float angle){
     float seed = floor(u_frameSeed * 96.0) * step(0.5, u_static);
     float grow = floor(v * 15.0 + 0.5);
     float gcol = floor(hash(cellID * 31.7 + seed) * 8.0);
-    // Flip x AND y so letters stand upright at angle 0 — atlas rows are
-    // top-down and the rotated cell axes run mirrored vs atlas columns
-    // (without the x-flip, N rendered as И).
-    vec2 cuv = vec2(1.0 - cellPos.x, 1.0 - cellPos.y);
+    // NO flips: shader uv.y runs TOP-DOWN (the print-margin math confirms:
+    // top = step(margin, p.y)), matching the atlas canvas — so the identity
+    // mapping renders letters upright at angle 0. (History: a y-flip here
+    // mirrored N→И; "fixing" it by flipping both axes made a 180° rotation,
+    // invisible on the symmetric letters N/M/W/O used for verification.)
+    vec2 cuv = cellPos;
     // SIZE follows tone: positive letters grow with darkness; knockout
     // letters (inverse rows, v>0.5) shrink toward solid. Gives continuous
     // tone WITHIN each of the 16 density levels — kills flat-pack banding.
