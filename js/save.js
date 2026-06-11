@@ -878,11 +878,16 @@ async function exportSeparations(){
   gl.uniform3fv(locs.u_paperColor,cached.paperColor);
   gl.uniform4f(locs.u_crop,cropRect[0],cropRect[1],cropRect[2],cropRect[3]);
   gl.uniform1i(locs.u_mode, ({grain:0, screen:1, lines:2, flat:3})[mode] ?? 0);
-  // SCREEN engine + per-mode unit-8 matrix bind (match live render path).
+  // SCREEN engine + per-mode unit-8 bind (match live render path, incl. the
+  // ASCII-stamp glyph atlas which time-shares the u_ht5Matrix sampler).
   if(locs.u_screenType) gl.uniform1f(locs.u_screenType, (window._screenType ?? 0) ? 1.0 : 0.0);
   if(window._amScreenTex && window._ht5MatrixTex){
+    let u8tex = (mode==='screen') ? window._amScreenTex : window._ht5MatrixTex;
+    if(mode==='screen' && (window._stampShape|0)===5 && !(window._screenType ?? 0) && window._glyphAtlasTex){
+      u8tex = window._glyphAtlasTex;
+    }
     gl.activeTexture(gl.TEXTURE8);
-    gl.bindTexture(gl.TEXTURE_2D, (mode==='screen') ? window._amScreenTex : window._ht5MatrixTex);
+    gl.bindTexture(gl.TEXTURE_2D, u8tex);
     gl.activeTexture(gl.TEXTURE0);
   }
   gl.uniform1i(locs.u_lineShape, window._lineShape||0);

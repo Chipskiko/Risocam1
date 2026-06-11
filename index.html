@@ -127,7 +127,7 @@
           <!-- SCREEN: LPI + halftone stamp shape -->
           <div id="screenPrimary" style="display:none;gap:6px">
             <button class="regmark-btn active" id="lpiBtnScreen" onclick="R.cycleLpi()" title="Lines Per Inch"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><g transform="rotate(45 10 10)"><circle cx="5" cy="5" r="1.5" fill="currentColor"/><circle cx="13" cy="5" r="1.5" fill="currentColor"/><circle cx="5" cy="13" r="1.5" fill="currentColor"/><circle cx="13" cy="13" r="1.5" fill="currentColor"/><circle cx="9" cy="9" r="2" fill="currentColor"/></g></svg><span class="regmark-val" id="lpiBtnVal">70</span></button>
-            <button class="regmark-btn" id="stampShapeBtn" onclick="R.cycleStampShape()" title="Halftone stamp shape — replaces the round dot with a custom shape (square, diamond, plus, star, heart)."><span class="regmark-icon" id="stampShapeIcon" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px"></span><span class="regmark-val" id="stampShapeBtnVal">Circle</span></button>
+            <button class="regmark-btn" id="stampShapeBtn" onclick="R.cycleStampShape()" title="Halftone stamp shape — replaces the round dot with a custom shape (square, diamond, plus, star, ASCII map: random letters &amp; symbols incl. Georgian, tone-ranked like classic ASCII art; best at low LPI)."><span class="regmark-icon" id="stampShapeIcon" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px"></span><span class="regmark-val" id="stampShapeBtnVal">Circle</span></button>
             <button class="regmark-btn" id="screenCleanBtn" onclick="R.toggleScreenClean()" title="Clean halftone preview — bypasses paper texture, drum jitter, ink noise, dot gain, etc. Pure halftone dots like Spectrolite's preview, what a printer's RIP would receive."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="6" cy="6" r="1.5" fill="currentColor"/><circle cx="14" cy="6" r="1.5" fill="currentColor"/><circle cx="6" cy="14" r="1.5" fill="currentColor"/><circle cx="14" cy="14" r="1.5" fill="currentColor"/><circle cx="10" cy="10" r="1.5" fill="currentColor"/></svg><span class="regmark-val" id="screenCleanBtnVal">Off</span></button>
           </div>
           <!-- LINES: LPI + line shape -->
@@ -1353,15 +1353,7 @@ float dist_star(vec2 c){
   float lobe = 0.30 + 0.20 * cos(5.0 * ang - 1.5708);
   return r / max(lobe, 0.05);
 }
-float dist_heart(vec2 c){
-  // Heart curve — implicit equation r = a(1 - sin(theta)). Rendered as
-  // distance from inside (negative) shifted to 0..1 normalized.
-  vec2 p = vec2(c.x * 1.05, c.y * 1.05 + 0.04); // tweak aspect & shift down
-  float r = length(p);
-  float ang = atan(-p.y, p.x); // flip Y so cusp points up
-  float lobe = 0.40 * (1.0 - sin(ang));
-  return r / max(lobe, 0.05);
-}
+// (heart stamp removed — shape 5 is now the ASCII glyph map, see screenDither)
 
 float screenDither(float val, vec2 pix, float cellPx, float angle){
   float c=cos(angle), s=sin(angle);
@@ -1408,11 +1400,32 @@ float screenDither(float val, vec2 pix, float cellPx, float angle){
     return mix(dotInk, holeInk, blend);
   }
 
+  vec2 cellID = floor(rp / cellPx);
+
+  // ── ASCII MAP (stamp 5): glyph-atlas halftone ──
+  // The atlas is 8 cols × 16 rows: row = density level (0 blank … 15 solid;
+  // upper rows are inverse-video letters so tone reaches 100%), column =
+  // per-cell hash (random letters incl. Georgian). When grain-static
+  // animation is on, letters re-roll each printed frame. UV is inset 1.5
+  // texels per cell edge so LINEAR sampling never bleeds across atlas cells.
+  if(u_stampShape == 5){
+    float v = clamp(val, 0.0, 1.0);
+    float seed = floor(u_frameSeed * 96.0) * step(0.5, u_static);
+    float grow = floor(v * 15.0 + 0.5);
+    float gcol = floor(hash(cellID * 31.7 + seed) * 8.0);
+    // cell-local uv; flip y (atlas rows are top-down, GL uv is bottom-up)
+    vec2 cuv = vec2(cellPos.x, 1.0 - cellPos.y);
+    vec2 guv = (vec2(gcol, grow) + 0.0234 + cuv * 0.9532) / vec2(8.0, 16.0);
+    // Samples u_ht5Matrix: unit 8 is time-shared (a 17th sampler would
+    // exceed MAX_TEXTURE_IMAGE_UNITS); JS binds the glyph atlas here whenever
+    // screen mode + procedural engine + ASCII stamp are active.
+    return texture2D(u_ht5Matrix, guv).r;
+  }
+
   // Per-cell hash roughness + angular wobble — DECORATIVE shapes only (the
   // circle branch ignores them; computing them above it wasted 2 hashes + an
   // atan per tap, and atan(0,0) at the exact cell centre is undefined in
   // GLSL — a latent NaN for the distance-field shapes).
-  vec2 cellID = floor(rp / cellPx);
   float roughness = (hash(cellID * 7.3) - 0.5) * 0.08 * u_simNoise;
   vec2 safeC = (length(centered) < 1e-5) ? vec2(1e-5, 0.0) : centered;
   float angp = atan(safeC.y, safeC.x);
@@ -1424,8 +1437,7 @@ float screenDither(float val, vec2 pix, float cellPx, float angle){
   if(u_stampShape == 1){       dist = dist_square(centered); }
   else if(u_stampShape == 2){  dist = dist_diamond(centered); }
   else if(u_stampShape == 3){  dist = dist_plus(centered); }
-  else if(u_stampShape == 4){  dist = dist_star(centered); }
-  else {                        dist = dist_heart(centered); }
+  else {                        dist = dist_star(centered); }
   dist += rough;
   return 1.0 - smoothstep(val - edge, val + edge, dist);
 }
@@ -2875,10 +2887,10 @@ void main(){
 <script src="js/compare.js?v=6"></script>
 <script src="js/riso-amt.js?v=24"></script>
 <script src="js/riso-amt-webgpu.js?v=5"></script>
-<script src="js/renderer.js?v=103"></script>
+<script src="js/renderer.js?v=104"></script>
 <script src="js/source.js?v=47"></script>
-<script src="js/save.js?v=46"></script>
-<script src="js/ui-controls.js?v=52"></script>
+<script src="js/save.js?v=47"></script>
+<script src="js/ui-controls.js?v=53"></script>
 <script src="js/ui-paper.js?v=13"></script>
 <script src="js/phone.js?v=19"></script>
 <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');</script>

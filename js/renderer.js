@@ -546,6 +546,86 @@ function genVoidClusterMask(size){
 
 
 // ======================== SHARED UNIFORM SETUP ========================
+// ── ASCII-map stamp: glyph atlas builder ──────────────────────────────────
+// 8 columns (random alternatives) × 16 rows (density levels), 64px cells.
+// Row 0 = blank paper, rows 1-7 = positive glyphs (light→dark), rows 8-14 =
+// INVERSE VIDEO (solid cell with the glyph knocked out — letters alone only
+// reach ~40% ink, inversion covers 60-100%), row 15 = solid. The shader picks
+// the row from cell coverage (tone-correct) and the column from a per-cell
+// hash (random letters). Candidates: Latin + digits + symbols + Georgian
+// Mkhedruli; glyphs that render as the font's .notdef tofu box are detected
+// by pixel signature (vs U+0378, an unassigned codepoint) and dropped, so a
+// platform without Georgian fonts silently falls back to the rest.
+function _buildGlyphAtlas(){
+  const COLS = 8, ROWS = 16, CELL = 64;
+  const FONT = 'bold ' + Math.round(CELL * 0.72) + 'px "Helvetica Neue", Arial, sans-serif';
+  // Measure each candidate's ink coverage on a scratch cell.
+  const m = document.createElement('canvas'); m.width = m.height = CELL;
+  const mc = m.getContext('2d', { willReadFrequently: true });
+  function drawGlyph(ctx, ch, x, y){
+    ctx.font = FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(ch, x + CELL / 2, y + CELL / 2 + CELL * 0.04);
+  }
+  function sig(ch){
+    mc.clearRect(0, 0, CELL, CELL); mc.fillStyle = '#fff'; drawGlyph(mc, ch, 0, 0);
+    const d = mc.getImageData(0, 0, CELL, CELL).data;
+    let cov = 0, h = 0;
+    for (let i = 3; i < d.length; i += 4){ cov += d[i]; h = (h * 31 + d[i]) | 0; }
+    return { cov: cov / (255 * CELL * CELL), h: h };
+  }
+  const georgian = 'აბგდევზთიკლმნოპჟრსტუფქღყშჩცძწჭხჯჰ';
+  const latin = 'AEHKMNORSTWXZabegkqsxz0258';
+  const syms = '.,:;-~^"*+=!?/()[]%#&@$';
+  const tofu = sig('͸'); // unassigned codepoint → .notdef box signature
+  const glyphs = [];
+  for (const ch of (syms + latin + georgian)){
+    const g = sig(ch);
+    if (g.cov > 0.004 && !(g.h === tofu.h && Math.abs(g.cov - tofu.cov) < 1e-4)) glyphs.push({ ch: ch, cov: g.cov });
+  }
+  glyphs.sort((a, b) => a.cov - b.cov);
+  // Pick COLS glyphs whose coverage is nearest a target (with variety).
+  function pick(target){
+    const ranked = glyphs.slice().sort((a, b) => Math.abs(a.cov - target) - Math.abs(b.cov - target)).slice(0, COLS + 6);
+    const out = [];
+    for (let i = 0; out.length < COLS; i++) out.push(ranked[(i * 5) % ranked.length]);
+    return out;
+  }
+  const atlas = document.createElement('canvas'); atlas.width = COLS * CELL; atlas.height = ROWS * CELL;
+  const ac = atlas.getContext('2d');
+  ac.fillStyle = '#000'; ac.fillRect(0, 0, atlas.width, atlas.height); // paper = 0
+  for (let row = 1; row < ROWS; row++){
+    const t = row / (ROWS - 1); // target ink coverage for this level
+    if (row === ROWS - 1){ ac.globalCompositeOperation = 'source-over'; ac.fillStyle = '#fff'; ac.fillRect(0, row * CELL, COLS * CELL, CELL); continue; }
+    if (t < 0.5){
+      // positive: white glyph on black
+      ac.globalCompositeOperation = 'source-over'; ac.fillStyle = '#fff';
+      const set = pick(t);
+      for (let col = 0; col < COLS; col++) drawGlyph(ac, set[col].ch, col * CELL, row * CELL);
+    } else {
+      // inverse video: solid cell, glyph knocked out (ink = 1 - glyphCov)
+      const set = pick(1 - t);
+      for (let col = 0; col < COLS; col++){
+        ac.globalCompositeOperation = 'source-over'; ac.fillStyle = '#fff';
+        ac.fillRect(col * CELL, row * CELL, CELL, CELL);
+        ac.globalCompositeOperation = 'destination-out';
+        drawGlyph(ac, set[col].ch, col * CELL, row * CELL);
+      }
+    }
+  }
+  const tex = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE8);
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, atlas);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.activeTexture(gl.TEXTURE0);
+  window._glyphAtlasTex = tex;
+  console.log('[glyphAtlas] built:', glyphs.length, 'glyphs (georgian ' + (glyphs.some(g => georgian.indexOf(g.ch) >= 0) ? 'OK' : 'unavailable — latin/symbol fallback') + ')');
+}
+
 function setRenderUniforms(dw, dh, scale, isPhone){
   const layers=activeLayers();
   const nLayers=layers.length;
@@ -618,11 +698,19 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   gl.uniform1f(locs.u_inkNoise,  cached.inkNoise);
   // SCREEN engine: 0 = procedural round-dot (DEFAULT), 1 = RISO authentic matrix (console: R.setScreenType(1)).
   if(locs.u_screenType) gl.uniform1f(locs.u_screenType, (window._screenType ?? 0) ? 1.0 : 0.0);
-  // Unit 8 holds the AM matrix in SCREEN mode, the Grain-Touch ht5 matrix
-  // otherwise (never sampled in the same mode).
+  // Unit 8 (the u_ht5Matrix sampler) is time-shared by THREE mode-exclusive
+  // consumers — adding a 17th sampler would exceed MAX_TEXTURE_IMAGE_UNITS(16):
+  //   • grain mode: Grain-Touch ht5 threshold matrix
+  //   • screen mode, matrix engine (screenType=1): the AM matrix
+  //   • screen mode, procedural engine + ASCII stamp: the glyph atlas
   if(window._amScreenTex && window._ht5MatrixTex){
+    let u8tex = (mode==='screen') ? window._amScreenTex : window._ht5MatrixTex;
+    if(mode === 'screen' && (window._stampShape|0) === 5 && !(window._screenType ?? 0)){
+      if(!window._glyphAtlasTex) try { _buildGlyphAtlas(); } catch(e){ console.warn('[glyphAtlas]', e); }
+      if(window._glyphAtlasTex) u8tex = window._glyphAtlasTex;
+    }
     gl.activeTexture(gl.TEXTURE8);
-    gl.bindTexture(gl.TEXTURE_2D, (mode==='screen') ? window._amScreenTex : window._ht5MatrixTex);
+    gl.bindTexture(gl.TEXTURE_2D, u8tex);
     gl.activeTexture(gl.TEXTURE0);
   }
   // Paper type: 'blank' forces zero texture (kills BOTH the PBR substrate and

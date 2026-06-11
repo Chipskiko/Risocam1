@@ -808,8 +808,8 @@ const SHAPE_ICONS_STAMP = [
   '<svg width="20" height="20" viewBox="0 0 20 20"><rect x="8" y="2" width="4" height="16" fill="currentColor"/><rect x="2" y="8" width="16" height="4" fill="currentColor"/></svg>',
   // Star
   '<svg width="20" height="20" viewBox="0 0 20 20"><polygon points="10,2 12.5,7.5 18,8.5 14,12.5 15,18 10,15 5,18 6,12.5 2,8.5 7.5,7.5" fill="currentColor"/></svg>',
-  // Heart
-  '<svg width="20" height="20" viewBox="0 0 20 20"><path d="M10 17 C10 17 2 12 2 7 C2 4 5 2 7 4 C8 5 10 7 10 7 C10 7 12 5 13 4 C15 2 18 4 18 7 C18 12 10 17 10 17 Z" fill="currentColor"/></svg>',
+  // ASCII map (random letters incl. Georgian)
+  '<svg width="20" height="20" viewBox="0 0 20 20"><text x="10" y="15" text-anchor="middle" font-size="13" font-weight="bold" font-family="monospace" fill="currentColor">a\u10ef</text></svg>',
 ];
 function refreshShapeIcons(){
   const lineIcon = el('lineShapeIcon');
@@ -838,7 +838,7 @@ function cycleFps(){
 }
 const resSteps=[6]; // always max
 // ─── Halftone stamp shape (SCREEN mode dot replacement) ───
-const STAMP_SHAPES = ['Circle', 'Square', 'Diamond', 'Plus', 'Star', 'Heart'];
+const STAMP_SHAPES = ['Circle', 'Square', 'Diamond', 'Plus', 'Star', 'ASCII'];
 window._stampShape = window._stampShape ?? 0;
 function cycleStampShape(){
   window._stampShape = (window._stampShape + 1) % STAMP_SHAPES.length;
