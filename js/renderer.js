@@ -625,7 +625,7 @@ function _buildGlyphAtlas(){
   // matching frequency interfered into checker mush — tried and rejected).
   for (let row = LETTER_ROWS + 1; row < ROWS - 1; row++){
     const f = (row - LETTER_ROWS) / (ROWS - 1 - LETTER_ROWS); // 0..1 across shading rows
-    const dens = 0.45 + f * 0.52;                              // ~45% .. ~97%
+    const dens = 0.62 + f * 0.36;                              // holes only in DEEP shadow (~62%..98%) — letters carry the mid-darks
     const holeR = Math.sqrt(Math.max(0, 1 - dens) / Math.PI) * CELL;
     for (let col = 0; col < COLS; col++){
       ac.globalCompositeOperation = 'source-over'; ac.fillStyle = '#fff';
@@ -656,7 +656,7 @@ function _buildGlyphAtlas(){
     // Letters grow 0.35->1.35 across the low half; shading-block rows render
     // full-cell (scale 1). Presence (highlight sparsity) applies to letter
     // rows only. Mirrors the shader exactly.
-    const sCurve = v => 0.35 + (1.35 - 0.35) * Math.min(1, v * 2);
+    const sCurve = v => 0.55 + (1.6 - 0.55) * Math.min(1, v * 1.6); // jitter mean = 1, so base curve represents expected scale
     const presence = v => Math.min(1, v * 5.0 + 0.04);
     const INSET = 0.0234, SPAN = 0.9532, N = 16; // mirror the shader's uv mapping
     function emitted(row, v){

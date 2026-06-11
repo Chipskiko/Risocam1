@@ -1422,7 +1422,10 @@ float screenDither(float val, vec2 pix, float cellPx, float angle, float lidx){
     // within-row sub-level picks among 16 coverage-SORTED alternates, adding
     // fine tonal steps. No randomness.
     float sub = clamp(v * 15.0 + 1.0 - grow, 0.0, 0.999);
-    float gcol = floor(sub * 16.0);
+    // Deterministic target ± bounded per-cell jitter (±3 of 16 alternates):
+    // tone stays in-bin, but flat regions stop collapsing into a field of
+    // one identical letter.
+    float gcol = clamp(floor(sub * 16.0 + (hash(cellID * 23.3 + lidx * 11.1) - 0.5) * 6.0), 0.0, 15.0);
     bool letterRow = (grow > 0.5 && grow < 9.5);
     // Highlight sparsity (letter rows only): stable per-cell, no frame shimmer.
     float presence = clamp(v * 5.0 + 0.04, 0.0, 1.0);
@@ -1438,7 +1441,12 @@ float screenDither(float val, vec2 pix, float cellPx, float angle, float lidx){
     // tone WITHIN each of the 16 density levels — kills flat-pack banding.
     // Size follows tone for LETTER rows (small sparse -> big packed/clipped);
     // dither-block shading rows (10-14) and solid (15) render full-cell.
-    float gscale = letterRow ? mix(0.35, 1.35, min(v * 2.0, 1.0)) : 1.0;
+    // Bigger baseline (letters were vanishing at low coverage), harder pack
+    // at the top (1.6, clipped at cell edges), plus ±15% per-cell size jitter
+    // so same-tone neighbours differ — the "vary and clump" look.
+    float gscale = letterRow ? mix(0.55, 1.6, min(v * 1.6, 1.0))
+                               * (0.85 + 0.3 * hash(cellID * 7.7 + lidx * 3.3))
+                             : 1.0;
     vec2 cs = (cuv - 0.5) / gscale + 0.5;
     if(cs.x < 0.0 || cs.x > 1.0 || cs.y < 0.0 || cs.y > 1.0){
       return 0.0;   // outside a scaled letter: paper (block rows never clip)
@@ -2936,7 +2944,7 @@ void main(){
 <script src="js/compare.js?v=6"></script>
 <script src="js/riso-amt.js?v=24"></script>
 <script src="js/riso-amt-webgpu.js?v=5"></script>
-<script src="js/renderer.js?v=109"></script>
+<script src="js/renderer.js?v=110"></script>
 <script src="js/source.js?v=47"></script>
 <script src="js/save.js?v=47"></script>
 <script src="js/ui-controls.js?v=53"></script>
