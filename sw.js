@@ -1,9 +1,11 @@
-const CACHE = 'risocam-v6';
+const CACHE = 'risocam-v7';
 const ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
   '/css/main.css',
+  '/riso_halftones.json',
+  '/riso_trc.json',
   '/js/state.js',
   '/js/data.js',
   '/js/renderer.js',
