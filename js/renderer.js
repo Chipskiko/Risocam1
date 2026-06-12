@@ -291,7 +291,7 @@ function initGL(){
   // to the raw 43-lpi matrix at the correct pitch.
   Promise.all([
     fetch('riso_halftones.json').then(function(r){ return r.json(); }),
-    fetch('riso_trc.json').then(function(r){ return r.json(); }).catch(function(){ return null; }),
+    fetch('riso_trc.json?v=2').then(function(r){ return r.json(); }).catch(function(){ return null; }),
   ]).then(function(res){
     var j = res[0], trc = res[1];
     [[71,'ht1_6x6_71_45'],[106,'ht1_6x6_106_45']].forEach(function(p){

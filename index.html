@@ -2059,9 +2059,23 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
     // form v·(1−1.3ef(1−0.7v)) did NOT preserve v=1 (blacks washed up to ~18%
     // at default LPI despite the comment claiming otherwise) — the logistic
     // term v·(1−v) has true fixed points at BOTH endpoints.
-    if(u_screenType < 0.5){
+    if(u_screenType < 0.5 || u_stampShape != 0){
+      // Procedural engine (incl. non-circle stamps, which are procedural
+      // regardless of u_screenType): the classic cutback.
       float edgeFrac = clamp(1.5 / u_screenCell, 0.0, 0.8);
       val = clamp(val - 1.3 * edgeFrac * val * (1.0 - val), 0.0, 1.0);
+    } else {
+      // MATRIX engine — preview-resolution tone compensation: once dots go
+      // sub-pixel, the partial-ink composite over-inks vs true area mixing
+      // (measured 15-30 luma of darkening below cellPx~5 against the same
+      // settings rendered at print resolution; this is what the procedural
+      // cutback was empirically hiding). The bias saturates with shrinking
+      // cells — logarithmic fit calibrated against multi-resolution
+      // measurements at 3 canvas sizes so RAW matrix tone is LPI- and
+      // resolution-invariant. ZERO at cellPx >= 12.5 — print-resolution
+      // exports (>= 12 px/cell) render the pure matrices.
+      float kk = clamp(0.36 * log(12.5 / u_screenCell), 0.0, 0.9);
+      val = clamp(val - kk * val * (1.0 - val), 0.0, 1.0);
     }
     return screenSampled(val, jitPix, u_screenCell, angle, float(idx));  // 4× supersampled (anti-moiré)
   }
@@ -3151,7 +3165,7 @@ void main(){
 <script src="js/compare.js?v=6"></script>
 <script src="js/riso-amt.js?v=24"></script>
 <script src="js/riso-amt-webgpu.js?v=5"></script>
-<script src="js/renderer.js?v=118"></script>
+<script src="js/renderer.js?v=119"></script>
 <script src="js/source.js?v=47"></script>
 <script src="js/save.js?v=52"></script>
 <script src="js/ui-controls.js?v=53"></script>
