@@ -1174,10 +1174,13 @@ function _renderInner(){
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, texW, texH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
       window._asciiToneDims = [texW, texH];
     }
+    // LINEAR: circles sample at dot centers (interpolates anchors when the
+    // lattice pitch is capped above the cell); ASCII samples exact texel
+    // centers, where LINEAR == NEAREST. Set per-frame (alloc is conditional).
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.uniform2f(locs.u_aMin, aMinX, aMinY);
     gl.uniform2f(locs.u_aDims, aW, aH);
     // FEEDBACK GUARD: while the tone texture is the FBO attachment it must

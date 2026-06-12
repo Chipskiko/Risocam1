@@ -1467,10 +1467,21 @@ float screenMatrix(float coverage, vec2 pix, float cellPx, float angle){
 float cellTone(vec2 pix, float angle, int idx){
   float c = cos(angle), s = sin(angle);
   vec2 rp = vec2(pix.x*c - pix.y*s, pix.x*s + pix.y*c);
-  vec2 aId = floor(rp / u_aPitch);
+  // The TRUE dot lattice (pitch u_screenCell); sample the tone field at the
+  // DOT'S CENTER — with LINEAR filtering this interpolates between anchors
+  // whenever the lattice pitch was capped above the cell, instead of snapping
+  // whole anchor blocks (no lattice-beat staircase).
+  vec2 dotId = floor(rp / u_screenCell);
+  vec2 ctr = (dotId + 0.5) * u_screenCell / u_aPitch;
   vec2 q = vec2(idx == 1 || idx == 3 ? 1.0 : 0.0, idx >= 2 ? 1.0 : 0.0);
-  vec2 local = clamp(aId - u_aMin + 0.5, vec2(0.5), u_aDims - 0.5);
-  return texture2D(u_amtMaster0, (q * u_aDims + local) / (2.0 * u_aDims)).r;
+  vec2 local = clamp(ctr - u_aMin, vec2(1.0), u_aDims - 1.0);
+  vec4 tx = texture2D(u_amtMaster0, (q * u_aDims + local) / (2.0 * u_aDims));
+  float t = tx.r + tx.g / 255.0;   // 16-bit hi/lo unpack (bilinear-safe: both channels interpolate linearly)
+  // Static per-dot dither (±2/255): the 8-bit SOURCE also terraces slow
+  // gradients; mixing adjacent levels stochastically per dot reads as organic
+  // riso dot variety instead of stepped bands.
+  t += (hash(dotId * 1.93 + vec2(float(idx) * 7.31)) - 0.5) * 0.016;
+  return clamp(t, 0.0, 1.0);
 }
 
 // Dispatch + 4× supersample the chosen SCREEN engine. The dot grid is a
@@ -2461,20 +2472,26 @@ vec3 applyPaperPBR(vec3 result, vec2 uv){
 // • Candidates are radius pre-tested before any atlas fetch; anchors with
 //   ~zero coverage skip everything; the 2nd AA tap only runs for small cells.
 
-float asciiCov(vec2 suv, vec2 srpx, int idx, float boxR){
+float asciiCov(vec2 suv, vec2 srpx, int idx, vec2 boxHalf){
   float dens = idx == 0 ? u_dens0 : (idx == 1 ? u_dens1 : (idx == 2 ? u_dens2 : u_dens3));
   if(dens < 0.5) return 0.0;
-  // boxR > 0: box-average the SOURCE over the anchor footprint, then run the
-  // tone chain once on the mean — ≈ cell-integrated coverage (circles pass).
-  // boxR = 0: POINT tone at the anchor — ASCII letters render full size right
-  // up to content edges (edge taper is confined to the circles screen).
+  // boxHalf > 0: box-average the SOURCE over the FULL cell footprint with a
+  // 16-tap stratified grid, then run the tone chain once on the mean — ≈
+  // cell-integrated coverage (circles soft-edge pass). 4 corner taps of a
+  // half-cell box quantized hard edges into k/4 coverage steps (visible
+  // dot-size staircase bands); 16 strata over the whole cell are smooth.
+  // boxHalf = 0: POINT tone at the anchor — ASCII letters render full size
+  // right up to content edges (edge taper is confined to the circles screen).
   vec3 src;
-  if(boxR > 0.0){
-    vec2 o = vec2(boxR);
-    src = (texture2D(u_src, srcUV(suv + vec2(-o.x, -o.y))).rgb
-         + texture2D(u_src, srcUV(suv + vec2( o.x, -o.y))).rgb
-         + texture2D(u_src, srcUV(suv + vec2(-o.x,  o.y))).rgb
-         + texture2D(u_src, srcUV(suv + vec2( o.x,  o.y))).rgb) * 0.25;
+  if(boxHalf.x > 0.0){
+    src = vec3(0.0);
+    for(int by = 0; by < 4; by++){
+      for(int bx = 0; bx < 4; bx++){
+        vec2 f = (vec2(float(bx), float(by)) - 1.5) * 0.5; // stratum midpoints ±0.25, ±0.75
+        src += texture2D(u_src, srcUV(suv + f * boxHalf)).rgb;
+      }
+    }
+    src *= 0.0625;
   } else {
     src = texture2D(u_src, srcUV(suv)).rgb;
   }
@@ -2585,9 +2602,12 @@ void main(){
       vec2 aLat = (aId + 0.5) * u_aPitch;
       vec2 aPix = vec2(aLat.x*ca + aLat.y*sa, -aLat.x*sa + aLat.y*ca);
       vec2 aUV = aPix / u_res;
-      float boxQ = 0.25 * u_aPitch / u_res.x;
+      vec2 boxQ = 0.5 * u_aPitch / u_res;   // half-cell per axis = full-cell box
       float tone = clamp(applyTextRouting(asciiCov(aUV, aUV * REF, qi, boxQ), aUV, qi), 0.0, 1.0);
-      gl_FragColor = vec4(tone);
+      // 16-bit hi/lo pack: an 8-bit tone step is a ~14% dot-diameter jump in
+      // highlights — slow gradients banded into visible dot-size terraces.
+      float e8 = tone * 255.0;
+      gl_FragColor = vec4(floor(e8) / 255.0, fract(e8), 0.0, 1.0);
       return;
     }
     // Pass 1 — ASCII anchor tone: POINT-sampled (boxR=0) so letters keep
@@ -2599,7 +2619,7 @@ void main(){
     vec2 aPix = vec2(aLat.x*ca + aLat.y*sa, -aLat.x*sa + aLat.y*ca);
     vec2 aUV = aPix / u_res;
     vec2 aRpx = aUV * REF;
-    float boxR = 0.0;
+    vec2 boxR = vec2(0.0);
     vec4 tones;
     tones.r = clamp(applyTextRouting(asciiCov(aUV, aRpx, 0, boxR), aUV, 0), 0.0, 1.0);
     tones.g = u_layers > 1 ? clamp(applyTextRouting(asciiCov(aUV, aRpx, 1, boxR), aUV, 1), 0.0, 1.0) : 0.0;
