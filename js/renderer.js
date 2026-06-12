@@ -232,9 +232,10 @@ function initGL(){
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
     return t;
   }
-  // The real driver only offers Screen-covered at 43/71/106 lpi — the matrix
-  // engine snaps the LPI control to those (the procedural engine keeps the
-  // full 10–120 range). Shared with save.js via window.
+  // The driver dump stores Screen-covered matrices at 43/71/106 lpi — the
+  // matrix engine picks the nearest stored matrix + measured tone curve. The dot
+  // PITCH is NOT snapped — it follows the LPI control freely, like the real
+  // driver's arbitrary-frequency synthesis. Shared with save.js via window.
   window._snapScreenLpi = function(lpi){ return lpi < 57 ? 43 : (lpi < 88.5 ? 71 : 106); };
   var AM_W=20, AM_H=20;
   var AM_DATA=[254,250,243,227,208,96,60,35,15,4,2,6,16,36,62,97,210,229,244,252,152,248,238,222,203,110,69,44,23,11,7,12,25,45,71,111,205,224,239,155,154,159,233,215,192,120,85,54,31,26,17,27,32,55,86,121,193,216,164,157,156,163,169,198,184,135,99,77,57,46,37,48,58,78,100,136,185,173,168,161,160,166,171,175,179,145,128,101,87,72,63,73,88,102,128,146,177,174,170,165,90,106,116,131,141,151,147,137,123,113,104,114,124,138,149,150,140,129,115,105,59,65,81,92,127,143,180,187,194,206,211,207,196,188,178,142,125,91,79,64,34,40,50,76,95,133,183,199,217,225,230,226,219,197,182,132,93,74,49,39,13,20,30,53,83,119,191,213,234,240,245,241,231,212,189,118,82,51,29,18,3,9,22,43,68,109,202,221,236,249,253,247,235,220,201,107,67,41,21,8,2,6,16,36,62,97,210,229,244,252,254,250,243,227,208,96,60,35,15,4,7,12,25,45,71,111,205,224,239,155,152,248,238,222,203,110,69,44,23,11,17,27,32,55,86,121,193,216,164,157,154,159,233,215,192,120,85,54,31,26,37,48,58,78,100,136,185,173,168,161,156,163,169,198,184,135,99,77,57,46,63,73,88,102,128,146,177,174,170,165,160,166,171,175,179,145,128,101,87,72,104,114,124,138,149,150,140,129,115,105,90,106,116,131,141,151,147,137,123,113,211,207,196,188,178,142,125,91,79,64,59,65,81,92,127,143,180,187,194,206,230,226,219,197,182,132,93,74,49,39,34,40,50,76,95,133,183,199,217,225,245,241,231,212,189,118,82,51,29,18,13,20,30,53,83,119,191,213,234,240,253,247,235,220,201,107,67,41,21,8,3,9,22,43,68,109,202,221,236,249];
@@ -877,11 +878,12 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   gl.uniform1f(locs.u_postExposure,cached.postExposure||0);
   gl.uniform1f(locs.u_postContrast,cached.postContrast||0);
   gl.uniform1f(locs.u_postSat,cached.postSat||0);
-  // Matrix engine renders at the real driver presets only — snap the LPI so
-  // pitch and bound threshold matrix agree (texel = device dot at print size).
-  var _lpiEff = (mode === 'screen' && (window._screenType ?? 0) && (window._stampShape|0) === 0)
-    ? window._snapScreenLpi(cached.lpi) : cached.lpi;
-  gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(dw,dh)/(8.267*_lpiEff)));
+  // Dot PITCH follows the LPI control freely in BOTH engines — the real
+  // driver synthesizes integer-diagonal lattices for arbitrary frequencies
+  // (its "Screen 40" preset measures 38.6 lpi), so free pitch IS authentic.
+  // Only the threshold-matrix family + measured tone curve snap to the
+  // nearest stored frequency (43/71/106) in the unit-8 bind above.
+  gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(dw,dh)/(8.267*cached.lpi)));
   gl.uniform3fv(locs.u_paperColor,cached.paperColor);
   gl.uniform3f(locs.u_paper, 0.910, 0.912, 0.908);
   gl.uniform1f(locs.u_showCropMarks, cached.showCropMarks ? 1.0 : 0.0);
@@ -2062,8 +2064,7 @@ function _runTonePrepass(dw, dh){
       // u_aMin/u_aDims). Pitch floors at the dot cell and rises if the lattice
       // would overflow 1018/side (texture = 2x2 quadrants, 2048 GL-safe) —
       // at that density cells are ~2px and per-cell tone is invisible anyway.
-      const lpiEff = (window._screenType ?? 0) ? window._snapScreenLpi(cached.lpi) : cached.lpi;
-      const cellBase = Math.max(1.5, Math.min(dw, dh) / (8.267 * lpiEff));
+      const cellBase = Math.max(1.5, Math.min(dw, dh) / (8.267 * cached.lpi)); // free pitch (matches u_screenCell)
       for(let li = 0; li < 4; li++){
         const ang = (layerAngles[li] || 0) * 0.01745329;
         const ca = Math.cos(ang), sa = Math.sin(ang);

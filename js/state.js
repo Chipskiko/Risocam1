@@ -73,6 +73,14 @@ function markDirty(){
   needsRedraw=true;
   if(!_pendingDirty){_pendingDirty=true;requestAnimationFrame(()=>{_pendingDirty=false;scheduleRender();});}
 }
+// Loading in a HIDDEN tab starves requestAnimationFrame: the scheduled frame
+// never fires, _rafId stays nonzero, and every later markDirty no-ops — the
+// app sits frozen at a 300x150 canvas until something calls render directly.
+// Re-kick the loop when the tab becomes visible (render() zeroes _rafId on
+// entry, so a double-fire is harmless).
+document.addEventListener('visibilitychange', function(){
+  if(!document.hidden){ _rafId=0; needsRedraw=true; scheduleRender(); }
+});
 
 const inkLocs=new Array(4), offLocs=new Array(4), angLocs=new Array(4), chanLocs=new Array(4), densLocs=new Array(4);
 // Pre-built uniform location arrays (populated in init, avoids per-frame allocation)

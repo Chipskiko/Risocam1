@@ -164,8 +164,11 @@ const STEP_PRESETS={
   // v IS true lines-per-inch (u_screenCell divides by 8.267·lpi — the A4 short
   // edge in inches). Historically v stored 10/40/60/80 under labels 40-110, so
   // every render was 1.4-4x coarser than labeled. Now v == label.
-  // 10 lpi = pop-art "super big dots" (~83 cells across the page, ~2.5 mm dots).
-  lpi:[{v:10,l:'10'},{v:40,l:'40'},{v:70,l:'70'},{v:90,l:'90'},{v:110,l:'110'}],
+  // 10/25 = pop-art big-dot sizes; 43/71/106 = the REAL RISO driver screen
+  // frequencies (matrix + measured tone curve snap to the nearest of these;
+  // the dot PITCH follows v freely — the real driver synthesizes arbitrary
+  // frequencies too, e.g. its "Screen 40" preset prints 38.6 lpi).
+  lpi:[{v:10,l:'10'},{v:25,l:'25'},{v:43,l:'43'},{v:71,l:'71'},{v:106,l:'106'}],
   misreg:[{v:0,l:'OFF'},{v:2,l:'Low'},{v:4,l:'Med'},{v:6,l:'Hi'}],
   margin:[{v:0,l:'0'},{v:2,l:'2'},{v:4,l:'4'},{v:6,l:'6'},{v:8,l:'8'},{v:12,l:'12'}],
   ghosting:[{v:0,l:'OFF'},{v:40,l:'Med'},{v:80,l:'High'}],
