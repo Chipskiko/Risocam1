@@ -845,8 +845,17 @@ function cycleStampShape(){
   const v = el('stampShapeBtnVal'); if(v) v.textContent = STAMP_SHAPES[window._stampShape];
   R.toast('Stamp: ' + STAMP_SHAPES[window._stampShape]);
   if(typeof refreshShapeIcons === 'function') refreshShapeIcons();
+  syncAsciiChips();
   markDirty();
 }
+// ASCII-only chips (charset + custom font) appear next to the stamp button
+// only while the ASCII stamp is active.
+function syncAsciiChips(){
+  const show = (window._stampShape|0) === 5;
+  const a = el('asciiCharsetBtn'); if(a) a.style.display = show ? '' : 'none';
+  const f = el('asciiFontBtn');    if(f) f.style.display = show ? '' : 'none';
+}
+R.syncAsciiChips = syncAsciiChips;
 // Clean halftone toggle — Spectrolite-style preview where SCREEN renders
 // just the halftone dots without paper texture, drum jitter, ink noise,
 // dot gain, or any other simulation. The user's noise sliders aren't

@@ -634,7 +634,10 @@ function genVoidClusterMask(size){
 // platform without Georgian fonts silently falls back to the rest.
 function _buildGlyphAtlas(){
   const COLS = 16, ROWS = 16, CELL = 64; // 16 random alternatives per density level
-  const FONT = 'bold ' + Math.round(CELL * 0.72) + 'px "Helvetica Neue", Arial, sans-serif';
+  // Custom uploaded font (FontFace API) leads the stack; system fonts fall
+  // back PER GLYPH, so a font missing half the charset still renders fully.
+  const fam = window._asciiFontFamily ? '"' + window._asciiFontFamily + '", ' : '';
+  const FONT = 'bold ' + Math.round(CELL * 0.72) + 'px ' + fam + '"Helvetica Neue", Arial, sans-serif';
   // Measure each candidate's ink coverage on a scratch cell.
   const m = document.createElement('canvas'); m.width = m.height = CELL;
   const mc = m.getContext('2d', { willReadFrequently: true });
@@ -649,10 +652,14 @@ function _buildGlyphAtlas(){
     for (let i = 3; i < d.length; i += 4){ cov += d[i]; h = (h * 31 + d[i]) | 0; }
     return { cov: cov / (255 * CELL * CELL), h: h };
   }
-  // English-first (user request); Georgian Mkhedruli joins the pool via
-  // console: R.setAsciiGeorgian(true) (atlas rebuilds on next frame).
-  const georgian = window._asciiGeorgian ? 'აბგდევზთიკლმნოპჟრსტუფქღყშჩცძწჭხჯჰ' : '';
-  const latin = 'ABCDEFGHJKLMNOPQRSTUVWXYZabcdefghkmnopqrstuvwxyz0123456789';
+  // Charset modes (settings chip / R.cycleAsciiCharset):
+  //   0 = Latin, 1 = Georgian Mkhedruli only, 2 = mixed.
+  // (window._asciiGeorgian kept as the legacy console toggle → mixed.)
+  const charsetMode = (window._asciiCharset !== undefined) ? window._asciiCharset : (window._asciiGeorgian ? 2 : 0);
+  const geoChars = 'აბგდევზთიკლმნოპჟრსტუფქღყშჩცძწჭხჯჰ';
+  const latChars = 'ABCDEFGHJKLMNOPQRSTUVWXYZabcdefghkmnopqrstuvwxyz0123456789';
+  const latin = charsetMode === 1 ? '' : latChars;
+  const georgian = charsetMode >= 1 ? geoChars : '';
   const syms = '.,:;-~^"*+=!?/()%#&@$';
   const tofu = sig('͸'); // unassigned codepoint → .notdef box signature
   const glyphs = [];
@@ -1936,10 +1943,63 @@ R.setAmtScanDpi = function(dpi){
 // scan order (not serpentine) — A/B visually before using for finals.
 // ASCII stamp: include Georgian Mkhedruli in the glyph pool (English-only by
 // default while testing). Drops the atlas so it rebuilds on the next frame.
+// (Legacy console toggle — the settings chip uses cycleAsciiCharset below.)
 R.setAsciiGeorgian = function(on){
   window._asciiGeorgian = !!on;
+  window._asciiCharset = on ? 2 : 0;
   window._glyphAtlasTex = null;
   try { markDirty(); } catch(e) {}
+};
+
+// ASCII charset chip: Latin → Georgian → mixed. Atlas rebuilds next frame.
+R.cycleAsciiCharset = function(){
+  window._asciiCharset = ((window._asciiCharset || 0) + 1) % 3;
+  window._glyphAtlasTex = null;
+  try { markDirty(); } catch(e) {}
+  const el = document.getElementById('asciiCharsetVal');
+  if(el) el.textContent = ['ABC', 'აბგ', 'A+ა'][window._asciiCharset];
+  return window._asciiCharset;
+};
+
+// ASCII custom font: load an uploaded TTF/OTF/WOFF via the FontFace API and
+// rebuild the glyph atlas with it. Missing glyphs fall back per-character to
+// the system stack (so a display font with no Georgian still renders GEO
+// mode). Session-scoped — fonts are not persisted.
+R.uploadAsciiFont = function(file){
+  if(!file) return;
+  file.arrayBuffer().then(function(buf){
+    const face = new FontFace('RisocamAscii', buf);
+    return face.load().then(function(loaded){
+      if(window._asciiFontFace){ try { document.fonts.delete(window._asciiFontFace); } catch(e){} }
+      document.fonts.add(loaded);
+      window._asciiFontFace = loaded;
+      window._asciiFontFamily = 'RisocamAscii';
+      window._asciiFontName = (file.name || 'custom').replace(/\.[^.]+$/, '');
+      window._glyphAtlasTex = null;
+      try { markDirty(); } catch(e){}
+      const el = document.getElementById('asciiFontVal');
+      if(el) el.textContent = window._asciiFontName.slice(0, 9);
+      R.toast && R.toast('ASCII font: ' + window._asciiFontName);
+    });
+  }).catch(function(e){
+    console.warn('[asciiFont] load failed', e);
+    R.toast && R.toast('Font load failed');
+  });
+};
+R.resetAsciiFont = function(){
+  if(window._asciiFontFace){ try { document.fonts.delete(window._asciiFontFace); } catch(e){} }
+  window._asciiFontFace = null;
+  window._asciiFontFamily = null;
+  window._asciiFontName = null;
+  window._glyphAtlasTex = null;
+  try { markDirty(); } catch(e){}
+  const el = document.getElementById('asciiFontVal');
+  if(el) el.textContent = 'Aa';
+};
+// Font chip click: no custom font → open the picker; custom active → reset.
+R.asciiFontClick = function(){
+  if(window._asciiFontFamily){ R.resetAsciiFont(); R.toast && R.toast('ASCII font: default'); }
+  else { const inp = document.getElementById('asciiFontFile'); if(inp){ inp.value = ''; inp.click(); } }
 };
 R.setAmtWebGPU = function(on){
   window._amtWebGPU = !!on;
@@ -2057,8 +2117,10 @@ function _runTonePrepass(dw, dh){
         mxx = Math.max(mxx, rx); mxy = Math.max(mxy, ry);
       }
       aMinX = Math.floor(mnx) - 3; aMinY = Math.floor(mny) - 3;
-      aW = Math.min(2048, Math.ceil(mxx) - aMinX + 4); aH = Math.min(2048, Math.ceil(mxy) - aMinY + 4);
-      texW = aW; texH = aH; passId = 1.0;
+      // 3x3 quadrant bake layout (presence / size / 3x2 candidate texels) —
+      // lattice capped so texW = 3*aW stays GL-safe at <= 2046.
+      aW = Math.min(682, Math.ceil(mxx) - aMinX + 4); aH = Math.min(682, Math.ceil(mxy) - aMinY + 4);
+      texW = aW * 3; texH = aH * 3; passId = 1.0;
     } else {
       // Shared lattice bounds over ALL plate angles (the four quadrants share
       // u_aMin/u_aDims). Pitch floors at the dot cell and rises if the lattice

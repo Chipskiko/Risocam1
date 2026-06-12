@@ -128,6 +128,9 @@
           <div id="screenPrimary" style="display:none;gap:6px">
             <button class="regmark-btn active" id="lpiBtnScreen" onclick="R.cycleLpi()" title="Lines Per Inch"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><g transform="rotate(45 10 10)"><circle cx="5" cy="5" r="1.5" fill="currentColor"/><circle cx="13" cy="5" r="1.5" fill="currentColor"/><circle cx="5" cy="13" r="1.5" fill="currentColor"/><circle cx="13" cy="13" r="1.5" fill="currentColor"/><circle cx="9" cy="9" r="2" fill="currentColor"/></g></svg><span class="regmark-val" id="lpiBtnVal">71</span></button>
             <button class="regmark-btn" id="stampShapeBtn" onclick="R.cycleStampShape()" title="Halftone stamp shape — replaces the round dot with a custom shape (square, diamond, plus, star, ASCII map: random letters &amp; symbols incl. Georgian, tone-ranked like classic ASCII art; best at low LPI)."><span class="regmark-icon" id="stampShapeIcon" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px"></span><span class="regmark-val" id="stampShapeBtnVal">Circle</span></button>
+            <button class="regmark-btn" id="asciiCharsetBtn" style="display:none" onclick="R.cycleAsciiCharset()" title="ASCII charset — Latin / Georgian Mkhedruli / mixed"><span class="regmark-val" id="asciiCharsetVal">ABC</span></button>
+            <button class="regmark-btn" id="asciiFontBtn" style="display:none" onclick="R.asciiFontClick()" title="ASCII font — click to upload a TTF/OTF/WOFF; click again to reset to default"><span class="regmark-val" id="asciiFontVal">Aa</span></button>
+            <input type="file" id="asciiFontFile" accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2" style="display:none" onchange="R.uploadAsciiFont(this.files[0])">
             <button class="regmark-btn" id="screenCleanBtn" onclick="R.toggleScreenClean()" title="Clean halftone preview — bypasses paper texture, drum jitter, ink noise, dot gain, etc. Pure halftone dots like Spectrolite's preview, what a printer's RIP would receive."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="6" cy="6" r="1.5" fill="currentColor"/><circle cx="14" cy="6" r="1.5" fill="currentColor"/><circle cx="6" cy="14" r="1.5" fill="currentColor"/><circle cx="14" cy="14" r="1.5" fill="currentColor"/><circle cx="10" cy="10" r="1.5" fill="currentColor"/></svg><span class="regmark-val" id="screenCleanBtnVal">Off</span></button>
           </div>
           <!-- LINES: LPI + line shape -->
@@ -2534,6 +2537,25 @@ float asciiCov(vec2 suv, vec2 srpx, int idx, vec2 boxHalf){
   return mix(tc, tc * tc * (3.0 - 2.0 * tc), 0.15);
 }
 
+// 3x3 quadrant layout of the ASCII anchor-bake texture (prepass pass 1):
+// slot 0 = presence (4 plates; clump field + margin mask baked in),
+// slot 1 = size/1.5 (4 plates), slots 2..7 = candidate k pairs:
+// A=(jit.x, jit.y, spreadT, gate), B=(rotT, glyphSlot/255, -, -).
+vec2 aBakeUV(float slot, vec2 aId){
+  vec2 local = clamp(aId - u_aMin + 0.5, vec2(0.5), u_aDims - 0.5);
+  return (vec2(mod(slot, 3.0), floor(slot / 3.0)) * u_aDims + local) / (3.0 * u_aDims);
+}
+
+// ─── ASCII stamp v3 — fragment loop does ZERO hashing ─────────────────────
+// Everything anchor-frequency (ink chains, curve lookups, clump noise,
+// margin mask, and the candidate hash streams) is baked once per anchor per
+// frame by the prepass into the 3x3-quadrant texture above; this loop is
+// fetch + compare + atlas taps. The candidate field is shared by all four
+// plates (one typed master, four inks): the gate value is one draw tested
+// against each plate's own presence threshold, and the texels are warp- and
+// layer-coherent (every fragment of a cell reads the same handful). The old
+// version burned ~650 hashes + 36 ink-chain texels per fragment (ASCII
+// measured 2.7x the dot screen's frame cost).
 float asciiStamp(vec2 skUVL, vec2 offL, int idx, float fragCov, float pf){
   // ASCII pitch = 2x the dot-screen cell: at 10 LP letters are twice the old
   // size, and the whole LP range scales the same way.
@@ -2542,56 +2564,46 @@ float asciiStamp(vec2 skUVL, vec2 offL, int idx, float fragCov, float pf){
   vec2 lpixL = (skUVL + offL) * u_res;
   vec2 rp = vec2(lpixL.x*ca - lpixL.y*sa, lpixL.x*sa + lpixL.y*ca) / cellPx;
   vec2 aBase = floor(rp - 0.5);                   // 3x3 ring covers reach 1.5
-  bool twoTaps = cellPx < 12.0;                   // AA tap 2 only for small letters
+  bool twoTaps = cellPx < 8.0;                    // AA tap 2 only for tiny letters
   vec2 tap = vec2(0.375, 0.25) / cellPx;
   float ink0 = 0.0, ink1 = 0.0;
   for(int oy = -1; oy <= 1; oy++){
     for(int ox = -1; ox <= 1; ox++){
       vec2 aId = aBase + vec2(float(ox), float(oy));
-      vec2 aW = mod(aId, 1021.0);
-      // ANCHOR TONE from the lattice prepass texture (computed once per frame
-      // at anchor resolution instead of per fragment — the big optimization;
-      // unit 9 / u_amtMaster0 is time-shared, masters are RISO-only).
-      // Per-plate misreg/skew offsets are ignored for TONE (≤2px vs a cell).
-      vec2 aTexel = (aId - u_aMin + 0.5) / u_aDims;
-      vec4 tones = texture2D(u_amtMaster0, aTexel);
-      float acov = idx == 0 ? tones.r : (idx == 1 ? tones.g : (idx == 2 ? tones.b : tones.a));
-      // print-area mask still acts on PRESENCE at the anchor (cheap math)
-      vec2 aLat = (aId + 0.5) * cellPx;
-      vec2 aPix = vec2(aLat.x*ca + aLat.y*sa, -aLat.x*sa + aLat.y*ca);
-      vec2 aUV = aPix / u_res;
-      acov *= printMask(aUV - offL, offL, aUV * REF);
-      if(acov > 0.004){                            // blank anchors: skip everything
-        vec3 curves = texture2D(u_ht5Matrix, vec2(mix(0.002, 0.998, acov), 16.5 / 17.0)).rgb;
-        float pres = curves.g * (0.4 + 1.2 * valueNoise(aUV * 5.0 * REF * 0.01));
-        float size = 0.3 + curves.b * 1.2;
-        for(int k = 0; k < 3; k++){
-          vec2 hs = aW * 13.1 + vec2(float(k) * 37.7 + u_stampSeed * 0.917,
-                                     float(k) * 23.9 + u_stampSeed * 1.131);
-          if(hash(hs) <= pres){
-            vec2 jit = vec2(hash(hs + 7.3), hash(hs + 19.1)) - 0.5;      // EXACTLY ±0.5: stationary
-            float sz = min(size * (0.78 + 0.55 * hash(hs + 29.7)), 1.5); // spread, reach invariant
-            vec2 centre = aId + 0.5 + jit;
-            // radius pre-test: most candidates can't cover this fragment —
-            // skip the glyph hash/rotation/atlas fetches for those
-            vec2 dc = rp - centre;
-            if(dot(dc, dc) < sz * sz * 0.52){       // (0.72·sz)² ≈ rotated-quad bound
-              float rot = (hash(hs + 41.3) - 0.5) * 0.28 * step(0.55, sz);
-              float cr = cos(rot), sr = sin(rot);
-              float slot = floor(hash(hs + 53.9) * 224.0);
-              vec2 cell = vec2(mod(slot, 16.0), 1.0 + floor(slot / 16.0));
-              vec2 d = dc / sz;
-              d = vec2(d.x*cr - d.y*sr, d.x*sr + d.y*cr) + 0.5;
-              if(d.x > 0.0 && d.x < 1.0 && d.y > 0.0 && d.y < 1.0){
-                ink0 = max(ink0, texture2D(u_ht5Matrix, (cell + 0.0234 + d * 0.9532) / vec2(16.0, 17.0)).r);
-              }
-              if(twoTaps){
-                d = (dc + tap) / sz;
-                d = vec2(d.x*cr - d.y*sr, d.x*sr + d.y*cr) + 0.5;
-                if(d.x > 0.0 && d.x < 1.0 && d.y > 0.0 && d.y < 1.0){
-                  ink1 = max(ink1, texture2D(u_ht5Matrix, (cell + 0.0234 + d * 0.9532) / vec2(16.0, 17.0)).r);
-                }
-              }
+      // reach cull: a candidate centre sits within 0.71 of the anchor cell
+      // centre and its glyph reaches 1.08 further (1.79 total, 3.2 squared)
+      vec2 dRing = rp - (aId + 0.5);
+      if(dot(dRing, dRing) > 3.2) continue;
+      vec4 presV = texture2D(u_amtMaster0, aBakeUV(0.0, aId));
+      float pres = idx == 0 ? presV.r : (idx == 1 ? presV.g : (idx == 2 ? presV.b : presV.a));
+      if(pres <= 0.0039) continue;                // blank anchor for this plate
+      vec4 sizeV = texture2D(u_amtMaster0, aBakeUV(1.0, aId));
+      float size = (idx == 0 ? sizeV.r : (idx == 1 ? sizeV.g : (idx == 2 ? sizeV.b : sizeV.a))) * 1.5;
+      for(int k = 0; k < 3; k++){
+        vec4 cA = texture2D(u_amtMaster0, aBakeUV(2.0 + float(k) * 2.0, aId));
+        if(cA.a > pres) continue;                 // presence gate (shared draw)
+        vec2 jit = cA.xy - 0.5;                   // EXACTLY ±0.5: stationary
+        float sz = min(size * (0.78 + 0.55 * cA.z), 1.5); // spread, reach invariant
+        vec2 centre = aId + 0.5 + jit;
+        // radius pre-test: most candidates can't cover this fragment —
+        // skip the rotation/atlas fetches for those
+        vec2 dc = rp - centre;
+        if(dot(dc, dc) < sz * sz * 0.52){         // (0.72·sz)² ≈ rotated-quad bound
+          vec4 cB = texture2D(u_amtMaster0, aBakeUV(3.0 + float(k) * 2.0, aId));
+          float rot = (cB.x - 0.5) * 0.28 * step(0.55, sz);
+          float cr = cos(rot), sr = sin(rot);
+          float slot = floor(cB.y * 255.0 + 0.5);
+          vec2 cell = vec2(mod(slot, 16.0), 1.0 + floor(slot / 16.0));
+          vec2 d = dc / sz;
+          d = vec2(d.x*cr - d.y*sr, d.x*sr + d.y*cr) + 0.5;
+          if(d.x > 0.0 && d.x < 1.0 && d.y > 0.0 && d.y < 1.0){
+            ink0 = max(ink0, texture2D(u_ht5Matrix, (cell + 0.0234 + d * 0.9532) / vec2(16.0, 17.0)).r);
+          }
+          if(twoTaps){
+            d = (dc + tap) / sz;
+            d = vec2(d.x*cr - d.y*sr, d.x*sr + d.y*cr) + 0.5;
+            if(d.x > 0.0 && d.x < 1.0 && d.y > 0.0 && d.y < 1.0){
+              ink1 = max(ink1, texture2D(u_ht5Matrix, (cell + 0.0234 + d * 0.9532) / vec2(16.0, 17.0)).r);
             }
           }
         }
@@ -2632,22 +2644,57 @@ void main(){
       gl_FragColor = vec4(floor(e8) / 255.0, fract(e8), 0.0, 1.0);
       return;
     }
-    // Pass 1 — ASCII anchor tone: POINT-sampled (boxR=0) so letters keep
-    // full size right up to content edges; shared angle-0 lattice, 2x pitch.
-    vec2 aId = floor(gl_FragCoord.xy) + u_aMin;
-    float cpx = u_screenCell * 2.0;
-    float ca = cos(u_angle0), sa = sin(u_angle0);
-    vec2 aLat = (aId + 0.5) * cpx;
-    vec2 aPix = vec2(aLat.x*ca + aLat.y*sa, -aLat.x*sa + aLat.y*ca);
-    vec2 aUV = aPix / u_res;
-    vec2 aRpx = aUV * REF;
-    vec2 boxR = vec2(0.0);
-    vec4 tones;
-    tones.r = clamp(applyTextRouting(asciiCov(aUV, aRpx, 0, boxR), aUV, 0), 0.0, 1.0);
-    tones.g = u_layers > 1 ? clamp(applyTextRouting(asciiCov(aUV, aRpx, 1, boxR), aUV, 1), 0.0, 1.0) : 0.0;
-    tones.b = u_layers > 2 ? clamp(applyTextRouting(asciiCov(aUV, aRpx, 2, boxR), aUV, 2), 0.0, 1.0) : 0.0;
-    tones.a = u_layers > 3 ? clamp(applyTextRouting(asciiCov(aUV, aRpx, 3, boxR), aUV, 3), 0.0, 1.0) : 0.0;
-    gl_FragColor = tones;
+    // Pass 1 — ASCII anchor BAKE, 3x3 quadrants (see aBakeUV): everything
+    // anchor-frequency happens HERE, once per anchor per frame, so the
+    // per-fragment stamp loop does zero hashing and runs no ink chains.
+    // Tone is POINT-sampled (boxR=0) so letters keep full size right up to
+    // content edges; shared angle-0 lattice, 2x pitch.
+    vec2 t = floor(gl_FragCoord.xy);
+    vec2 q = floor(t / u_aDims);                  // quadrant col,row 0..2
+    float slot = q.y * 3.0 + q.x;
+    vec2 aId = t - q * u_aDims + u_aMin;
+    if(slot < 1.5){
+      // slots 0/1: per-plate presence & size — ink chain + margin mask +
+      // clump field + curve strip, exactly the per-anchor math the stamp
+      // loop used to repeat per fragment per layer.
+      float cpx = u_screenCell * 2.0;
+      float ca = cos(u_angle0), sa = sin(u_angle0);
+      vec2 aLat = (aId + 0.5) * cpx;
+      vec2 aPix = vec2(aLat.x*ca + aLat.y*sa, -aLat.x*sa + aLat.y*ca);
+      vec2 aUV = aPix / u_res;
+      vec2 aRpx = aUV * REF;
+      vec2 boxR = vec2(0.0);
+      vec4 tones;
+      tones.r = clamp(applyTextRouting(asciiCov(aUV, aRpx, 0, boxR), aUV, 0), 0.0, 1.0);
+      tones.g = u_layers > 1 ? clamp(applyTextRouting(asciiCov(aUV, aRpx, 1, boxR), aUV, 1), 0.0, 1.0) : 0.0;
+      tones.b = u_layers > 2 ? clamp(applyTextRouting(asciiCov(aUV, aRpx, 2, boxR), aUV, 2), 0.0, 1.0) : 0.0;
+      tones.a = u_layers > 3 ? clamp(applyTextRouting(asciiCov(aUV, aRpx, 3, boxR), aUV, 3), 0.0, 1.0) : 0.0;
+      // one shared margin mask (one typed master): letters at the sheet
+      // margin appear/vanish on all plates together
+      tones *= printMask(aUV - u_off0, u_off0, aRpx);
+      float clump = 0.4 + 1.2 * valueNoise(aUV * 5.0 * REF * 0.01);
+      bool wantPres = slot < 0.5;
+      vec4 outv = vec4(0.0);
+      if(tones.r > 0.004){ vec3 cv = texture2D(u_ht5Matrix, vec2(mix(0.002, 0.998, tones.r), 16.5/17.0)).rgb; outv.r = wantPres ? clamp(cv.g * clump, 0.0, 1.0) : (0.3 + cv.b * 1.2) / 1.5; }
+      if(tones.g > 0.004){ vec3 cv = texture2D(u_ht5Matrix, vec2(mix(0.002, 0.998, tones.g), 16.5/17.0)).rgb; outv.g = wantPres ? clamp(cv.g * clump, 0.0, 1.0) : (0.3 + cv.b * 1.2) / 1.5; }
+      if(tones.b > 0.004){ vec3 cv = texture2D(u_ht5Matrix, vec2(mix(0.002, 0.998, tones.b), 16.5/17.0)).rgb; outv.b = wantPres ? clamp(cv.g * clump, 0.0, 1.0) : (0.3 + cv.b * 1.2) / 1.5; }
+      if(tones.a > 0.004){ vec3 cv = texture2D(u_ht5Matrix, vec2(mix(0.002, 0.998, tones.a), 16.5/17.0)).rgb; outv.a = wantPres ? clamp(cv.g * clump, 0.0, 1.0) : (0.3 + cv.b * 1.2) / 1.5; }
+      gl_FragColor = outv;
+      return;
+    }
+    // slots 2..7: the candidate hash streams (k = floor((slot-2)/2)),
+    // quantized to 8 bits — jit at 1/255 cell, gate/presence compared on
+    // the same 8-bit scale, glyph slot exact.
+    float kf = floor((slot - 2.0) * 0.5);
+    float halfB = slot - 2.0 - kf * 2.0;          // 0 = A texel, 1 = B texel
+    vec2 aW = mod(aId, 1021.0);
+    vec2 hs = aW * 13.1 + vec2(kf * 37.7 + u_stampSeed * 0.917,
+                               kf * 23.9 + u_stampSeed * 1.131);
+    if(halfB < 0.5){
+      gl_FragColor = vec4(hash(hs + 7.3), hash(hs + 19.1), hash(hs + 29.7), hash(hs)); // jit.x, jit.y, spreadT, gate
+    } else {
+      gl_FragColor = vec4(hash(hs + 41.3), floor(hash(hs + 53.9) * 224.0) / 255.0, 0.0, 0.0); // rotT, glyphSlot/255
+    }
     return;
   }
 
@@ -3165,10 +3212,10 @@ void main(){
 <script src="js/compare.js?v=6"></script>
 <script src="js/riso-amt.js?v=24"></script>
 <script src="js/riso-amt-webgpu.js?v=5"></script>
-<script src="js/renderer.js?v=120"></script>
+<script src="js/renderer.js?v=121"></script>
 <script src="js/source.js?v=47"></script>
 <script src="js/save.js?v=53"></script>
-<script src="js/ui-controls.js?v=53"></script>
+<script src="js/ui-controls.js?v=54"></script>
 <script src="js/ui-paper.js?v=13"></script>
 <script src="js/phone.js?v=19"></script>
 <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');</script>
