@@ -1,11 +1,18 @@
 # Plan: RISO Driver-Derived Screen Engine (circles → real threshold matrices)
 
-Status: P1+P2 SHIPPED (commit 8bdeecb) — engine runs on real driver matrices
-with endpoint-correct AA; next: P3 (TRC LUTs) → P4 (edge toggle) → P5 (export
-parity) → P6 (validation + default flip). Engine still console-only
-(R.setScreenType(1)) until the flip. · Evidence: 3-agent deep dive (local
-driver data, current-code audit with offline simulation, RIP-practice
-research). Goal: screen mode's dot
+Status: P1+P2 SHIPPED (8bdeecb); P4 SOFT-EDGE DEFAULT SHIPPED for circles
+(cell-integrated coverage via quadrant-packed anchor-tone prepass; authentic
+slicing = R.setScreenEdge(0)). SCOPE DECISION (user): the faithful engine —
+matrix screens, LPI snap, soft edges — is confined to the CIRCLE stamp; other
+stamp shapes and ASCII stay stylized (ASCII reverted to point-sampled anchor
+tone: full-size letters up to edges). Next: P3 (TRC LUTs) → P5 (export parity:
+now covers ASCII tone AND circle soft edges) → P6 (validation + default flip,
+circles only). Matrix engine still console-only (R.setScreenType(1)).
+Known P4 refinement: quadrant lattice is phase-aligned for the procedural
+engine; the matrix engine's dot phase is offset half a cell in x (slight
+residual edge slicing there) — align when the matrix dot phase is measured.
+· Evidence: 3-agent deep dive (local driver data, current-code audit with
+offline simulation, RIP-practice research). Goal: screen mode's dot
 engine uses RISO's actual threshold matrices while keeping all accumulated look
 work, and the hard-edge behavior becomes a deliberate choice.
 

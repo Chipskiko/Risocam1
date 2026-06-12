@@ -421,9 +421,11 @@ uniform float u_resScale; // 1x, 2x, 4x — scales grain detail
 uniform float u_time;
 uniform float u_frameSeed; // fresh random 0-1 each rendered frame
 uniform float u_stampSeed; // ASCII stamp layout seed — JS re-rolls on ANIMATION ticks only (not slider-drag re-renders); integer 0..1020
-uniform float u_asciiTonePass; // 1 = render the ASCII anchor-tone lattice (tiny FBO pass)
+uniform float u_asciiTonePass; // 1 = ASCII anchor-tone lattice pass; 2 = circles quadrant cell-tone pass
 uniform vec2 u_aMin;           // lattice-space origin of the tone texture
-uniform vec2 u_aDims;          // tone texture dims (texels = anchors)
+uniform vec2 u_aDims;          // tone LATTICE dims (texels = anchors; circles texture is 2x2 quadrants of this)
+uniform float u_aPitch;        // circles tone lattice pitch in px (>= dot cell, capped by texture size)
+uniform float u_edgeSoft;      // 1 = circles use cell-integrated coverage (dots shrink at edges, never sliced)
 
 uniform int u_layers;
 uniform vec3 u_ink0, u_ink1, u_ink2, u_ink3;
@@ -1456,13 +1458,30 @@ float screenMatrix(float coverage, vec2 pix, float cellPx, float angle){
   return max(ink, step(0.99607, v));
 }
 
+// ─── Cell-integrated coverage lookup (SCREEN circles, soft edges) ─────────
+// One box-averaged tone per dot cell, from the quadrant-packed prepass
+// texture riding unit 9 / u_amtMaster0 (quadrant = plate; masters are
+// RISO-only so the unit is free in SCREEN mode). Sizing each dot by its
+// cell's MEAN tone is RIP "screen-resolution prefiltering": a dot at a hard
+// content edge shrinks as a whole dot instead of being sliced mid-dot.
+float cellTone(vec2 pix, float angle, int idx){
+  float c = cos(angle), s = sin(angle);
+  vec2 rp = vec2(pix.x*c - pix.y*s, pix.x*s + pix.y*c);
+  vec2 aId = floor(rp / u_aPitch);
+  vec2 q = vec2(idx == 1 || idx == 3 ? 1.0 : 0.0, idx >= 2 ? 1.0 : 0.0);
+  vec2 local = clamp(aId - u_aMin + 0.5, vec2(0.5), u_aDims - 0.5);
+  return texture2D(u_amtMaster0, (q * u_aDims + local) / (2.0 * u_aDims)).r;
+}
+
 // Dispatch + 4× supersample the chosen SCREEN engine. The dot grid is a
 // rotated periodic pattern; sampled once per fragment it aliases against the
 // pixel grid → moiré (worst at near-solid, where the tiny corner gaps form a
 // fine lattice). Averaging 4 sub-pixel samples band-limits the pattern before
 // it hits the pixel grid, which removes the moiré.
+// The RISO matrix engine is confined to the CIRCLE stamp — circles are the
+// faithful screen; the other stamp shapes stay stylized/procedural.
 float screenEngine(float val, vec2 pix, float cellPx, float angle, float lidx){
-  return (u_screenType > 0.5) ? screenMatrix(val, pix, cellPx, angle)
+  return (u_screenType > 0.5 && u_stampShape == 0) ? screenMatrix(val, pix, cellPx, angle)
                               : screenDither(val, pix, cellPx, angle, lidx);
 }
 float screenSampled(float val, vec2 pix, float cellPx, float angle, float lidx){
@@ -2445,13 +2464,20 @@ vec3 applyPaperPBR(vec3 result, vec2 uv){
 float asciiCov(vec2 suv, vec2 srpx, int idx, float boxR){
   float dens = idx == 0 ? u_dens0 : (idx == 1 ? u_dens1 : (idx == 2 ? u_dens2 : u_dens3));
   if(dens < 0.5) return 0.0;
-  // box-average the SOURCE over the anchor footprint (cheap), then run the
-  // tone chain once on the mean — ≈ cell-integrated coverage
-  vec2 o = vec2(boxR);
-  vec3 src = (texture2D(u_src, srcUV(suv + vec2(-o.x, -o.y))).rgb
-            + texture2D(u_src, srcUV(suv + vec2( o.x, -o.y))).rgb
-            + texture2D(u_src, srcUV(suv + vec2(-o.x,  o.y))).rgb
-            + texture2D(u_src, srcUV(suv + vec2( o.x,  o.y))).rgb) * 0.25;
+  // boxR > 0: box-average the SOURCE over the anchor footprint, then run the
+  // tone chain once on the mean — ≈ cell-integrated coverage (circles pass).
+  // boxR = 0: POINT tone at the anchor — ASCII letters render full size right
+  // up to content edges (edge taper is confined to the circles screen).
+  vec3 src;
+  if(boxR > 0.0){
+    vec2 o = vec2(boxR);
+    src = (texture2D(u_src, srcUV(suv + vec2(-o.x, -o.y))).rgb
+         + texture2D(u_src, srcUV(suv + vec2( o.x, -o.y))).rgb
+         + texture2D(u_src, srcUV(suv + vec2(-o.x,  o.y))).rgb
+         + texture2D(u_src, srcUV(suv + vec2( o.x,  o.y))).rgb) * 0.25;
+  } else {
+    src = texture2D(u_src, srcUV(suv)).rgb;
+  }
   src = adjustRGB(src, srpx);
   float ink;
   if(u_sepType == 1){
@@ -2546,6 +2572,26 @@ void main(){
   // per-fragment per-anchor ink chains (was ~72 src fetches + 18 chains per
   // fragment → one texel read per anchor in the main pass).
   if(u_asciiTonePass > 0.5){
+    // Pass 2 — SCREEN circles cell tone: quadrant-packed per-plate lattices
+    // (plate angles differ too much for a shared lattice). Each quadrant
+    // texel = one plate's box-averaged tone at one dot cell.
+    if(u_asciiTonePass > 1.5){
+      vec2 t = floor(gl_FragCoord.xy);
+      vec2 q = step(u_aDims, t);
+      int qi = int(q.x + 2.0 * q.y + 0.5);
+      vec2 aId = t - q * u_aDims + u_aMin;
+      float ang = qi == 0 ? u_angle0 : (qi == 1 ? u_angle1 : (qi == 2 ? u_angle2 : u_angle3));
+      float ca = cos(ang), sa = sin(ang);
+      vec2 aLat = (aId + 0.5) * u_aPitch;
+      vec2 aPix = vec2(aLat.x*ca + aLat.y*sa, -aLat.x*sa + aLat.y*ca);
+      vec2 aUV = aPix / u_res;
+      float boxQ = 0.25 * u_aPitch / u_res.x;
+      float tone = clamp(applyTextRouting(asciiCov(aUV, aUV * REF, qi, boxQ), aUV, qi), 0.0, 1.0);
+      gl_FragColor = vec4(tone);
+      return;
+    }
+    // Pass 1 — ASCII anchor tone: POINT-sampled (boxR=0) so letters keep
+    // full size right up to content edges; shared angle-0 lattice, 2x pitch.
     vec2 aId = floor(gl_FragCoord.xy) + u_aMin;
     float cpx = u_screenCell * 2.0;
     float ca = cos(u_angle0), sa = sin(u_angle0);
@@ -2553,7 +2599,7 @@ void main(){
     vec2 aPix = vec2(aLat.x*ca + aLat.y*sa, -aLat.x*sa + aLat.y*ca);
     vec2 aUV = aPix / u_res;
     vec2 aRpx = aUV * REF;
-    float boxR = 0.25 * cpx / u_res.x;
+    float boxR = 0.0;
     vec4 tones;
     tones.r = clamp(applyTextRouting(asciiCov(aUV, aRpx, 0, boxR), aUV, 0), 0.0, 1.0);
     tones.g = u_layers > 1 ? clamp(applyTextRouting(asciiCov(aUV, aRpx, 1, boxR), aUV, 1), 0.0, 1.0) : 0.0;
@@ -2668,7 +2714,16 @@ void main(){
     float mask = (u_mode==1) ? printMaskCell(skUV0, off0, lpix, u_screenCell, u_angle0) : printMask(skUV0, off0, lrpx);
     cov *= mask;
     cov = applyTextRouting(cov, uv, 0);
-    float grain = (u_mode == 1 && u_stampShape == 5 && u_screenType < 0.5)
+    // CIRCLES soft edges: swap per-fragment coverage for the cell's MEAN tone
+    // (cell-integrated prefilter) — whole dots shrink at hard content edges
+    // instead of slicing, and calBlend's coverage gate can't guillotine the
+    // light half of an edge-straddling cell. Margin mask & text routing stay
+    // fragment-level (the sheet edge is the one cut that's physically real).
+    if(u_mode == 1 && u_stampShape == 0 && u_edgeSoft > 0.5){
+      cov = cellTone(lpix, u_angle0, 0) * mask;
+      cov = applyTextRouting(cov, uv, 0);
+    }
+    float grain = (u_mode == 1 && u_stampShape == 5)
                 ? asciiStamp(skUV0, off0, 0, cov, pf) * printMask(skUV0, off0, lrpx)
                 : getGrainTexture(cov, lrpx, lpix, 0, u_angle0, pf, u_grainMul0);
     // Letters legitimately OVERHANG content edges (anchor carries the tone),
@@ -2716,7 +2771,11 @@ void main(){
     float mask = (u_mode==1) ? printMaskCell(skUV1, off1, lpix, u_screenCell, u_angle1) : printMask(skUV1, off1, lrpx);
     cov *= mask;
     cov = applyTextRouting(cov, uv, 1);
-    float grain = (u_mode == 1 && u_stampShape == 5 && u_screenType < 0.5)
+    if(u_mode == 1 && u_stampShape == 0 && u_edgeSoft > 0.5){
+      cov = cellTone(lpix, u_angle1, 1) * mask;
+      cov = applyTextRouting(cov, uv, 1);
+    }
+    float grain = (u_mode == 1 && u_stampShape == 5)
                 ? asciiStamp(skUV1, off1, 1, cov, pf) * printMask(skUV1, off1, lrpx)
                 : getGrainTexture(cov, lrpx, lpix, 1, u_angle1, pf, u_grainMul1);
     // Letters legitimately OVERHANG content edges (anchor carries the tone),
@@ -2762,7 +2821,11 @@ void main(){
     float mask = (u_mode==1) ? printMaskCell(skUV2, off2, lpix, u_screenCell, u_angle2) : printMask(skUV2, off2, lrpx);
     cov *= mask;
     cov = applyTextRouting(cov, uv, 2);
-    float grain = (u_mode == 1 && u_stampShape == 5 && u_screenType < 0.5)
+    if(u_mode == 1 && u_stampShape == 0 && u_edgeSoft > 0.5){
+      cov = cellTone(lpix, u_angle2, 2) * mask;
+      cov = applyTextRouting(cov, uv, 2);
+    }
+    float grain = (u_mode == 1 && u_stampShape == 5)
                 ? asciiStamp(skUV2, off2, 2, cov, pf) * printMask(skUV2, off2, lrpx)
                 : getGrainTexture(cov, lrpx, lpix, 2, u_angle2, pf, u_grainMul2);
     // Letters legitimately OVERHANG content edges (anchor carries the tone),
@@ -2806,7 +2869,11 @@ void main(){
     float mask = (u_mode==1) ? printMaskCell(skUV3, off3, lpix, u_screenCell, u_angle3) : printMask(skUV3, off3, lrpx);
     cov *= mask;
     cov = applyTextRouting(cov, uv, 3);
-    float grain = (u_mode == 1 && u_stampShape == 5 && u_screenType < 0.5)
+    if(u_mode == 1 && u_stampShape == 0 && u_edgeSoft > 0.5){
+      cov = cellTone(lpix, u_angle3, 3) * mask;
+      cov = applyTextRouting(cov, uv, 3);
+    }
+    float grain = (u_mode == 1 && u_stampShape == 5)
                 ? asciiStamp(skUV3, off3, 3, cov, pf) * printMask(skUV3, off3, lrpx)
                 : getGrainTexture(cov, lrpx, lpix, 3, u_angle3, pf, u_grainMul3);
     // Letters legitimately OVERHANG content edges (anchor carries the tone),
@@ -3056,9 +3123,9 @@ void main(){
 <script src="js/compare.js?v=6"></script>
 <script src="js/riso-amt.js?v=24"></script>
 <script src="js/riso-amt-webgpu.js?v=5"></script>
-<script src="js/renderer.js?v=115"></script>
+<script src="js/renderer.js?v=116"></script>
 <script src="js/source.js?v=47"></script>
-<script src="js/save.js?v=49"></script>
+<script src="js/save.js?v=50"></script>
 <script src="js/ui-controls.js?v=53"></script>
 <script src="js/ui-paper.js?v=13"></script>
 <script src="js/phone.js?v=19"></script>

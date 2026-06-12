@@ -864,8 +864,8 @@ async function exportSeparations(){
   gl.uniform1f(locs.u_postExposure,cached.postExposure||0);
   gl.uniform1f(locs.u_postContrast,cached.postContrast||0);
   gl.uniform1f(locs.u_postSat,cached.postSat||0);
-  // Matrix engine snaps LPI to the real driver presets (match live path).
-  const _lpiEff = (mode === 'screen' && (window._screenType ?? 0) && window._snapScreenLpi)
+  // Matrix engine (circles only) snaps LPI to the real driver presets (match live path).
+  const _lpiEff = (mode === 'screen' && (window._screenType ?? 0) && (window._stampShape|0) === 0 && window._snapScreenLpi)
     ? window._snapScreenLpi(cached.lpi) : cached.lpi;
   gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(dw,dh)/(8.267*_lpiEff)));
   gl.uniform1f(locs.u_ucrStr, cached.ucrStr * 0.01);
@@ -886,8 +886,8 @@ async function exportSeparations(){
   if(locs.u_screenType) gl.uniform1f(locs.u_screenType, (window._screenType ?? 0) ? 1.0 : 0.0);
   if(window._amScreenTex && window._ht5MatrixTex){
     let u8tex = (mode==='screen') ? window._amScreenTex : window._ht5MatrixTex;
-    if(mode==='screen' && (window._screenType ?? 0)){
-      // Matrix engine: driver matrix for the snapped LPI preset (match live path).
+    if(mode==='screen' && (window._screenType ?? 0) && (window._stampShape|0)===0){
+      // Matrix engine (circles only): driver matrix for the snapped LPI preset.
       const mt = window._screenMatrixTexs && window._snapScreenLpi
         && window._screenMatrixTexs[window._snapScreenLpi(cached.lpi)];
       if(mt) u8tex = mt;
@@ -898,6 +898,12 @@ async function exportSeparations(){
     gl.bindTexture(gl.TEXTURE_2D, u8tex);
     gl.activeTexture(gl.TEXTURE0);
   }
+  // Export path runs NO anchor-tone prepass yet (P5 export parity) — force the
+  // per-fragment paths so the shader never samples a stale, wrong-dims tone
+  // texture left on unit 9 by the live render (circles export = authentic
+  // sliced edges until P5 lands).
+  if(locs.u_edgeSoft) gl.uniform1f(locs.u_edgeSoft, 0.0);
+  if(locs.u_asciiTonePass) gl.uniform1f(locs.u_asciiTonePass, 0.0);
   gl.uniform1i(locs.u_lineShape, window._lineShape||0);
   gl.uniform1f(locs.u_lineAmount, window._lineAmount ?? 1.0);
   gl.uniform1f(locs.u_lineWeight, window._lineWeight ?? 1.0);

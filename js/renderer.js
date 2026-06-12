@@ -70,7 +70,7 @@ function initGL(){
    'u_off0','u_off1','u_off2','u_off3',
    'u_angle0','u_angle1','u_angle2','u_angle3','u_screenCell',
    'u_chan0','u_chan1','u_chan2','u_chan3',
-   'u_stampSeed','u_asciiTonePass','u_aMin','u_aDims','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_useLabResidual','u_useCalChord','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
+   'u_stampSeed','u_asciiTonePass','u_aMin','u_aDims','u_aPitch','u_edgeSoft','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_useLabResidual','u_useCalChord','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
    'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_paperShift','u_paperPbrShift','u_paperPbrMul','u_crop','u_paper',
    'u_paperPBR','u_usePaperPBR',
    'u_lutA0','u_lutA1','u_lutA2','u_lutA3',
@@ -758,8 +758,9 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   //   • screen mode, procedural engine + ASCII stamp: the glyph atlas
   if(window._amScreenTex && window._ht5MatrixTex){
     let u8tex = (mode==='screen') ? window._amScreenTex : window._ht5MatrixTex;
-    if(mode === 'screen' && (window._screenType ?? 0)){
-      // Matrix engine: bind the driver matrix for the snapped LPI preset.
+    if(mode === 'screen' && (window._screenType ?? 0) && (window._stampShape|0) === 0){
+      // Matrix engine (CIRCLES only — the faithful screen is confined to the
+      // circle stamp): bind the driver matrix for the snapped LPI preset.
       const mt = window._screenMatrixTexs && window._screenMatrixTexs[window._snapScreenLpi(cached.lpi)];
       if(mt) u8tex = mt;
     } else if(mode === 'screen' && (window._stampShape|0) === 5){
@@ -817,7 +818,8 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   gl.uniform1f(locs.u_postSat,cached.postSat||0);
   // Matrix engine renders at the real driver presets only — snap the LPI so
   // pitch and bound threshold matrix agree (texel = device dot at print size).
-  var _lpiEff = (mode === 'screen' && (window._screenType ?? 0)) ? window._snapScreenLpi(cached.lpi) : cached.lpi;
+  var _lpiEff = (mode === 'screen' && (window._screenType ?? 0) && (window._stampShape|0) === 0)
+    ? window._snapScreenLpi(cached.lpi) : cached.lpi;
   gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(dw,dh)/(8.267*_lpiEff)));
   gl.uniform3fv(locs.u_paperColor,cached.paperColor);
   gl.uniform3f(locs.u_paper, 0.910, 0.912, 0.908);
@@ -1113,36 +1115,68 @@ function _renderInner(){
   // ─── Uniforms — all from cached values, zero DOM access ───
   setRenderUniforms(dw, dh, resScale, isPhoneNow);
 
-  // ── ASCII anchor-tone prepass ──
-  // Renders per-anchor coverage (all plates packed RGBA) into a tiny
-  // lattice-resolution texture, so the main pass reads ONE texel per anchor
-  // instead of re-running the ink chain per fragment (was ~200ms/frame).
+  // ── Anchor-tone prepasses (tiny lattice-resolution FBO, unit 9) ──
+  // Two consumers, mutually exclusive by stamp shape:
+  //  • ASCII (stamp 5, pass 1): per-anchor POINT tone, all plates packed RGBA,
+  //    shared angle-0 lattice at 2x pitch. Replaces per-fragment ink chains
+  //    (was ~200ms/frame). Letters keep full size up to content edges.
+  //  • CIRCLES soft edges (stamp 0, pass 2): per-plate CELL-MEAN tone in a
+  //    2x2 quadrant layout — each dot is sized by its cell's average, so hard
+  //    content edges shrink whole dots instead of slicing them mid-dot.
   // The texture rides unit 9 (u_amtMaster0) — masters are RISO-only.
-  if(mode === 'screen' && (window._stampShape|0) === 5 && !(window._screenType ?? 0) && locs.u_asciiTonePass){
-    const cellPx = Math.max(1.5, Math.min(dw, dh) / (8.267 * cached.lpi)) * 2.0; // mirrors shader (2x pitch)
-    const ang = (layerAngles[0] || 0) * 0.01745329;
-    const ca = Math.cos(ang), sa = Math.sin(ang);
-    // lattice bounds of the screen quad corners (rotate, /cellPx)
-    let mnx = 1e9, mny = 1e9, mxx = -1e9, mxy = -1e9;
+  const _stampNow = (window._stampShape|0);
+  const _wantAsciiTone  = mode === 'screen' && _stampNow === 5;
+  const _wantCircleTone = mode === 'screen' && _stampNow === 0 && (window._screenEdgeSoft ?? 1);
+  if((_wantAsciiTone || _wantCircleTone) && locs.u_asciiTonePass){
+    let aMinX, aMinY, aW, aH, texW, texH, passId;
     const corners = [[0,0],[dw,0],[0,dh],[dw,dh]];
-    for(const p of corners){
-      const rx = (p[0]*ca - p[1]*sa) / cellPx, ry = (p[0]*sa + p[1]*ca) / cellPx;
-      mnx = Math.min(mnx, rx); mny = Math.min(mny, ry);
-      mxx = Math.max(mxx, rx); mxy = Math.max(mxy, ry);
+    let mnx = 1e9, mny = 1e9, mxx = -1e9, mxy = -1e9;
+    if(_wantAsciiTone){
+      const cellPx = Math.max(1.5, Math.min(dw, dh) / (8.267 * cached.lpi)) * 2.0; // mirrors shader (2x pitch)
+      const ang = (layerAngles[0] || 0) * 0.01745329;
+      const ca = Math.cos(ang), sa = Math.sin(ang);
+      // lattice bounds of the screen quad corners (rotate, /cellPx)
+      for(const p of corners){
+        const rx = (p[0]*ca - p[1]*sa) / cellPx, ry = (p[0]*sa + p[1]*ca) / cellPx;
+        mnx = Math.min(mnx, rx); mny = Math.min(mny, ry);
+        mxx = Math.max(mxx, rx); mxy = Math.max(mxy, ry);
+      }
+      aMinX = Math.floor(mnx) - 3; aMinY = Math.floor(mny) - 3;
+      aW = Math.min(2048, Math.ceil(mxx) - aMinX + 4); aH = Math.min(2048, Math.ceil(mxy) - aMinY + 4);
+      texW = aW; texH = aH; passId = 1.0;
+    } else {
+      // Shared lattice bounds over ALL plate angles (the four quadrants share
+      // u_aMin/u_aDims). Pitch floors at the dot cell and rises if the lattice
+      // would overflow 1018/side (texture = 2x2 quadrants, 2048 GL-safe) —
+      // at that density cells are ~2px and per-cell tone is invisible anyway.
+      const lpiEff = (window._screenType ?? 0) ? window._snapScreenLpi(cached.lpi) : cached.lpi;
+      const cellBase = Math.max(1.5, Math.min(dw, dh) / (8.267 * lpiEff));
+      for(let li = 0; li < 4; li++){
+        const ang = (layerAngles[li] || 0) * 0.01745329;
+        const ca = Math.cos(ang), sa = Math.sin(ang);
+        for(const p of corners){
+          const rx = p[0]*ca - p[1]*sa, ry = p[0]*sa + p[1]*ca;
+          mnx = Math.min(mnx, rx); mny = Math.min(mny, ry);
+          mxx = Math.max(mxx, rx); mxy = Math.max(mxy, ry);
+        }
+      }
+      const pitch = Math.max(cellBase, (mxx - mnx) / 1018, (mxy - mny) / 1018);
+      aMinX = Math.floor(mnx / pitch) - 2; aMinY = Math.floor(mny / pitch) - 2;
+      aW = Math.ceil(mxx / pitch) - aMinX + 3; aH = Math.ceil(mxy / pitch) - aMinY + 3;
+      texW = aW * 2; texH = aH * 2; passId = 2.0;
+      if(locs.u_aPitch) gl.uniform1f(locs.u_aPitch, pitch);
     }
-    const aMinX = Math.floor(mnx) - 3, aMinY = Math.floor(mny) - 3;
-    const aW = Math.min(2048, Math.ceil(mxx) - aMinX + 4), aH = Math.min(2048, Math.ceil(mxy) - aMinY + 4);
     // lazy FBO + texture, realloc on dims change
     if(!window._asciiToneFbo){ window._asciiToneFbo = gl.createFramebuffer(); window._asciiToneTex = gl.createTexture(); window._asciiToneDims = [0,0]; }
     gl.activeTexture(gl.TEXTURE9);
     gl.bindTexture(gl.TEXTURE_2D, window._asciiToneTex);
-    if(window._asciiToneDims[0] !== aW || window._asciiToneDims[1] !== aH){
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, aW, aH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    if(window._asciiToneDims[0] !== texW || window._asciiToneDims[1] !== texH){
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, texW, texH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-      window._asciiToneDims = [aW, aH];
+      window._asciiToneDims = [texW, texH];
     }
     gl.uniform2f(locs.u_aMin, aMinX, aMinY);
     gl.uniform2f(locs.u_aDims, aW, aH);
@@ -1152,8 +1186,8 @@ function _renderInner(){
     gl.bindTexture(gl.TEXTURE_2D, (window._amtMasterTex && window._amtMasterTex[0]) || null);
     gl.bindFramebuffer(gl.FRAMEBUFFER, window._asciiToneFbo);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, window._asciiToneTex, 0);
-    gl.viewport(0, 0, aW, aH);
-    gl.uniform1f(locs.u_asciiTonePass, 1.0);
+    gl.viewport(0, 0, texW, texH);
+    gl.uniform1f(locs.u_asciiTonePass, passId);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, dw, dh);
@@ -1161,8 +1195,10 @@ function _renderInner(){
     // NOW the tone texture rides unit 9 for the main pass
     gl.bindTexture(gl.TEXTURE_2D, window._asciiToneTex);
     gl.activeTexture(gl.TEXTURE0);
-  } else if(locs.u_asciiTonePass){
-    gl.uniform1f(locs.u_asciiTonePass, 0.0);
+    if(locs.u_edgeSoft) gl.uniform1f(locs.u_edgeSoft, _wantCircleTone ? 1.0 : 0.0);
+  } else {
+    if(locs.u_asciiTonePass) gl.uniform1f(locs.u_asciiTonePass, 0.0);
+    if(locs.u_edgeSoft) gl.uniform1f(locs.u_edgeSoft, 0.0);
   }
 
   gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
@@ -2014,6 +2050,15 @@ R.setScreenType = function(t){
   try { if(locs.u_screenType) gl.uniform1f(locs.u_screenType, window._screenType ? 1.0 : 0.0); } catch(e){}
   try { markDirty(); } catch(e){}
   console.log('[screen] engine:', window._screenType ? 'RISO matrix' : 'procedural round-dot');
+};
+
+// CIRCLES edge behavior (default ON = soft): cell-integrated coverage — dots
+// shrink at hard content edges instead of being sliced (RIP prefiltering).
+// OFF = authentic per-pixel compare, dots slice exactly like a 600dpi RIP.
+R.setScreenEdge = function(soft){
+  window._screenEdgeSoft = soft ? 1 : 0;
+  try { markDirty(); } catch(e){}
+  console.log('[screen] circle edges:', window._screenEdgeSoft ? 'soft (cell-integrated)' : 'authentic (sliced)');
 };
 
 // (D) Toggle GPU ink-spread (default ON). When ON the soft dot edge is applied
