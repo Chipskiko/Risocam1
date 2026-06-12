@@ -70,7 +70,7 @@ function initGL(){
    'u_off0','u_off1','u_off2','u_off3',
    'u_angle0','u_angle1','u_angle2','u_angle3','u_screenCell',
    'u_chan0','u_chan1','u_chan2','u_chan3',
-   'u_stampSeed','u_asciiTonePass','u_aMin','u_aDims','u_aPitch','u_edgeSoft','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_useLabResidual','u_useCalChord','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
+   'u_stampSeed','u_asciiTonePass','u_aMin','u_aDims','u_aPitch','u_edgeSoft','u_mtxTexel','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_useLabResidual','u_useCalChord','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
    'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_paperShift','u_paperPbrShift','u_paperPbrMul','u_crop','u_paper',
    'u_paperPBR','u_usePaperPBR',
    'u_lutA0','u_lutA1','u_lutA2','u_lutA3',
@@ -238,23 +238,78 @@ function initGL(){
   window._snapScreenLpi = function(lpi){ return lpi < 57 ? 43 : (lpi < 88.5 ? 71 : 106); };
   var AM_W=20, AM_H=20;
   var AM_DATA=[254,250,243,227,208,96,60,35,15,4,2,6,16,36,62,97,210,229,244,252,152,248,238,222,203,110,69,44,23,11,7,12,25,45,71,111,205,224,239,155,154,159,233,215,192,120,85,54,31,26,17,27,32,55,86,121,193,216,164,157,156,163,169,198,184,135,99,77,57,46,37,48,58,78,100,136,185,173,168,161,160,166,171,175,179,145,128,101,87,72,63,73,88,102,128,146,177,174,170,165,90,106,116,131,141,151,147,137,123,113,104,114,124,138,149,150,140,129,115,105,59,65,81,92,127,143,180,187,194,206,211,207,196,188,178,142,125,91,79,64,34,40,50,76,95,133,183,199,217,225,230,226,219,197,182,132,93,74,49,39,13,20,30,53,83,119,191,213,234,240,245,241,231,212,189,118,82,51,29,18,3,9,22,43,68,109,202,221,236,249,253,247,235,220,201,107,67,41,21,8,2,6,16,36,62,97,210,229,244,252,254,250,243,227,208,96,60,35,15,4,7,12,25,45,71,111,205,224,239,155,152,248,238,222,203,110,69,44,23,11,17,27,32,55,86,121,193,216,164,157,154,159,233,215,192,120,85,54,31,26,37,48,58,78,100,136,185,173,168,161,156,163,169,198,184,135,99,77,57,46,63,73,88,102,128,146,177,174,170,165,160,166,171,175,179,145,128,101,87,72,104,114,124,138,149,150,140,129,115,105,90,106,116,131,141,151,147,137,123,113,211,207,196,188,178,142,125,91,79,64,59,65,81,92,127,143,180,187,194,206,230,226,219,197,182,132,93,74,49,39,34,40,50,76,95,133,183,199,217,225,245,241,231,212,189,118,82,51,29,18,13,20,30,53,83,119,191,213,234,240,253,247,235,220,201,107,67,41,21,8,3,9,22,43,68,109,202,221,236,249];
+  // P3 — measured TRC baked INTO the thresholds. Comparing v >= D⁻¹(T) is
+  // exactly equivalent to comparing D(v) >= T, so transforming the threshold
+  // bytes once at build time applies the physical print response (dot loss /
+  // gain measured from 600dpi scans, riso_trc.json) with ZERO per-fragment
+  // cost and no extra sampler. Stored 16-bit (hi in .r, lo in .g) so the
+  // remap never collapses the matrix's tone levels.
+  function _bakeTrcThresholds(bytes, lut){
+    var out = new Float32Array(bytes.length);
+    for(var i = 0; i < bytes.length; i++){
+      var t = bytes[i] / 255;
+      var lo = 0, hi = 255;                     // invert monotone D by bisection
+      while(hi - lo > 1){ var mid = (lo + hi) >> 1; if(lut[mid] < t) lo = mid; else hi = mid; }
+      var d0 = lut[lo], d1 = lut[hi];
+      var v = (lo + (d1 > d0 ? (t - d0) / (d1 - d0) : 0)) / 255;
+      out[i] = Math.min(1, Math.max(0, v)) * 255;
+    }
+    return out;
+  }
+  function _buildThresholdTex16(w, h, vals){    // vals: float 0..255 → hi/lo in r/g
+    var rgba = new Uint8Array(w*h*4);
+    for(var ti = 0; ti < w*h; ti++){
+      var hi = Math.floor(vals[ti]);
+      rgba[ti*4] = hi;
+      rgba[ti*4+1] = Math.round((vals[ti] - hi) * 255);
+      rgba[ti*4+3] = 255;
+    }
+    var t = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE8); gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,rgba);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+    return t;
+  }
   // Bootstrap: AM_DATA above is byte-identical to riso_halftones.json's
   // ht1_6x6_43_45 entry 0 (verified), so the 43-lpi screen works even
-  // before/without the JSON fetch below.
-  window._screenMatrixTexs = { 43: _buildThresholdTex(AM_W, AM_H, AM_DATA) };
-  window._amScreenTex = window._screenMatrixTexs[43]; // fallback ref (save.js)
+  // before/without the fetches below. Entries carry dims for u_mtxTexel
+  // (half-texel phase shift → dots land at cell centers for cellTone).
+  window._screenMatrixTexs = { 43: { tex: _buildThresholdTex(AM_W, AM_H, AM_DATA), cal: null, w: AM_W, h: AM_H, bytes: AM_DATA } };
+  window._amScreenTex = window._screenMatrixTexs[43].tex; // fallback ref (save.js)
+  // P6 DEFAULT FLIP: circles render through the RISO matrix engine (real
+  // driver thresholds + measured TRC) by default. R.setScreenType(0) =
+  // "Classic dots" (the procedural engine, full 10-120 LPI range).
+  if(window._screenType === undefined) window._screenType = 1;
   gl.activeTexture(gl.TEXTURE8); gl.bindTexture(gl.TEXTURE_2D, ht5Tex); // restore default
   // 71 lpi (12×12, 72 levels) and 106 lpi (8×8, 32 levels) come from the
-  // driver dump that already ships with the app. Until the fetch lands, all
-  // presets fall back to the 43-lpi matrix at the correct pitch (the tile
-  // math is dimension-free) — only the quantization-level count differs.
-  fetch('riso_halftones.json').then(function(r){ return r.json(); }).then(function(j){
+  // driver dump; riso_trc.json carries the measured tone-response curves
+  // (lut43 = direct Screen-40 measurement; lut71 interpolated; lut106
+  // extrapolated — see its meta). Until the fetch lands, presets fall back
+  // to the raw 43-lpi matrix at the correct pitch.
+  Promise.all([
+    fetch('riso_halftones.json').then(function(r){ return r.json(); }),
+    fetch('riso_trc.json').then(function(r){ return r.json(); }).catch(function(){ return null; }),
+  ]).then(function(res){
+    var j = res[0], trc = res[1];
     [[71,'ht1_6x6_71_45'],[106,'ht1_6x6_106_45']].forEach(function(p){
       var e = j[p[1]] && j[p[1]].entries && j[p[1]].entries[0];
       if(e && e.data && e.data.length === e.w*e.h){
-        window._screenMatrixTexs[p[0]] = _buildThresholdTex(e.w, e.h, e.data);
+        window._screenMatrixTexs[p[0]] = { tex: _buildThresholdTex(e.w, e.h, e.data), cal: null, w: e.w, h: e.h, bytes: e.data };
       }
     });
+    if(trc){
+      [[43,'lut43'],[71,'lut71'],[106,'lut106']].forEach(function(p){
+        var m = window._screenMatrixTexs[p[0]], lut = trc[p[1]];
+        if(m && lut && lut.length === 256){
+          m.cal = _buildThresholdTex16(m.w, m.h, _bakeTrcThresholds(m.bytes, lut));
+        }
+      });
+    } else {
+      console.warn('[screenMatrix] riso_trc.json unavailable — matrix engine runs uncalibrated (geometry-linear) tone');
+    }
     gl.activeTexture(gl.TEXTURE8); gl.bindTexture(gl.TEXTURE_2D, window._ht5MatrixTex);
     gl.activeTexture(gl.TEXTURE0);
     if(window.R && window.R.markDirty) window.R.markDirty();
@@ -749,7 +804,9 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   gl.uniform1f(locs.u_simNoise, _cleanRender ? 0 : 1);
   gl.uniform1f(locs.u_dotGain,   cached.dotGain);
   gl.uniform1f(locs.u_inkNoise,  cached.inkNoise);
-  // SCREEN engine: 0 = procedural round-dot (DEFAULT), 1 = RISO authentic matrix (console: R.setScreenType(1)).
+  // SCREEN engine: 1 = RISO authentic matrix (DEFAULT for circles; LPI snaps
+  // to 43/71/106), 0 = "Classic dots" procedural (console: R.setScreenType(0)).
+  // Non-circle stamp shapes always use the procedural/stylized paths.
   if(locs.u_screenType) gl.uniform1f(locs.u_screenType, (window._screenType ?? 0) ? 1.0 : 0.0);
   // Unit 8 (the u_ht5Matrix sampler) is time-shared by THREE mode-exclusive
   // consumers — adding a 17th sampler would exceed MAX_TEXTURE_IMAGE_UNITS(16):
@@ -761,8 +818,12 @@ function setRenderUniforms(dw, dh, scale, isPhone){
     if(mode === 'screen' && (window._screenType ?? 0) && (window._stampShape|0) === 0){
       // Matrix engine (CIRCLES only — the faithful screen is confined to the
       // circle stamp): bind the driver matrix for the snapped LPI preset.
-      const mt = window._screenMatrixTexs && window._screenMatrixTexs[window._snapScreenLpi(cached.lpi)];
-      if(mt) u8tex = mt;
+      // TRC-calibrated variant by default (R.setScreenTrc(0) for raw).
+      const m = window._screenMatrixTexs && (window._screenMatrixTexs[window._snapScreenLpi(cached.lpi)] || window._screenMatrixTexs[43]);
+      if(m){
+        u8tex = ((window._screenTrc ?? 1) && m.cal) ? m.cal : m.tex;
+        if(locs.u_mtxTexel) gl.uniform2f(locs.u_mtxTexel, 1.0/m.w, 1.0/m.h);
+      }
     } else if(mode === 'screen' && (window._stampShape|0) === 5){
       if(!window._glyphAtlasTex) try { _buildGlyphAtlas(); } catch(e){ console.warn('[glyphAtlas]', e); }
       if(window._glyphAtlasTex) u8tex = window._glyphAtlasTex;
@@ -2063,6 +2124,15 @@ R.setScreenType = function(t){
   try { if(locs.u_screenType) gl.uniform1f(locs.u_screenType, window._screenType ? 1.0 : 0.0); } catch(e){}
   try { markDirty(); } catch(e){}
   console.log('[screen] engine:', window._screenType ? 'RISO matrix' : 'procedural round-dot');
+};
+
+// Matrix-engine tone calibration (default ON): thresholds carry the measured
+// physical print response (riso_trc.json baked in as T' = D⁻¹(T)). OFF = raw
+// driver matrices (geometry-linear tone, no dot loss/gain).
+R.setScreenTrc = function(on){
+  window._screenTrc = on ? 1 : 0;
+  try { markDirty(); } catch(e){}
+  console.log('[screen] matrix TRC:', window._screenTrc ? 'measured print response' : 'raw (geometry-linear)');
 };
 
 // CIRCLES edge behavior (default ON = soft): cell-integrated coverage — dots

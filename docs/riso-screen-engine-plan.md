@@ -1,18 +1,30 @@
 # Plan: RISO Driver-Derived Screen Engine (circles → real threshold matrices)
 
-Status: P1+P2 SHIPPED (8bdeecb); P4 SOFT-EDGE DEFAULT SHIPPED for circles
-(cell-integrated coverage via quadrant-packed anchor-tone prepass; authentic
-slicing = R.setScreenEdge(0)). SCOPE DECISION (user): the faithful engine —
-matrix screens, LPI snap, soft edges — is confined to the CIRCLE stamp; other
-stamp shapes and ASCII stay stylized (ASCII reverted to point-sampled anchor
-tone: full-size letters up to edges). Next: P3 (TRC LUTs) → P5 (export parity:
-now covers ASCII tone AND circle soft edges) → P6 (validation + default flip,
-circles only). Matrix engine still console-only (R.setScreenType(1)).
-Known P4 refinement: quadrant lattice is phase-aligned for the procedural
-engine; the matrix engine's dot phase is offset half a cell in x (slight
-residual edge slicing there) — align when the matrix dot phase is measured.
-· Evidence: 3-agent deep dive (local driver data, current-code audit with
-offline simulation, RIP-practice research). Goal: screen mode's dot
+Status: ALL PHASES SHIPPED. P1+P2 (8bdeecb): real driver matrices, endpoint-
+correct AA. P4 (cd56c0a + staircase fix ccb9fb9): cell-integrated soft edges,
+default ON; R.setScreenEdge(0) = authentic slicing; 16-bit tone texture,
+16-tap full-cell box, dot-center LINEAR sampling, per-dot dither. P5
+(65b70c1): exports run R._runTonePrepass at export dims (SEPS intentionally
+authentic/per-fragment). P3+P6: measured TRC baked INTO the threshold
+textures as T' = D⁻¹(T) 16-bit (riso_trc.json; lut43 direct measurement
+within 0.9pp of targets, lut71 interpolated, lut106 extrapolated LOW-MED
+conf); half-texel sampling shift phase-aligns all three matrices' dots to
+cell centers (measured); DEFAULT FLIPPED — circles render the matrix engine
+(R.setScreenType(0) = Classic dots; R.setScreenTrc(0) = raw geometry-linear).
+SCOPE (user decision): the faithful engine is confined to the CIRCLE stamp;
+other shapes + ASCII stay stylized (ASCII = point-sampled anchor tone).
+VALIDATION FINDINGS (4-agent analysis): the 8 .prn captures are ALL
+Grain-mode error diffusion — no clustered-dot ground truth exists; statistical
+references + corrected RISORINC3 decoder (escape 0x1E) in docs/validation/.
+The real driver synthesizes integer-diagonal lattices for ARBITRARY lpi
+(measured 38.57/84.85 from the scans) — parametric lattice synthesis is a
+possible future upgrade beyond the 3 stored matrices. Procedural dot law
+matches the driver's sqrt(v) growth within ~25%; perceived dot-size range
+differences are preview-resolution artifacts (smallest dots sub-pixel below
+cellPx~14). The old procedural cutback was resolution-DEPENDENT (1.5/cellPx)
+— preview and export tones disagreed; the matrix+TRC engine is
+resolution-stable.
+· Evidence: 3-agent deep dive + 4-agent P3-P6 analysis workflow. Goal: screen mode's dot
 engine uses RISO's actual threshold matrices while keeping all accumulated look
 work, and the hard-edge behavior becomes a deliberate choice.
 

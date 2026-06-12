@@ -1,0 +1,455 @@
+{
+  "generated": "2026-06-12",
+  "source_dir": "/Users/test/risocam/Test images/test_08_calibration",
+  "format": {
+    "container": "RISORINC3, escape byte 0x1E (RS), commands 0x1E & <args> & <letter>",
+    "raster": "per-scanline PackBits, 1bpp MSB-first, bit 1 = ink; row addressed by '&<row>&V', x-offset '&<n>&H' (constant 70), scanline cmd '&<compressed_len>&i' + payload",
+    "resolution_dpi": [
+      600,
+      600
+    ],
+    "page": "A3 297x420mm (&40;297;420&z), printable width 860 bytes = 6880 px",
+    "driver_settings_header": "&51;0;0;0&Q &201;328;0;0&s &211;111;3;0&s &301;50;30;20&s &30;0;0;0&Q &1001;34;1;3&o (identical across all 8 files)"
+  },
+  "screening_mode_finding": {
+    "classification": "error-diffusion / RISO \"Grain-Touch\" (dispersed single-pixel dots)",
+    "evidence": {
+      "no_clustered_dots": "all tone patches render as isolated 1px dots / dispersed checkerboard",
+      "no_exact_periodicity_match_fractions": {
+        "0,16": 0.7355,
+        "16,0": 0.7363,
+        "16,16": 0.7354,
+        "0,32": 0.7348,
+        "32,0": 0.7347,
+        "2,2": 0.7995,
+        "0,3": 0.7312,
+        "3,0": 0.8125,
+        "random_baseline": 0.7351
+      },
+      "note": "an ordered dither matrix would give match fraction 1.0 at its tile period; max observed 0.81 vs random baseline \u2014 confirms error diffusion, not ordered/AM screen"
+    },
+    "implication": "NO clustered-dot \"Screen-covered\" capture exists in this directory; classic dot pitch / screen angle are undefined for this data. Reported pitch = principal wavelength of the diffusion blue-noise ring; angle = dominant spectral direction (weak)."
+  },
+  "files": [
+    {
+      "file": "test_01_white.prn",
+      "size_bytes": 15769,
+      "decoded_width_px": 0,
+      "decoded_height_px": 0,
+      "v_row_range": null,
+      "nonblank_rows": 0,
+      "h_offset_cmd": null,
+      "bytes_per_row": 0,
+      "global_ink_fraction": 0.0
+    },
+    {
+      "file": "test_02_black.prn",
+      "size_bytes": 375828,
+      "decoded_width_px": 6880,
+      "decoded_height_px": 9755,
+      "v_row_range": [
+        119,
+        9873
+      ],
+      "nonblank_rows": 9755,
+      "h_offset_cmd": 70,
+      "bytes_per_row": 860,
+      "global_ink_fraction": 0.99913
+    },
+    {
+      "file": "test_03_gray50.prn",
+      "size_bytes": 8986770,
+      "decoded_width_px": 6880,
+      "decoded_height_px": 9753,
+      "v_row_range": [
+        121,
+        9873
+      ],
+      "nonblank_rows": 9750,
+      "h_offset_cmd": 70,
+      "bytes_per_row": 860,
+      "global_ink_fraction": 0.15703
+    },
+    {
+      "file": "test_04_gray25_75.prn",
+      "size_bytes": 6089656,
+      "decoded_width_px": 6880,
+      "decoded_height_px": 9750,
+      "v_row_range": [
+        124,
+        9873
+      ],
+      "nonblank_rows": 9728,
+      "h_offset_cmd": 70,
+      "bytes_per_row": 860,
+      "global_ink_fraction": 0.17654,
+      "halves_ink_fraction": [
+        0.06661,
+        0.28645
+      ]
+    },
+    {
+      "file": "test_05_gradient_h.prn",
+      "size_bytes": 7910658,
+      "decoded_width_px": 6880,
+      "decoded_height_px": 9755,
+      "v_row_range": [
+        119,
+        9873
+      ],
+      "nonblank_rows": 9755,
+      "h_offset_cmd": 70,
+      "bytes_per_row": 860,
+      "global_ink_fraction": 0.21345
+    },
+    {
+      "file": "test_06_step_wedge.prn",
+      "size_bytes": 7255033,
+      "decoded_width_px": 6880,
+      "decoded_height_px": 9248,
+      "v_row_range": [
+        119,
+        9366
+      ],
+      "nonblank_rows": 9248,
+      "h_offset_cmd": 70,
+      "bytes_per_row": 860,
+      "global_ink_fraction": 0.24597
+    },
+    {
+      "file": "test_07_isolated_dots.prn",
+      "size_bytes": 44283,
+      "decoded_width_px": 6792,
+      "decoded_height_px": 9601,
+      "v_row_range": [
+        189,
+        9789
+      ],
+      "nonblank_rows": 97,
+      "h_offset_cmd": 70,
+      "bytes_per_row": 849,
+      "global_ink_fraction": 0.0001
+    },
+    {
+      "file": "test_08_calibration.prn",
+      "size_bytes": 5332122,
+      "decoded_width_px": 6880,
+      "decoded_height_px": 8843,
+      "v_row_range": [
+        1031,
+        9873
+      ],
+      "nonblank_rows": 7871,
+      "h_offset_cmd": 70,
+      "bytes_per_row": 860,
+      "global_ink_fraction": 0.3169
+    }
+  ],
+  "calibration_chart_layout_rows": {
+    "gradient_h_band": [
+      0,
+      1950
+    ],
+    "flat_input50_band": [
+      2050,
+      2850
+    ],
+    "step_wedge": [
+      2950,
+      4750
+    ],
+    "line_resolution_band": [
+      4850,
+      5850
+    ],
+    "white_gap": [
+      5950,
+      6800
+    ],
+    "solid_black_band": [
+      6900,
+      7800
+    ],
+    "sinusoidal_stripe_band": [
+      7950,
+      8843
+    ]
+  },
+  "patches": [
+    {
+      "patch": "wedge_step_0",
+      "bbox_xywh": [
+        60,
+        3060,
+        598,
+        1580
+      ],
+      "ink_area_fraction": 0.0
+    },
+    {
+      "patch": "wedge_step_1",
+      "bbox_xywh": [
+        778,
+        3060,
+        649,
+        1580
+      ],
+      "ink_area_fraction": 0.03526
+    },
+    {
+      "patch": "wedge_step_2",
+      "bbox_xywh": [
+        1547,
+        3060,
+        668,
+        1580
+      ],
+      "ink_area_fraction": 0.07062
+    },
+    {
+      "patch": "wedge_step_3",
+      "bbox_xywh": [
+        2335,
+        3060,
+        657,
+        1580
+      ],
+      "ink_area_fraction": 0.11379
+    },
+    {
+      "patch": "wedge_step_4",
+      "bbox_xywh": [
+        3112,
+        3060,
+        661,
+        1580
+      ],
+      "ink_area_fraction": 0.16113
+    },
+    {
+      "patch": "wedge_step_5",
+      "bbox_xywh": [
+        3893,
+        3060,
+        659,
+        1580
+      ],
+      "ink_area_fraction": 0.20806
+    },
+    {
+      "patch": "wedge_step_6",
+      "bbox_xywh": [
+        4672,
+        3060,
+        662,
+        1580
+      ],
+      "ink_area_fraction": 0.2867
+    },
+    {
+      "patch": "wedge_step_7",
+      "bbox_xywh": [
+        5454,
+        3060,
+        657,
+        1580
+      ],
+      "ink_area_fraction": 0.46727
+    },
+    {
+      "patch": "wedge_step_8",
+      "bbox_xywh": [
+        6231,
+        3060,
+        581,
+        1580
+      ],
+      "ink_area_fraction": 1.0
+    },
+    {
+      "patch": "flat_band_input50pct",
+      "bbox_xywh": [
+        500,
+        2100,
+        5800,
+        700
+      ],
+      "ink_area_fraction": 0.1571
+    },
+    {
+      "patch": "solid_black_band",
+      "bbox_xywh": [
+        500,
+        7000,
+        5800,
+        700
+      ],
+      "ink_area_fraction": 1.0
+    },
+    {
+      "patch": "white_area",
+      "bbox_xywh": [
+        500,
+        6100,
+        5800,
+        600
+      ],
+      "ink_area_fraction": 0.0004
+    }
+  ],
+  "spectral_measurements": {
+    "highlight_3.5pct": {
+      "principal_freq_cyc_per_px": 0.12305,
+      "principal_wavelength_px": 8.127,
+      "equivalent_lpi_at_600dpi": 73.8,
+      "dominant_spectral_angle_deg": 87.5,
+      "angular_anisotropy_ratio": 3.711,
+      "n_tiles_averaged": 3,
+      "ink_area_fraction": 0.03526,
+      "bbox_xywh": [
+        778,
+        3060,
+        649,
+        1580
+      ],
+      "dot_centroid_stats": {
+        "n_dots": 12702,
+        "mean_nn_dist_px": 3.541,
+        "median_nn_dist_px": 4.0
+      }
+    },
+    "quartertone_16pct": {
+      "principal_freq_cyc_per_px": 0.36914,
+      "principal_wavelength_px": 2.709,
+      "equivalent_lpi_at_600dpi": 221.5,
+      "dominant_spectral_angle_deg": 107.5,
+      "angular_anisotropy_ratio": 1.517,
+      "n_tiles_averaged": 3,
+      "ink_area_fraction": 0.16113,
+      "bbox_xywh": [
+        3112,
+        3060,
+        661,
+        1580
+      ],
+      "dot_centroid_stats": {
+        "n_dots": 57999,
+        "mean_nn_dist_px": 2.132,
+        "median_nn_dist_px": 2.236
+      }
+    },
+    "flat_band_input50pct": {
+      "principal_freq_cyc_per_px": 0.38477,
+      "principal_wavelength_px": 2.599,
+      "equivalent_lpi_at_600dpi": 230.9,
+      "dominant_spectral_angle_deg": 102.5,
+      "angular_anisotropy_ratio": 1.144,
+      "n_tiles_averaged": 11,
+      "ink_area_fraction": 0.1571,
+      "bbox_xywh": [
+        500,
+        2100,
+        5800,
+        700
+      ],
+      "dot_centroid_stats": {
+        "n_dots": 56690,
+        "mean_nn_dist_px": 2.122,
+        "median_nn_dist_px": 2.236
+      }
+    },
+    "midtone_47pct": {
+      "principal_freq_cyc_per_px": 0.49805,
+      "principal_wavelength_px": 2.008,
+      "equivalent_lpi_at_600dpi": 298.8,
+      "dominant_spectral_angle_deg": 7.5,
+      "angular_anisotropy_ratio": 2.306,
+      "n_tiles_averaged": 3,
+      "ink_area_fraction": 0.46727,
+      "bbox_xywh": [
+        5454,
+        3060,
+        657,
+        1580
+      ]
+    }
+  },
+  "crops": [
+    {
+      "name": "crop_highlight_wedge_step1_3pct.png",
+      "source_file": "test_08_calibration.prn",
+      "crop_bbox_xywh": [
+        1028,
+        3650,
+        400,
+        400
+      ],
+      "ink_area_fraction": 0.03532,
+      "bytes": 10456
+    },
+    {
+      "name": "crop_midtone_flatband_input50_16pct.png",
+      "source_file": "test_08_calibration.prn",
+      "crop_bbox_xywh": [
+        3300,
+        2250,
+        400,
+        400
+      ],
+      "ink_area_fraction": 0.15712,
+      "bytes": 23406
+    },
+    {
+      "name": "crop_midtone_wedge_step7_47pct.png",
+      "source_file": "test_08_calibration.prn",
+      "crop_bbox_xywh": [
+        5654,
+        3650,
+        400,
+        400
+      ],
+      "ink_area_fraction": 0.46777,
+      "bytes": 15913
+    },
+    {
+      "name": "crop_shadow_gradient_right_70pct.png",
+      "source_file": "test_08_calibration.prn",
+      "crop_bbox_xywh": [
+        6470,
+        600,
+        400,
+        400
+      ],
+      "ink_area_fraction": 0.69583,
+      "note": "darkest flat-ish region available: right end of the horizontal-gradient band; local coverage drifts ~0.54-0.94 left-to-right (no flat shadow patch exists in the chart).",
+      "bytes": 19385
+    }
+  ],
+  "comparison_protocol": {
+    "coordinate_recovery": {
+      "vertical": "PRN rows are absolute device rows via '&<row>&V' (600dpi). Decoded image row r corresponds to device row r + v_min (v_min per file in 'files'). Fully recoverable.",
+      "horizontal": "decoded x=0 corresponds to device x = H_offset = 70 px (constant '&70&H'). 860 bytes/row = 6880 px; 70px margins on both sides give exactly 297 mm page width (6880+2*70 = 7020 px = 297.2 mm at 600 dpi).",
+      "source_to_device_mapping": "unknown driver scaling/centering of the source test image; recover the affine mapping from sharp band edges: step-wedge boundary columns (below) and band row boundaries; the line-resolution band (rows ~4850-5850) has hard 1-bit edges usable for sub-pixel horizontal phase.",
+      "fiducials": "the chart has NO dedicated registration marks/crosses; the sharp 1-bit edges of the line-resolution band and the step-wedge column boundaries act as pseudo-fiducials.",
+      "step_wedge_boundary_columns_px": [
+        718,
+        1487,
+        2275,
+        3052,
+        3833,
+        4612,
+        5394,
+        6171,
+        6872
+      ]
+    },
+    "recommended_comparison": [
+      "1. Render simulator output at 600 dpi, 1bpp, same source images.",
+      "2. Per-patch ink area fraction: must match the values in `patches` (these encode the driver Grain-Touch tone curve; cross-check against captures/tone_curve.txt). Tolerance suggestion: |delta| < 0.005 absolute.",
+      "3. Spectral statistics on each patch (512px Hann-windowed PSD, averaged): radial peak frequency (`principal_freq_cyc_per_px`) and angular anisotropy. Tolerance: peak freq within ~5%, similar anisotropy ratio. NOTE these are blue-noise/diffusion statistics, not AM-screen pitch/angle.",
+      "4. Pair statistics for highlights: dot-centroid nearest-neighbour mean distance (see `dot_centroid_stats`).",
+      "5. Bit-exact comparison is NOT meaningful unless the simulator reimplements the driver's exact error-diffusion algorithm (scan order, kernel, thresholds, any noise seed). Alignment itself IS recoverable (absolute V rows + constant H offset + pseudo-fiducial edges), so if the exact algorithm is ported, XOR-difference rate can be used; otherwise compare statistically as above.",
+      "6. For a clustered-dot (\"Screen-covered\") ground truth, a NEW capture must be made with the driver halftone set to Screen-covered: none of the 8 files in this directory contain clustered dots."
+    ]
+  }
+}

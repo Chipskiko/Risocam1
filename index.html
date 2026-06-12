@@ -426,6 +426,7 @@ uniform vec2 u_aMin;           // lattice-space origin of the tone texture
 uniform vec2 u_aDims;          // tone LATTICE dims (texels = anchors; circles texture is 2x2 quadrants of this)
 uniform float u_aPitch;        // circles tone lattice pitch in px (>= dot cell, capped by texture size)
 uniform float u_edgeSoft;      // 1 = circles use cell-integrated coverage (dots shrink at edges, never sliced)
+uniform vec2 u_mtxTexel;       // 1/dims of the bound AM threshold matrix (half-texel phase shift)
 
 uniform int u_layers;
 uniform vec3 u_ink0, u_ink1, u_ink2, u_ink3;
@@ -1442,7 +1443,14 @@ float screenMatrix(float coverage, vec2 pix, float cellPx, float angle){
   float c = cos(a), s = sin(a);
   vec2 rp = vec2(pix.x*c - pix.y*s, pix.x*s + pix.y*c);
   float tile = cellPx * 1.4142136;         // √2: 2 dots per tile → 1 dot per cellPx
-  float T = texture2D(u_ht5Matrix, fract(rp / tile)).r;  // 0..1 RISO threshold
+  // Half-texel shift: with it, the dot growth centers of ALL three ht1_6x6
+  // matrices land at exactly (0.5, 0.5) of the rotate(angle) dot lattice
+  // (measured from the threshold minima) — so cellTone's per-dot cells are
+  // phase-aligned for the matrix engine too, with no per-matrix uniforms.
+  // Threshold is 16-bit hi/lo (r/g): the baked TRC remap (T' = D⁻¹(T), the
+  // measured print response) must not collapse the matrix's tone levels.
+  vec4 mtx = texture2D(u_ht5Matrix, fract(rp / tile - 0.5 * u_mtxTexel));
+  float T = mtx.r + mtx.g * 0.0039216;
   // Endpoint-correct AA (matrix analog of the procedural autoclamp + e2
   // clamp): the AA half-width shrinks near the tone endpoints so highlights
   // reach true paper (no minimum-dot tone floor) and shadows reach true solid
@@ -3143,9 +3151,9 @@ void main(){
 <script src="js/compare.js?v=6"></script>
 <script src="js/riso-amt.js?v=24"></script>
 <script src="js/riso-amt-webgpu.js?v=5"></script>
-<script src="js/renderer.js?v=117"></script>
+<script src="js/renderer.js?v=118"></script>
 <script src="js/source.js?v=47"></script>
-<script src="js/save.js?v=51"></script>
+<script src="js/save.js?v=52"></script>
 <script src="js/ui-controls.js?v=53"></script>
 <script src="js/ui-paper.js?v=13"></script>
 <script src="js/phone.js?v=19"></script>

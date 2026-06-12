@@ -892,10 +892,14 @@ async function exportSeparations(){
   if(window._amScreenTex && window._ht5MatrixTex){
     let u8tex = (mode==='screen') ? window._amScreenTex : window._ht5MatrixTex;
     if(mode==='screen' && (window._screenType ?? 0) && (window._stampShape|0)===0){
-      // Matrix engine (circles only): driver matrix for the snapped LPI preset.
-      const mt = window._screenMatrixTexs && window._snapScreenLpi
-        && window._screenMatrixTexs[window._snapScreenLpi(cached.lpi)];
-      if(mt) u8tex = mt;
+      // Matrix engine (circles only): driver matrix for the snapped LPI preset
+      // (TRC-calibrated by default — match live path).
+      const m = window._screenMatrixTexs && window._snapScreenLpi
+        && (window._screenMatrixTexs[window._snapScreenLpi(cached.lpi)] || window._screenMatrixTexs[43]);
+      if(m){
+        u8tex = ((window._screenTrc ?? 1) && m.cal) ? m.cal : m.tex;
+        if(locs.u_mtxTexel) gl.uniform2f(locs.u_mtxTexel, 1.0/m.w, 1.0/m.h);
+      }
     } else if(mode==='screen' && (window._stampShape|0)===5 && window._glyphAtlasTex){
       u8tex = window._glyphAtlasTex;
     }
