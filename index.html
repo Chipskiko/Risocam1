@@ -1426,20 +1426,34 @@ float screenDither(float val, vec2 pix, float cellPx, float angle, float lidx){
   return 1.0 - smoothstep(val - edge, val + edge, dist);
 }
 
-// ─── RISO clustered-dot AM screen (matrix-based, authentic) ──────────────
-// Thresholds coverage against RISO's REAL halftone matrix (ht1_6x6_45, bound to
-// u_ht5Matrix in SCREEN mode). The tile holds 2 dots in a 45° rosette (centres
-// 14.14 px apart in a 20px tile), so we tile it at cellPx·√2 → each dot becomes
-// cellPx-sized (fixes the houndstooth from cramming the whole supercell into one
-// cell). The dot shape & growth ARE RISO's own. `angle` rotates per channel.
+// ─── RISO clustered-dot AM screen (matrix engine, authentic) ──────────────
+// Thresholds coverage against RISO's REAL driver threshold matrix (bound to
+// u_ht5Matrix in SCREEN mode; the renderer binds the ht1_6x6 matrix matching
+// the snapped 43/71/106 LPI preset). Every ht1_6x6 tile holds 2 dots in a 45°
+// rosette (period = dotPitch·√2), so tiling at cellPx·√2 makes each dot
+// cellPx-sized for all three matrix sizes, and one matrix texel = one 600 dpi
+// device dot at print scale. NEAREST + fract keeps the threshold cliffs
+// byte-exact. The dot shape & growth ARE RISO's own; `angle` rotates the
+// sampling coords per plate (matrix dots are baked at 45°).
 float screenMatrix(float coverage, vec2 pix, float cellPx, float angle){
-  float a = angle - 0.7853982;             // matrix dots are baked at 45°
+  float a = angle - 0.7853982;
   float c = cos(a), s = sin(a);
   vec2 rp = vec2(pix.x*c - pix.y*s, pix.x*s + pix.y*c);
   float tile = cellPx * 1.4142136;         // √2: 2 dots per tile → 1 dot per cellPx
   float T = texture2D(u_ht5Matrix, fract(rp / tile)).r;  // 0..1 RISO threshold
-  float e = clamp(1.5 / cellPx, 0.004, 0.25);            // ~1px dot-edge AA
-  return smoothstep(T - e, T + e, coverage);             // ink where coverage > threshold
+  // Endpoint-correct AA (matrix analog of the procedural autoclamp + e2
+  // clamp): the AA half-width shrinks near the tone endpoints so highlights
+  // reach true paper (no minimum-dot tone floor) and shadows reach true solid
+  // (no bright hole-lattice web). Mid-tone width mirrors the procedural
+  // engine's clean-mode edge narrowing. The matrix data itself already
+  // encodes the dot-merge/hole-shrink geometry — only the smoothstep window
+  // needed taming.
+  float v = clamp(coverage, 0.0, 1.0);
+  float baseE = clamp(mix(0.5, 1.5, u_simNoise) / cellPx, 0.004, 0.25);
+  float e = min(baseE, min(v, 1.0 - v)) + 0.002;
+  float ink = smoothstep(T - e, T + e, v);
+  // Driver thresholds top out at 254 → v ≥ 254/255 must ink EVERY texel.
+  return max(ink, step(0.99607, v));
 }
 
 // Dispatch + 4× supersample the chosen SCREEN engine. The dot grid is a
@@ -3042,9 +3056,9 @@ void main(){
 <script src="js/compare.js?v=6"></script>
 <script src="js/riso-amt.js?v=24"></script>
 <script src="js/riso-amt-webgpu.js?v=5"></script>
-<script src="js/renderer.js?v=114"></script>
+<script src="js/renderer.js?v=115"></script>
 <script src="js/source.js?v=47"></script>
-<script src="js/save.js?v=48"></script>
+<script src="js/save.js?v=49"></script>
 <script src="js/ui-controls.js?v=53"></script>
 <script src="js/ui-paper.js?v=13"></script>
 <script src="js/phone.js?v=19"></script>

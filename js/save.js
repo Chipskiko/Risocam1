@@ -864,7 +864,10 @@ async function exportSeparations(){
   gl.uniform1f(locs.u_postExposure,cached.postExposure||0);
   gl.uniform1f(locs.u_postContrast,cached.postContrast||0);
   gl.uniform1f(locs.u_postSat,cached.postSat||0);
-  gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(dw,dh)/(8.267*cached.lpi)));
+  // Matrix engine snaps LPI to the real driver presets (match live path).
+  const _lpiEff = (mode === 'screen' && (window._screenType ?? 0) && window._snapScreenLpi)
+    ? window._snapScreenLpi(cached.lpi) : cached.lpi;
+  gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(dw,dh)/(8.267*_lpiEff)));
   gl.uniform1f(locs.u_ucrStr, cached.ucrStr * 0.01);
   gl.uniform4f(locs.u_cmykBal, cached.balC*0.01, cached.balM*0.01, cached.balY*0.01, cached.balK*0.01);
   gl.uniform1f(locs.u_tac, cached.tac * 0.01);
@@ -883,7 +886,12 @@ async function exportSeparations(){
   if(locs.u_screenType) gl.uniform1f(locs.u_screenType, (window._screenType ?? 0) ? 1.0 : 0.0);
   if(window._amScreenTex && window._ht5MatrixTex){
     let u8tex = (mode==='screen') ? window._amScreenTex : window._ht5MatrixTex;
-    if(mode==='screen' && (window._stampShape|0)===5 && !(window._screenType ?? 0) && window._glyphAtlasTex){
+    if(mode==='screen' && (window._screenType ?? 0)){
+      // Matrix engine: driver matrix for the snapped LPI preset (match live path).
+      const mt = window._screenMatrixTexs && window._snapScreenLpi
+        && window._screenMatrixTexs[window._snapScreenLpi(cached.lpi)];
+      if(mt) u8tex = mt;
+    } else if(mode==='screen' && (window._stampShape|0)===5 && window._glyphAtlasTex){
       u8tex = window._glyphAtlasTex;
     }
     gl.activeTexture(gl.TEXTURE8);

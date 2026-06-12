@@ -209,38 +209,58 @@ function initGL(){
   if(locs.u_ht5Matrix) gl.uniform1i(locs.u_ht5Matrix,8);
   window._ht5MatrixTex=ht5Tex;
 
-  // ── RISO clustered-dot AM screen matrix (ht1_6x6_45, 20×20 from the driver) ──
-  // SCREEN mode (when u_screenType=1) thresholds coverage against this. Reuses
-  // texture unit 8 — the Grain-Touch ht5 matrix there is only sampled in
-  // GRAIN/ditherMode-7, never SCREEN, so they share the slot (bound per-mode).
-  // The tile holds 2 dots (45° rosette), so the shader tiles it at cellPx·√2 to
-  // make each dot cellPx-sized. Resampled 20×20 → 64×64 (power-of-2) with
-  // seamless periodic bilinear (REPEAT-safe on WebGL1); LINEAR for smooth dots.
+  // ── RISO clustered-dot AM screen matrices (ht1_6x6 family, driver-exact) ──
+  // SCREEN mode (when u_screenType=1) thresholds coverage against one of
+  // these. Reuses texture unit 8 — the Grain-Touch ht5 matrix there is only
+  // sampled in GRAIN/ditherMode-7, never SCREEN, so they share the slot
+  // (bound per-mode). Threshold arrays upload as EXACT bytes at native dims
+  // with NEAREST — resampling a threshold matrix blurs its cliffs and bends
+  // the tone CDF (the old 20×20→64×64 LINEAR build did both). NPOT is fine:
+  // the shader tiles via fract(), so the wrap mode never engages.
+  // Every ht1_6x6 tile holds 2 dots in a 45° rosette (period = dotPitch·√2),
+  // so the shader's tile = cellPx·√2 invariant holds for all three sizes and
+  // one matrix texel maps to one 600 dpi device dot at print scale.
+  function _buildThresholdTex(w, h, bytes){
+    var rgba = new Uint8Array(w*h*4);
+    for(var ti=0; ti<w*h; ti++){ rgba[ti*4]=bytes[ti]; rgba[ti*4+3]=255; }
+    var t = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE8); gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,rgba);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+    return t;
+  }
+  // The real driver only offers Screen-covered at 43/71/106 lpi — the matrix
+  // engine snaps the LPI control to those (the procedural engine keeps the
+  // full 10–120 range). Shared with save.js via window.
+  window._snapScreenLpi = function(lpi){ return lpi < 57 ? 43 : (lpi < 88.5 ? 71 : 106); };
   var AM_W=20, AM_H=20;
   var AM_DATA=[254,250,243,227,208,96,60,35,15,4,2,6,16,36,62,97,210,229,244,252,152,248,238,222,203,110,69,44,23,11,7,12,25,45,71,111,205,224,239,155,154,159,233,215,192,120,85,54,31,26,17,27,32,55,86,121,193,216,164,157,156,163,169,198,184,135,99,77,57,46,37,48,58,78,100,136,185,173,168,161,160,166,171,175,179,145,128,101,87,72,63,73,88,102,128,146,177,174,170,165,90,106,116,131,141,151,147,137,123,113,104,114,124,138,149,150,140,129,115,105,59,65,81,92,127,143,180,187,194,206,211,207,196,188,178,142,125,91,79,64,34,40,50,76,95,133,183,199,217,225,230,226,219,197,182,132,93,74,49,39,13,20,30,53,83,119,191,213,234,240,245,241,231,212,189,118,82,51,29,18,3,9,22,43,68,109,202,221,236,249,253,247,235,220,201,107,67,41,21,8,2,6,16,36,62,97,210,229,244,252,254,250,243,227,208,96,60,35,15,4,7,12,25,45,71,111,205,224,239,155,152,248,238,222,203,110,69,44,23,11,17,27,32,55,86,121,193,216,164,157,154,159,233,215,192,120,85,54,31,26,37,48,58,78,100,136,185,173,168,161,156,163,169,198,184,135,99,77,57,46,63,73,88,102,128,146,177,174,170,165,160,166,171,175,179,145,128,101,87,72,104,114,124,138,149,150,140,129,115,105,90,106,116,131,141,151,147,137,123,113,211,207,196,188,178,142,125,91,79,64,59,65,81,92,127,143,180,187,194,206,230,226,219,197,182,132,93,74,49,39,34,40,50,76,95,133,183,199,217,225,245,241,231,212,189,118,82,51,29,18,13,20,30,53,83,119,191,213,234,240,253,247,235,220,201,107,67,41,21,8,3,9,22,43,68,109,202,221,236,249];
-  var AM_N=64;
-  var amBytes=new Uint8Array(AM_N*AM_N*4);
-  for(var ay=0; ay<AM_N; ay++){
-    for(var ax=0; ax<AM_N; ax++){
-      var fx=ax/AM_N*AM_W, fy=ay/AM_N*AM_H;
-      var x0=Math.floor(fx)%AM_W, y0=Math.floor(fy)%AM_H;
-      var x1=(x0+1)%AM_W, y1=(y0+1)%AM_H;
-      var tx=fx-Math.floor(fx), ty=fy-Math.floor(fy);
-      var v00=AM_DATA[y0*AM_W+x0], v10=AM_DATA[y0*AM_W+x1];
-      var v01=AM_DATA[y1*AM_W+x0], v11=AM_DATA[y1*AM_W+x1];
-      var v=(v00*(1-tx)+v10*tx)*(1-ty)+(v01*(1-tx)+v11*tx)*ty;
-      var o=(ay*AM_N+ax)*4; amBytes[o]=v|0; amBytes[o+3]=255;
-    }
-  }
-  var amTex=gl.createTexture();
-  gl.activeTexture(gl.TEXTURE8); gl.bindTexture(gl.TEXTURE_2D, amTex);
-  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,AM_N,AM_N,0,gl.RGBA,gl.UNSIGNED_BYTE,amBytes);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.REPEAT);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
-  window._amScreenTex=amTex;
+  // Bootstrap: AM_DATA above is byte-identical to riso_halftones.json's
+  // ht1_6x6_43_45 entry 0 (verified), so the 43-lpi screen works even
+  // before/without the JSON fetch below.
+  window._screenMatrixTexs = { 43: _buildThresholdTex(AM_W, AM_H, AM_DATA) };
+  window._amScreenTex = window._screenMatrixTexs[43]; // fallback ref (save.js)
   gl.activeTexture(gl.TEXTURE8); gl.bindTexture(gl.TEXTURE_2D, ht5Tex); // restore default
+  // 71 lpi (12×12, 72 levels) and 106 lpi (8×8, 32 levels) come from the
+  // driver dump that already ships with the app. Until the fetch lands, all
+  // presets fall back to the 43-lpi matrix at the correct pitch (the tile
+  // math is dimension-free) — only the quantization-level count differs.
+  fetch('riso_halftones.json').then(function(r){ return r.json(); }).then(function(j){
+    [[71,'ht1_6x6_71_45'],[106,'ht1_6x6_106_45']].forEach(function(p){
+      var e = j[p[1]] && j[p[1]].entries && j[p[1]].entries[0];
+      if(e && e.data && e.data.length === e.w*e.h){
+        window._screenMatrixTexs[p[0]] = _buildThresholdTex(e.w, e.h, e.data);
+      }
+    });
+    gl.activeTexture(gl.TEXTURE8); gl.bindTexture(gl.TEXTURE_2D, window._ht5MatrixTex);
+    gl.activeTexture(gl.TEXTURE0);
+    if(window.R && window.R.markDirty) window.R.markDirty();
+  }).catch(function(e){
+    console.warn('[screenMatrix] riso_halftones.json unavailable — all LPI presets use the 43-lpi matrix', e);
+  });
 
   // AMT master textures — one per ink channel (tex units 9, 10, 11, 12).
   // Each holds the 1-bit RISO Grain Touch master for ONE ink, halftoned
@@ -738,7 +758,11 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   //   • screen mode, procedural engine + ASCII stamp: the glyph atlas
   if(window._amScreenTex && window._ht5MatrixTex){
     let u8tex = (mode==='screen') ? window._amScreenTex : window._ht5MatrixTex;
-    if(mode === 'screen' && (window._stampShape|0) === 5 && !(window._screenType ?? 0)){
+    if(mode === 'screen' && (window._screenType ?? 0)){
+      // Matrix engine: bind the driver matrix for the snapped LPI preset.
+      const mt = window._screenMatrixTexs && window._screenMatrixTexs[window._snapScreenLpi(cached.lpi)];
+      if(mt) u8tex = mt;
+    } else if(mode === 'screen' && (window._stampShape|0) === 5){
       if(!window._glyphAtlasTex) try { _buildGlyphAtlas(); } catch(e){ console.warn('[glyphAtlas]', e); }
       if(window._glyphAtlasTex) u8tex = window._glyphAtlasTex;
     }
@@ -791,7 +815,10 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   gl.uniform1f(locs.u_postExposure,cached.postExposure||0);
   gl.uniform1f(locs.u_postContrast,cached.postContrast||0);
   gl.uniform1f(locs.u_postSat,cached.postSat||0);
-  gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(dw,dh)/(8.267*cached.lpi)));
+  // Matrix engine renders at the real driver presets only — snap the LPI so
+  // pitch and bound threshold matrix agree (texel = device dot at print size).
+  var _lpiEff = (mode === 'screen' && (window._screenType ?? 0)) ? window._snapScreenLpi(cached.lpi) : cached.lpi;
+  gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(dw,dh)/(8.267*_lpiEff)));
   gl.uniform3fv(locs.u_paperColor,cached.paperColor);
   gl.uniform3f(locs.u_paper, 0.910, 0.912, 0.908);
   gl.uniform1f(locs.u_showCropMarks, cached.showCropMarks ? 1.0 : 0.0);
