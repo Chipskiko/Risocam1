@@ -1115,94 +1115,9 @@ function _renderInner(){
   // ─── Uniforms — all from cached values, zero DOM access ───
   setRenderUniforms(dw, dh, resScale, isPhoneNow);
 
-  // ── Anchor-tone prepasses (tiny lattice-resolution FBO, unit 9) ──
-  // Two consumers, mutually exclusive by stamp shape:
-  //  • ASCII (stamp 5, pass 1): per-anchor POINT tone, all plates packed RGBA,
-  //    shared angle-0 lattice at 2x pitch. Replaces per-fragment ink chains
-  //    (was ~200ms/frame). Letters keep full size up to content edges.
-  //  • CIRCLES soft edges (stamp 0, pass 2): per-plate CELL-MEAN tone in a
-  //    2x2 quadrant layout — each dot is sized by its cell's average, so hard
-  //    content edges shrink whole dots instead of slicing them mid-dot.
-  // The texture rides unit 9 (u_amtMaster0) — masters are RISO-only.
-  const _stampNow = (window._stampShape|0);
-  const _wantAsciiTone  = mode === 'screen' && _stampNow === 5;
-  const _wantCircleTone = mode === 'screen' && _stampNow === 0 && (window._screenEdgeSoft ?? 1);
-  if((_wantAsciiTone || _wantCircleTone) && locs.u_asciiTonePass){
-    let aMinX, aMinY, aW, aH, texW, texH, passId;
-    const corners = [[0,0],[dw,0],[0,dh],[dw,dh]];
-    let mnx = 1e9, mny = 1e9, mxx = -1e9, mxy = -1e9;
-    if(_wantAsciiTone){
-      const cellPx = Math.max(1.5, Math.min(dw, dh) / (8.267 * cached.lpi)) * 2.0; // mirrors shader (2x pitch)
-      const ang = (layerAngles[0] || 0) * 0.01745329;
-      const ca = Math.cos(ang), sa = Math.sin(ang);
-      // lattice bounds of the screen quad corners (rotate, /cellPx)
-      for(const p of corners){
-        const rx = (p[0]*ca - p[1]*sa) / cellPx, ry = (p[0]*sa + p[1]*ca) / cellPx;
-        mnx = Math.min(mnx, rx); mny = Math.min(mny, ry);
-        mxx = Math.max(mxx, rx); mxy = Math.max(mxy, ry);
-      }
-      aMinX = Math.floor(mnx) - 3; aMinY = Math.floor(mny) - 3;
-      aW = Math.min(2048, Math.ceil(mxx) - aMinX + 4); aH = Math.min(2048, Math.ceil(mxy) - aMinY + 4);
-      texW = aW; texH = aH; passId = 1.0;
-    } else {
-      // Shared lattice bounds over ALL plate angles (the four quadrants share
-      // u_aMin/u_aDims). Pitch floors at the dot cell and rises if the lattice
-      // would overflow 1018/side (texture = 2x2 quadrants, 2048 GL-safe) —
-      // at that density cells are ~2px and per-cell tone is invisible anyway.
-      const lpiEff = (window._screenType ?? 0) ? window._snapScreenLpi(cached.lpi) : cached.lpi;
-      const cellBase = Math.max(1.5, Math.min(dw, dh) / (8.267 * lpiEff));
-      for(let li = 0; li < 4; li++){
-        const ang = (layerAngles[li] || 0) * 0.01745329;
-        const ca = Math.cos(ang), sa = Math.sin(ang);
-        for(const p of corners){
-          const rx = p[0]*ca - p[1]*sa, ry = p[0]*sa + p[1]*ca;
-          mnx = Math.min(mnx, rx); mny = Math.min(mny, ry);
-          mxx = Math.max(mxx, rx); mxy = Math.max(mxy, ry);
-        }
-      }
-      const pitch = Math.max(cellBase, (mxx - mnx) / 1018, (mxy - mny) / 1018);
-      aMinX = Math.floor(mnx / pitch) - 2; aMinY = Math.floor(mny / pitch) - 2;
-      aW = Math.ceil(mxx / pitch) - aMinX + 3; aH = Math.ceil(mxy / pitch) - aMinY + 3;
-      texW = aW * 2; texH = aH * 2; passId = 2.0;
-      if(locs.u_aPitch) gl.uniform1f(locs.u_aPitch, pitch);
-    }
-    // lazy FBO + texture, realloc on dims change
-    if(!window._asciiToneFbo){ window._asciiToneFbo = gl.createFramebuffer(); window._asciiToneTex = gl.createTexture(); window._asciiToneDims = [0,0]; }
-    gl.activeTexture(gl.TEXTURE9);
-    gl.bindTexture(gl.TEXTURE_2D, window._asciiToneTex);
-    if(window._asciiToneDims[0] !== texW || window._asciiToneDims[1] !== texH){
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, texW, texH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      window._asciiToneDims = [texW, texH];
-    }
-    // LINEAR: circles sample at dot centers (interpolates anchors when the
-    // lattice pitch is capped above the cell); ASCII samples exact texel
-    // centers, where LINEAR == NEAREST. Set per-frame (alloc is conditional).
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.uniform2f(locs.u_aMin, aMinX, aMinY);
-    gl.uniform2f(locs.u_aDims, aW, aH);
-    // FEEDBACK GUARD: while the tone texture is the FBO attachment it must
-    // NOT also be bound on unit 9 (u_amtMaster0) — GL flags sampling-while-
-    // rendering as INVALID_OPERATION even if the branch never samples it.
-    gl.bindTexture(gl.TEXTURE_2D, (window._amtMasterTex && window._amtMasterTex[0]) || null);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, window._asciiToneFbo);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, window._asciiToneTex, 0);
-    gl.viewport(0, 0, texW, texH);
-    gl.uniform1f(locs.u_asciiTonePass, passId);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, dw, dh);
-    gl.uniform1f(locs.u_asciiTonePass, 0.0);
-    // NOW the tone texture rides unit 9 for the main pass
-    gl.bindTexture(gl.TEXTURE_2D, window._asciiToneTex);
-    gl.activeTexture(gl.TEXTURE0);
-    if(locs.u_edgeSoft) gl.uniform1f(locs.u_edgeSoft, _wantCircleTone ? 1.0 : 0.0);
-  } else {
-    if(locs.u_asciiTonePass) gl.uniform1f(locs.u_asciiTonePass, 0.0);
-    if(locs.u_edgeSoft) gl.uniform1f(locs.u_edgeSoft, 0.0);
-  }
+  // Anchor-tone prepasses (ASCII pass 1 / circles soft-edge pass 2) — shared
+  // with the export paths in save.js via R._runTonePrepass.
+  _runTonePrepass(dw, dh);
 
   gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
 
@@ -2048,6 +1963,101 @@ R.setPaperPBR = function(on){
 
 // SCREEN engine toggle: 0 = procedural round-dot (DEFAULT), 1 = RISO matrix
 // cross-faded round-dot. Pure uniform — redraw only, no prepass.
+// ── Anchor-tone prepasses (tiny lattice-resolution FBO, unit 9) ──
+// Two consumers, mutually exclusive by stamp shape:
+//  • ASCII (stamp 5, pass 1): per-anchor POINT tone, all plates packed RGBA,
+//    shared angle-0 lattice at 2x pitch. Replaces per-fragment ink chains
+//    (was ~200ms/frame). Letters keep full size up to content edges.
+//  • CIRCLES soft edges (stamp 0, pass 2): per-plate CELL-MEAN tone (16-bit
+//    hi/lo in R/G) in a 2x2 quadrant layout — each dot is sized by its
+//    cell's average, so hard content edges shrink whole dots, never slice.
+// The texture rides unit 9 (u_amtMaster0) — masters are RISO-only.
+// Called by the live draw AND by save.js export paths (R._runTonePrepass)
+// with the target render dims, so exports match the preview (P5 parity).
+// Leaves u_asciiTonePass=0, u_edgeSoft set, viewport restored to (dw, dh).
+function _runTonePrepass(dw, dh){
+  const _stampNow = (window._stampShape|0);
+  const _wantAsciiTone  = mode === 'screen' && _stampNow === 5;
+  const _wantCircleTone = mode === 'screen' && _stampNow === 0 && (window._screenEdgeSoft ?? 1);
+  if((_wantAsciiTone || _wantCircleTone) && locs.u_asciiTonePass){
+    let aMinX, aMinY, aW, aH, texW, texH, passId;
+    const corners = [[0,0],[dw,0],[0,dh],[dw,dh]];
+    let mnx = 1e9, mny = 1e9, mxx = -1e9, mxy = -1e9;
+    if(_wantAsciiTone){
+      const cellPx = Math.max(1.5, Math.min(dw, dh) / (8.267 * cached.lpi)) * 2.0; // mirrors shader (2x pitch)
+      const ang = (layerAngles[0] || 0) * 0.01745329;
+      const ca = Math.cos(ang), sa = Math.sin(ang);
+      // lattice bounds of the screen quad corners (rotate, /cellPx)
+      for(const p of corners){
+        const rx = (p[0]*ca - p[1]*sa) / cellPx, ry = (p[0]*sa + p[1]*ca) / cellPx;
+        mnx = Math.min(mnx, rx); mny = Math.min(mny, ry);
+        mxx = Math.max(mxx, rx); mxy = Math.max(mxy, ry);
+      }
+      aMinX = Math.floor(mnx) - 3; aMinY = Math.floor(mny) - 3;
+      aW = Math.min(2048, Math.ceil(mxx) - aMinX + 4); aH = Math.min(2048, Math.ceil(mxy) - aMinY + 4);
+      texW = aW; texH = aH; passId = 1.0;
+    } else {
+      // Shared lattice bounds over ALL plate angles (the four quadrants share
+      // u_aMin/u_aDims). Pitch floors at the dot cell and rises if the lattice
+      // would overflow 1018/side (texture = 2x2 quadrants, 2048 GL-safe) —
+      // at that density cells are ~2px and per-cell tone is invisible anyway.
+      const lpiEff = (window._screenType ?? 0) ? window._snapScreenLpi(cached.lpi) : cached.lpi;
+      const cellBase = Math.max(1.5, Math.min(dw, dh) / (8.267 * lpiEff));
+      for(let li = 0; li < 4; li++){
+        const ang = (layerAngles[li] || 0) * 0.01745329;
+        const ca = Math.cos(ang), sa = Math.sin(ang);
+        for(const p of corners){
+          const rx = p[0]*ca - p[1]*sa, ry = p[0]*sa + p[1]*ca;
+          mnx = Math.min(mnx, rx); mny = Math.min(mny, ry);
+          mxx = Math.max(mxx, rx); mxy = Math.max(mxy, ry);
+        }
+      }
+      const pitch = Math.max(cellBase, (mxx - mnx) / 1018, (mxy - mny) / 1018);
+      aMinX = Math.floor(mnx / pitch) - 2; aMinY = Math.floor(mny / pitch) - 2;
+      aW = Math.ceil(mxx / pitch) - aMinX + 3; aH = Math.ceil(mxy / pitch) - aMinY + 3;
+      texW = aW * 2; texH = aH * 2; passId = 2.0;
+      if(locs.u_aPitch) gl.uniform1f(locs.u_aPitch, pitch);
+    }
+    // lazy FBO + texture, realloc on dims change
+    if(!window._asciiToneFbo){ window._asciiToneFbo = gl.createFramebuffer(); window._asciiToneTex = gl.createTexture(); window._asciiToneDims = [0,0]; }
+    gl.activeTexture(gl.TEXTURE9);
+    gl.bindTexture(gl.TEXTURE_2D, window._asciiToneTex);
+    if(window._asciiToneDims[0] !== texW || window._asciiToneDims[1] !== texH){
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, texW, texH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      window._asciiToneDims = [texW, texH];
+    }
+    // LINEAR: circles sample at dot centers (interpolates anchors when the
+    // lattice pitch is capped above the cell); ASCII samples exact texel
+    // centers, where LINEAR == NEAREST. Set per-frame (alloc is conditional).
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.uniform2f(locs.u_aMin, aMinX, aMinY);
+    gl.uniform2f(locs.u_aDims, aW, aH);
+    // FEEDBACK GUARD: while the tone texture is the FBO attachment it must
+    // NOT also be bound on unit 9 (u_amtMaster0) — GL flags sampling-while-
+    // rendering as INVALID_OPERATION even if the branch never samples it.
+    gl.bindTexture(gl.TEXTURE_2D, (window._amtMasterTex && window._amtMasterTex[0]) || null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, window._asciiToneFbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, window._asciiToneTex, 0);
+    gl.viewport(0, 0, texW, texH);
+    gl.uniform1f(locs.u_asciiTonePass, passId);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, dw, dh);
+    gl.uniform1f(locs.u_asciiTonePass, 0.0);
+    // NOW the tone texture rides unit 9 for the main pass
+    gl.bindTexture(gl.TEXTURE_2D, window._asciiToneTex);
+    gl.activeTexture(gl.TEXTURE0);
+    if(locs.u_edgeSoft) gl.uniform1f(locs.u_edgeSoft, _wantCircleTone ? 1.0 : 0.0);
+  } else {
+    if(locs.u_asciiTonePass) gl.uniform1f(locs.u_asciiTonePass, 0.0);
+    if(locs.u_edgeSoft) gl.uniform1f(locs.u_edgeSoft, 0.0);
+  }
+}
+R._runTonePrepass = _runTonePrepass;
+
 R.setScreenType = function(t){
   window._screenType = t ? 1 : 0;
   try { if(locs.u_screenType) gl.uniform1f(locs.u_screenType, window._screenType ? 1.0 : 0.0); } catch(e){}

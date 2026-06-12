@@ -62,6 +62,10 @@ async function saveHiRes(format){
   gl.viewport(0,0,saveW,saveH);
   const effectiveScale=Math.min(saveW,saveH)/(baseSize/3);
   R.setRenderUniforms(saveW,saveH,effectiveScale,false);
+  // P5 export parity: run the anchor-tone prepass at EXPORT dims (ASCII tone
+  // + circle soft edges) so the export matches the preview instead of reading
+  // a stale preview-sized tone texture.
+  if(R._runTonePrepass) R._runTonePrepass(saveW,saveH);
   gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
   const filename='risocam_'+(names||'empty')+'_'+saveW+'x'+saveH+'_'+Date.now()+'.'+ext;
   let blob;
@@ -747,6 +751,7 @@ async function saveGif(){
     const previewW = parseFloat(origCssW)||$vf.clientWidth||1200;
     const matchScale = Math.max(1, (gw / previewW) * resScale);
     R.setRenderUniforms(gw,gh,matchScale,false);
+    if(R._runTonePrepass) R._runTonePrepass(gw,gh); // export parity (ASCII/circle tone)
     gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
     tmpCtx.drawImage($gl,0,0,gw,gh);
     enc.addFrame(tmpCtx);
@@ -898,10 +903,11 @@ async function exportSeparations(){
     gl.bindTexture(gl.TEXTURE_2D, u8tex);
     gl.activeTexture(gl.TEXTURE0);
   }
-  // Export path runs NO anchor-tone prepass yet (P5 export parity) — force the
-  // per-fragment paths so the shader never samples a stale, wrong-dims tone
-  // texture left on unit 9 by the live render (circles export = authentic
-  // sliced edges until P5 lands).
+  // SEPARATIONS stay per-fragment (u_edgeSoft=0) on purpose: seps are the
+  // production masters — a real 600dpi RIP slices dots at content edges, so
+  // authentic thresholding IS the correct sep output. (PNG/JPG/GIF/PDF
+  // exports run R._runTonePrepass for preview parity instead.) Forcing 0 also
+  // guarantees the sep shader never reads a stale preview-sized tone texture.
   if(locs.u_edgeSoft) gl.uniform1f(locs.u_edgeSoft, 0.0);
   if(locs.u_asciiTonePass) gl.uniform1f(locs.u_asciiTonePass, 0.0);
   gl.uniform1i(locs.u_lineShape, window._lineShape||0);
@@ -1178,6 +1184,7 @@ async function savePdf(){
       const baseSize=2400;
       const effectiveScale=Math.min(rasterW,rasterH)/(baseSize/3);
       R.setRenderUniforms(rasterW,rasterH,effectiveScale,false);
+      if(R._runTonePrepass) R._runTonePrepass(rasterW,rasterH); // export parity (ASCII/circle tone)
       gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
       // Encode JPEG. Try OffscreenCanvas.convertToBlob (non-blocking, can
       // run on browser worker thread) first; fall back to toDataURL.
