@@ -1,7 +1,11 @@
 # Plan: RISO Driver-Derived Screen Engine (circles → real threshold matrices)
 
-Status: proposed · Evidence: 3-agent deep dive (local driver data, current-code
-audit with offline simulation, RIP-practice research). Goal: screen mode's dot
+Status: P1+P2 SHIPPED (commit 8bdeecb) — engine runs on real driver matrices
+with endpoint-correct AA; next: P3 (TRC LUTs) → P4 (edge toggle) → P5 (export
+parity) → P6 (validation + default flip). Engine still console-only
+(R.setScreenType(1)) until the flip. · Evidence: 3-agent deep dive (local
+driver data, current-code audit with offline simulation, RIP-practice
+research). Goal: screen mode's dot
 engine uses RISO's actual threshold matrices while keeping all accumulated look
 work, and the hard-edge behavior becomes a deliberate choice.
 
