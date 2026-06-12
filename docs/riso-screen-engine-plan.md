@@ -24,6 +24,13 @@ differences are preview-resolution artifacts (smallest dots sub-pixel below
 cellPx~14). The old procedural cutback was resolution-DEPENDENT (1.5/cellPx)
 — preview and export tones disagreed; the matrix+TRC engine is
 resolution-stable.
+POST-FLIP FIX (f6a3f97): sub-pixel dots over-ink in the composite — the raw
+engine darkened 13-34 luma as LPI rose at preview cell sizes. Matrix path
+now carries k = 0.36·ln(12.5/cellPx) compensation (calibrated at 3 canvas
+sizes; zero at cellPx ≥ 12.5 so exports stay pure); lut106 replaced with the
+pure measured Screen-90 curve (extrapolation crushed shadows). Raw tone is
+LPI-invariant within ~4 luma at every size; remaining progression with TRC
+on is the authentic measured print difference.
 · Evidence: 3-agent deep dive + 4-agent P3-P6 analysis workflow. Goal: screen mode's dot
 engine uses RISO's actual threshold matrices while keeping all accumulated look
 work, and the hard-edge behavior becomes a deliberate choice.
