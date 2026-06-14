@@ -2100,10 +2100,22 @@ R.setPaperPBR = function(on){
 // Called by the live draw AND by save.js export paths (R._runTonePrepass)
 // with the target render dims, so exports match the preview (P5 parity).
 // Leaves u_asciiTonePass=0, u_edgeSoft set, viewport restored to (dw, dh).
+// Soft edges only pay off at COARSE screens: below this the dots are a few px,
+// the whole-dot-shrink is invisible, and the anchor lattice (≈ cells across the
+// page = 8.267·lpi per axis) explodes — the prepass + per-fragment cell-tone
+// cost ~+50ms/frame at Fine on a large canvas. cells-across is canvas-size
+// independent, so this gate is predictable per preset: ON for Poster/Huge/Big
+// (5/10/25 lpi), OFF for Med/Fine/Micro (43/71/106), which fall back to the
+// cheap per-fragment compare (also smoother — no lattice quantization).
+const SCREEN_SOFT_MAX_LPI = 33;
+function _screenSoftActive(){
+  return (window._screenEdgeSoft ?? 1) && (cached.lpi <= SCREEN_SOFT_MAX_LPI);
+}
+R._screenSoftActive = _screenSoftActive;
 function _runTonePrepass(dw, dh){
   const _stampNow = (window._stampShape|0);
   const _wantAsciiTone  = mode === 'screen' && _stampNow === 5;
-  const _wantCircleTone = mode === 'screen' && _stampNow === 0 && (window._screenEdgeSoft ?? 1);
+  const _wantCircleTone = mode === 'screen' && _stampNow === 0 && _screenSoftActive();
   if((_wantAsciiTone || _wantCircleTone) && locs.u_asciiTonePass){
     let aMinX, aMinY, aW, aH, texW, texH, passId;
     const corners = [[0,0],[dw,0],[0,dh],[dw,dh]];
