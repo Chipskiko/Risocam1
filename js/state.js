@@ -73,6 +73,32 @@ function markDirty(){
   needsRedraw=true;
   if(!_pendingDirty){_pendingDirty=true;requestAnimationFrame(()=>{_pendingDirty=false;scheduleRender();});}
 }
+// ─── Interactive level-of-detail ───
+// The preview renders at resScale× (6×) supersampling for export-grade quality
+// — ~36× the display's pixels. That's fine for a settled frame but makes live
+// dragging (sliders, etc.) lurch on a large canvas. During an interaction we
+// render at native resolution (window._interacting=1 → render() drops baseScale
+// to ~dpr, ~9× fewer fragments), then fire ONE full-quality frame ~180ms after
+// the last interaction event. Sharp when settled, snappy while dragging.
+let _settleTimer=0;
+const INTERACT_SETTLE_MS=180;
+function markDirtyInteractive(){
+  window._interacting=1;
+  if(_settleTimer) clearTimeout(_settleTimer);
+  _settleTimer=setTimeout(function(){
+    _settleTimer=0; window._interacting=0; needsRedraw=true; scheduleRender(); // final full-res frame
+  }, INTERACT_SETTLE_MS);
+  markDirty();
+}
+R.markDirtyInteractive=markDirtyInteractive;
+// Global hook: any range-slider drag (the draggy controls) routes through the
+// LOD path without touching each handler. Capture phase so _interacting is set
+// before the handler's own markDirty schedules the frame. Pointer drags on the
+// canvas (crop, pan) can opt in by calling R.markDirtyInteractive directly.
+document.addEventListener('input', function(e){
+  const t=e.target;
+  if(t && t.type==='range') markDirtyInteractive();
+}, true);
 // Loading in a HIDDEN tab starves requestAnimationFrame: the scheduled frame
 // never fires, _rafId stays nonzero, and every later markDirty no-ops — the
 // app sits frozen at a 300x150 canvas until something calls render directly.

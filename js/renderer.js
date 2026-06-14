@@ -1177,13 +1177,19 @@ function _renderInner(){
     else cssW=Math.round(cssH*ar);
   }
   const dpr=isPhoneNow?1:Math.min(window.devicePixelRatio||1, 2);
-  const baseScale=Math.max(resScale, dpr);
-  const dw=Math.round(cssW*baseScale), dh=Math.round(cssH*baseScale);
+  // Interactive LOD: while dragging a control, render at native resolution
+  // (no 6× supersample → ~9× fewer fragments) for snappy feedback; the settle
+  // timer in state.js fires one full-quality frame when the drag stops. Held
+  // off during recording/save so captures stay full quality. u_resScale is
+  // lowered to match so grain/paper detail doesn't alias at the smaller size.
+  const interacting = !!window._interacting && !isRecording && !_saving;
+  const effScale = interacting ? Math.max(2, dpr) : Math.max(resScale, dpr);
+  const dw=Math.round(cssW*effScale), dh=Math.round(cssH*effScale);
   if($gl.width!==dw||$gl.height!==dh){$gl.width=dw;$gl.height=dh;}
   gl.viewport(0,0,dw,dh);
 
   // ─── Uniforms — all from cached values, zero DOM access ───
-  setRenderUniforms(dw, dh, resScale, isPhoneNow);
+  setRenderUniforms(dw, dh, interacting ? Math.max(2, dpr) : resScale, isPhoneNow);
 
   // Anchor-tone prepasses (ASCII pass 1 / circles soft-edge pass 2) — shared
   // with the export paths in save.js via R._runTonePrepass.
