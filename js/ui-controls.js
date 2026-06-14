@@ -583,9 +583,27 @@ function setChannelDens(ch,val){
 }
 
 
+// Matrix circle dots merge into a checkerboard of SQUARES at high coverage
+// (the authentic ~50% AM-screen look, but the user finds it ugly). Auto-bias
+// SCREEN circle mode toward a rounder midtone density. Save the working
+// density on entry and restore it on leave, so grain / RISO / ASCII keep
+// their full punch — only circle screens get the round-dot density.
+const SCREEN_DENS = 62;
+function applyScreenDensity(){
+  const wantLow = (mode === 'screen') && ((window._stampShape|0) === 0);
+  if(wantLow && cached._densSaved == null){
+    cached._densSaved = cached.layerDens.slice();
+    for(let i=0;i<4;i++) cached.layerDens[i] = SCREEN_DENS;
+  } else if(!wantLow && cached._densSaved != null){
+    cached.layerDens = cached._densSaved.slice();
+    cached._densSaved = null;
+  }
+}
+R.applyScreenDensity = applyScreenDensity;
 function setMode(m){
   mode=m;
   window._mode=m; // expose for cross-file checks (source.js source-change hook)
+  applyScreenDensity();
   // Desktop mode buttons (may not exist in phone-only scenarios)
   const mg=el('modeGrain'),ms=el('modeScreen'),ml=el('modeLines'),mf=el('modeFlat');
   if(mg)mg.classList.toggle('active',m==='grain');
@@ -628,6 +646,7 @@ function setMode(m){
   if(typeof refreshLineCenterUI === 'function') refreshLineCenterUI();
   if(typeof refreshDitherScaleVisibility === 'function') refreshDitherScaleVisibility();
   if(typeof refreshShapeIcons === 'function') refreshShapeIcons();
+  if(typeof syncAsciiChips === 'function') syncAsciiChips();
   // DEFAULT (lock-to-CMYK-rosette) angles only apply to SCREEN's halftone
   // dot orientation — that's where the standard 15°/75°/0°/45° rosette
   // convention exists. In LINES the per-plate angle is a freeform line
@@ -814,8 +833,11 @@ const SHAPE_ICONS_STAMP = [
 function refreshShapeIcons(){
   const lineIcon = el('lineShapeIcon');
   if(lineIcon) lineIcon.innerHTML = SHAPE_ICONS_LINE[(window._lineShape|0) % SHAPE_ICONS_LINE.length] || '';
+  const stampSvg = SHAPE_ICONS_STAMP[(window._stampShape|0) % SHAPE_ICONS_STAMP.length] || '';
   const stampIcon = el('stampShapeIcon');
-  if(stampIcon) stampIcon.innerHTML = SHAPE_ICONS_STAMP[(window._stampShape|0) % SHAPE_ICONS_STAMP.length] || '';
+  if(stampIcon) stampIcon.innerHTML = stampSvg;
+  const phStampIcon = el('phStampShapeIcon');
+  if(phStampIcon) phStampIcon.innerHTML = stampSvg;
 }
 
 const fpsSteps=[0,4,8,12,24];
@@ -842,18 +864,24 @@ const STAMP_SHAPES = ['Circle', 'Square', 'Diamond', 'Plus', 'Star', 'ASCII'];
 window._stampShape = window._stampShape ?? 0;
 function cycleStampShape(){
   window._stampShape = (window._stampShape + 1) % STAMP_SHAPES.length;
-  const v = el('stampShapeBtnVal'); if(v) v.textContent = STAMP_SHAPES[window._stampShape];
-  R.toast('Stamp: ' + STAMP_SHAPES[window._stampShape]);
+  const lbl = STAMP_SHAPES[window._stampShape];
+  const v = el('stampShapeBtnVal'); if(v) v.textContent = lbl;
+  const pv = el('phStampShapeBtnVal'); if(pv) pv.textContent = lbl;
+  R.toast('Stamp: ' + lbl);
   if(typeof refreshShapeIcons === 'function') refreshShapeIcons();
   syncAsciiChips();
+  applyScreenDensity();      // circle⇄non-circle flips the round-dot density
+  buildChannelUI();          // reflect density change on the plate sliders
+  if(el('phChannelList')&&el('phChannelList').children.length) buildChannelUI('phChannelList');
   markDirty();
 }
 // ASCII-only chips (charset + custom font) appear next to the stamp button
-// only while the ASCII stamp is active.
+// only while the ASCII stamp is active. Toggles both desktop and phone chips.
 function syncAsciiChips(){
   const show = (window._stampShape|0) === 5;
-  const a = el('asciiCharsetBtn'); if(a) a.style.display = show ? '' : 'none';
-  const f = el('asciiFontBtn');    if(f) f.style.display = show ? '' : 'none';
+  ['asciiCharsetBtn','asciiFontBtn','phAsciiCharsetBtn','phAsciiFontBtn'].forEach(id => {
+    const e = el(id); if(e) e.style.display = show ? '' : 'none';
+  });
 }
 R.syncAsciiChips = syncAsciiChips;
 // Clean halftone toggle — Spectrolite-style preview where SCREEN renders
@@ -1479,6 +1507,16 @@ function updateRegmarkUI() {
   // Phone-mode LPI button uses the legacy id pattern
   const phLpi = el('phLpiBtn');
   if(phLpi){ const v = phLpi.querySelector('.regmark-val'); if(v) v.textContent = lpiLabel; }
+  // Phone stamp-shape + ASCII chips: mirror desktop state (the panel rebuilds
+  // with static defaults, so re-sync labels/icons/visibility on each refresh).
+  const phStamp = el('phStampShapeBtnVal');
+  if(phStamp && typeof STAMP_SHAPES !== 'undefined') phStamp.textContent = STAMP_SHAPES[window._stampShape|0];
+  const phCs = el('phAsciiCharsetVal');
+  if(phCs) phCs.textContent = ['ABC','აბგ','A+ა'][window._asciiCharset||0];
+  const phFv = el('phAsciiFontVal');
+  if(phFv) phFv.textContent = window._asciiFontName ? window._asciiFontName.slice(0,9) : 'Aa';
+  if(typeof refreshShapeIcons === 'function') refreshShapeIcons();
+  if(typeof syncAsciiChips === 'function') syncAsciiChips();
 
   // Misreg
   const mr = parseFloat(el('misreg')?.value || 0);

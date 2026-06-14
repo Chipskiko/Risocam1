@@ -126,7 +126,7 @@
           </div>
           <!-- SCREEN: LPI + halftone stamp shape -->
           <div id="screenPrimary" style="display:none;gap:6px">
-            <button class="regmark-btn active" id="lpiBtnScreen" onclick="R.cycleLpi()" title="Lines Per Inch"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><g transform="rotate(45 10 10)"><circle cx="5" cy="5" r="1.5" fill="currentColor"/><circle cx="13" cy="5" r="1.5" fill="currentColor"/><circle cx="5" cy="13" r="1.5" fill="currentColor"/><circle cx="13" cy="13" r="1.5" fill="currentColor"/><circle cx="9" cy="9" r="2" fill="currentColor"/></g></svg><span class="regmark-val" id="lpiBtnVal">71</span></button>
+            <button class="regmark-btn active" id="lpiBtnScreen" onclick="R.cycleLpi()" title="Lines Per Inch"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><g transform="rotate(45 10 10)"><circle cx="5" cy="5" r="1.5" fill="currentColor"/><circle cx="13" cy="5" r="1.5" fill="currentColor"/><circle cx="5" cy="13" r="1.5" fill="currentColor"/><circle cx="13" cy="13" r="1.5" fill="currentColor"/><circle cx="9" cy="9" r="2" fill="currentColor"/></g></svg><span class="regmark-val" id="lpiBtnVal">Fine</span></button>
             <button class="regmark-btn" id="stampShapeBtn" onclick="R.cycleStampShape()" title="Halftone stamp shape — replaces the round dot with a custom shape (square, diamond, plus, star, ASCII map: random letters &amp; symbols incl. Georgian, tone-ranked like classic ASCII art; best at low LPI)."><span class="regmark-icon" id="stampShapeIcon" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px"></span><span class="regmark-val" id="stampShapeBtnVal">Circle</span></button>
             <button class="regmark-btn" id="asciiCharsetBtn" style="display:none" onclick="R.cycleAsciiCharset()" title="ASCII charset — Latin / Georgian Mkhedruli / mixed"><span class="regmark-val" id="asciiCharsetVal">ABC</span></button>
             <button class="regmark-btn" id="asciiFontBtn" style="display:none" onclick="R.asciiFontClick()" title="ASCII font — click to upload a TTF/OTF/WOFF; click again to reset to default"><span class="regmark-val" id="asciiFontVal">Aa</span></button>
@@ -135,7 +135,7 @@
           </div>
           <!-- LINES: LPI + line shape -->
           <div id="linesPrimary" style="display:none;gap:6px">
-            <button class="regmark-btn active" id="lpiBtnLines" onclick="R.cycleLpi()" title="Lines Per Inch"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><line x1="2" y1="5" x2="18" y2="5" stroke="currentColor" stroke-width="1.4"/><line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" stroke-width="1.4"/><line x1="2" y1="15" x2="18" y2="15" stroke="currentColor" stroke-width="1.4"/></svg><span class="regmark-val" id="lpiBtnLinesVal">71</span></button>
+            <button class="regmark-btn active" id="lpiBtnLines" onclick="R.cycleLpi()" title="Lines Per Inch"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><line x1="2" y1="5" x2="18" y2="5" stroke="currentColor" stroke-width="1.4"/><line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" stroke-width="1.4"/><line x1="2" y1="15" x2="18" y2="15" stroke="currentColor" stroke-width="1.4"/></svg><span class="regmark-val" id="lpiBtnLinesVal">Fine</span></button>
             <button class="regmark-btn active" id="lineShapeBtnPanel" onclick="R.cycleLineShape()" title="Line shape"><span class="regmark-icon" id="lineShapeIcon" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px"></span><span class="regmark-val" id="lineShapeBtnPanelVal">STRAIGHT</span></button>
           </div>
           <!-- RISO: master density (FS prepass DPI) -->
@@ -163,7 +163,7 @@
           <button class="regmark-btn" id="lineEdgeBtn" onclick="R.cycleLineEdgeThickness()" title="Edge thickness — outer rings/spokes get progressively thicker than the ones near the center."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="2.5" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="10" cy="10" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="8.5" fill="none" stroke="currentColor" stroke-width="2.2"/></svg><span class="regmark-val" id="lineEdgeBtnVal">Off</span></button>
         </div>
         <input type="range" id="grainSize" min="1.5" max="9" value="3" step="0.5" style="display:none"><span id="grainSizeVal" style="display:none">3</span>
-        <input type="range" id="lpi" min="10" max="120" value="71" step="1" style="display:none"><span id="lpiVal" style="display:none">71</span>
+        <input type="range" id="lpi" min="5" max="120" value="71" step="1" style="display:none"><span id="lpiVal" style="display:none">71</span>
         <div class="regmark-row">
           <button class="regmark-btn" id="ghostingBtn" onclick="R.cycleGhosting()" title="Ghosting"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><path d="M10 2C6.5 2 4 5 4 8v7c0 0 1-1.5 2-1.5s1.5 1.5 2.5 1.5 1.5-1.5 2.5-1.5 1.5 1.5 2.5 1.5S15 14 16 15.5V8c0-3-2.5-6-6-6z" fill="currentColor" opacity="0.7"/><circle cx="8" cy="8" r="1.2" fill="white"/><circle cx="12" cy="8" r="1.2" fill="white"/></svg><span class="regmark-val" id="ghostingBtnVal">OFF</span></button>
           <input type="range" id="ghosting" min="0" max="100" value="0" step="2" style="display:none"><span id="ghostingVal" style="display:none">0</span>
@@ -3206,18 +3206,18 @@ void main(){
 <!-- mp4-muxer for proper MP4 (H.264) output via WebCodecs in Chrome/Edge -->
 <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.min.js"></script>
 <script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
-<script src="js/data.js?v=15"></script>
+<script src="js/data.js?v=16"></script>
 <script src="js/state.js?v=14"></script>
 <script src="js/undo.js?v=7"></script>
 <script src="js/compare.js?v=6"></script>
 <script src="js/riso-amt.js?v=24"></script>
 <script src="js/riso-amt-webgpu.js?v=5"></script>
-<script src="js/renderer.js?v=121"></script>
+<script src="js/renderer.js?v=122"></script>
 <script src="js/source.js?v=47"></script>
 <script src="js/save.js?v=53"></script>
-<script src="js/ui-controls.js?v=54"></script>
+<script src="js/ui-controls.js?v=55"></script>
 <script src="js/ui-paper.js?v=13"></script>
-<script src="js/phone.js?v=19"></script>
+<script src="js/phone.js?v=20"></script>
 <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');</script>
 </body>
 </html>

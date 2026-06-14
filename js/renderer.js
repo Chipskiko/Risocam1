@@ -1956,8 +1956,9 @@ R.cycleAsciiCharset = function(){
   window._asciiCharset = ((window._asciiCharset || 0) + 1) % 3;
   window._glyphAtlasTex = null;
   try { markDirty(); } catch(e) {}
-  const el = document.getElementById('asciiCharsetVal');
-  if(el) el.textContent = ['ABC', 'აბგ', 'A+ა'][window._asciiCharset];
+  const lbl = ['ABC', 'აბგ', 'A+ა'][window._asciiCharset];
+  const el = document.getElementById('asciiCharsetVal'); if(el) el.textContent = lbl;
+  const pel = document.getElementById('phAsciiCharsetVal'); if(pel) pel.textContent = lbl;
   return window._asciiCharset;
 };
 
@@ -1977,8 +1978,9 @@ R.uploadAsciiFont = function(file){
       window._asciiFontName = (file.name || 'custom').replace(/\.[^.]+$/, '');
       window._glyphAtlasTex = null;
       try { markDirty(); } catch(e){}
-      const el = document.getElementById('asciiFontVal');
-      if(el) el.textContent = window._asciiFontName.slice(0, 9);
+      const nm = window._asciiFontName.slice(0, 9);
+      const el = document.getElementById('asciiFontVal'); if(el) el.textContent = nm;
+      const pel = document.getElementById('phAsciiFontVal'); if(pel) pel.textContent = nm;
       R.toast && R.toast('ASCII font: ' + window._asciiFontName);
     });
   }).catch(function(e){
@@ -1993,8 +1995,8 @@ R.resetAsciiFont = function(){
   window._asciiFontName = null;
   window._glyphAtlasTex = null;
   try { markDirty(); } catch(e){}
-  const el = document.getElementById('asciiFontVal');
-  if(el) el.textContent = 'Aa';
+  const el = document.getElementById('asciiFontVal'); if(el) el.textContent = 'Aa';
+  const pel = document.getElementById('phAsciiFontVal'); if(pel) pel.textContent = 'Aa';
 };
 // Font chip click: no custom font → open the picker; custom active → reset.
 R.asciiFontClick = function(){
