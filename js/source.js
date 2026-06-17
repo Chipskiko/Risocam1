@@ -747,7 +747,10 @@ function handleFile(e){
     };
     r.readAsDataURL(f);
   }
-  e.target.value='';
+  // Clear the <input> so re-picking the SAME file fires onchange again. Guard
+  // it: drag-drop calls handleFile(File) directly, so e.target is undefined and
+  // this would throw mid-handler (aborting whatever the drop handler does next).
+  if(isInput && e.target) e.target.value='';
 }
 
 function loadSampleImage(){
