@@ -5,13 +5,24 @@
 // ======================== SOURCE MANAGEMENT ========================
 // Composite image onto white background — transparent PNGs become opaque
 function flattenAlpha(img){
+  let w=img.naturalWidth||img.width;
+  let h=img.naturalHeight||img.height;
+  // Cap to the GPU's max texture size (with an 8192 perf ceiling). An image
+  // larger than MAX_TEXTURE_SIZE makes texImage2D fail with GL_INVALID_VALUE
+  // and SILENTLY leaves the previously-bound texture — so the upload appears
+  // to "show the old template at the new image's dimensions". Downscale (aspect
+  // preserved) so the pixels actually land. Common trigger: tall scans /
+  // long screenshots / phone photos on a modest GPU.
+  const maxTex=(gl && gl.getParameter) ? gl.getParameter(gl.MAX_TEXTURE_SIZE) : 4096;
+  const cap=Math.min(maxTex||4096, 8192);
+  const s=Math.min(1, cap/Math.max(w,h));
   const c=document.createElement('canvas');
-  c.width=img.naturalWidth||img.width;
-  c.height=img.naturalHeight||img.height;
+  c.width=Math.max(1, Math.round(w*s));
+  c.height=Math.max(1, Math.round(h*s));
   const ctx=c.getContext('2d');
   ctx.fillStyle='#fff';
   ctx.fillRect(0,0,c.width,c.height);
-  ctx.drawImage(img,0,0);
+  ctx.drawImage(img,0,0,c.width,c.height);
   return c;
 }
 function pickFile(){el('fileInput').click();}
