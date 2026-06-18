@@ -1683,7 +1683,7 @@ async function _runAmtPrepassImpl(){
   // Set via console:  R.setAmtScanDpi(300)
   // Default raised to 600 so the preview matches the real printed output
   // at the device's native resolution. Lower it for faster iteration.
-  const scanDpi = window._amtScanDpi || 600;
+  const scanDpi = window._amtScanDpi || 150;
   const A3_LONG_INCHES = 16.54;
   const targetMaxEdge = Math.round(scanDpi * A3_LONG_INCHES);
   const sourceAspect = srcCanvas.width / srcCanvas.height;
@@ -2073,7 +2073,7 @@ R.setRisoParams = function(opts){
     }
   }
   return {
-    dpi: window._amtScanDpi || 600,
+    dpi: window._amtScanDpi || 150,
     inkSpread: window._inkSpread != null ? window._inkSpread : 0.5,
     maxCoverage: window._riso_maxCoverage != null ? window._riso_maxCoverage : 1.7,
     thresholdNoise: window._riso_thresholdNoise != null ? window._riso_thresholdNoise : 0.0
@@ -2241,7 +2241,7 @@ R.setGpuInkSpread = function(on){
 };
 R.amtInfo = function(){
   return {
-    scanDpi: window._amtScanDpi || 600,
+    scanDpi: window._amtScanDpi || 150,
     rendererVersion: 40,
     module: window.RisoAmt && window.RisoAmt.CALIBRATION
   };

@@ -1448,7 +1448,7 @@ function cycleInkSpread() {
 // _amtScanDpi the debug slider drives; setRisoParams invalidates + rebakes.
 const AMT_DPI_STEPS = [150, 300, 600];
 function cycleAmtDpi() {
-  const cur = window._amtScanDpi || 600;
+  const cur = window._amtScanDpi || 150;
   // nearest step, then advance (handles odd values set via debug slider/console)
   let idx = 0, best = Infinity;
   AMT_DPI_STEPS.forEach((v, i) => { const d = Math.abs(v - cur); if (d < best) { best = d; idx = i; } });
