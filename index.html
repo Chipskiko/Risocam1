@@ -1946,16 +1946,39 @@ float vnoise(vec2 p){
              mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
 }
 
-// 'Dissolve' ink compositing (like Photoshop's Dissolve blend): stochastically
-// resolve PARTIAL ink to a full speck or nothing per sheet-fixed cell, so AA
-// edges and light tones read as discrete ink specks sitting ON the paper
-// instead of an airbrush fade. d=0 stays clean paper, d=1 stays solid ink —
-// only the in-between dissolves. Cells live in rpx (sheet) space so the
-// speckle is zoom/export invariant; idx decorrelates the pattern per drum.
-float dissolveInk(float d, vec2 rpx, int idx){
+// Cover-fit UV into the single-sheet PBR paper map. Shared by applyPaperPBR
+// (visible paper tooth) and dissolveInk (ink speckle) so the specks land on
+// exactly the fibers the eye can see.
+const float PAPER_AR = 1588.0 / 2048.0; // packed-map width/height (Paper002)
+vec2 paperPbrUV(vec2 uv){
+  float boxAR = u_res.x / u_res.y;
+  vec2 vis = (boxAR > PAPER_AR) ? vec2(1.0, PAPER_AR / boxAR)
+                                : vec2(boxAR / PAPER_AR, 1.0);
+  const float PAPER_ZOOM = 0.84; // ~8% margin per side for sheet-feed jitter
+  return (uv - 0.5) * vis * PAPER_ZOOM + 0.5 + u_paperPbrShift;
+}
+
+// 'Dissolve' ink compositing v2 — fiber-height thresholding: where ink
+// coverage is PARTIAL, real ink catches the RAISED paper fibers first and
+// skips the valleys. So the speck threshold is the paper height map (peaks →
+// low threshold → ink lands sooner), with the V&C blue-noise as tie-breaker so
+// flat paper regions don't band. Specks therefore align with the visible
+// paper grain — the cue that reads as "ink sits ON the sheet" (uncorrelated
+// white noise reads as digital static). d=0 stays clean paper, d=1 stays
+// solid ink. The threshold field is per-SHEET, not per-drum: every ink layer
+// catches the same fibers, so it's computed once per fragment (lazy global)
+// and shared by all four layers + the sep branch.
+float g_dissolveThr = -1.0;
+float dissolveInk(float d, vec2 uv){
   if(u_inkDissolve < 0.005) return d;
-  float n = hash(floor(rpx * 0.15) + vec2(float(idx) * 29.17, float(idx) * 7.31));
-  return mix(d, step(n + 0.001, d), u_inkDissolve);
+  if(g_dissolveThr < 0.0){
+    float bn = texture2D(u_bnVC, uv * REF * 0.35 / 128.0).r;   // REPEAT+NEAREST
+    float h = 0.14; // map mean — neutral when the PBR sheet is off
+    if(u_usePaperPBR > 0.5) h = texture2D(u_paperPBR, paperPbrUV(uv)).r;
+    // Peaks (h above mean) pull the threshold DOWN → ink catches there first.
+    g_dissolveThr = clamp(bn - (h - 0.14) * 2.0, 0.001, 0.999);
+  }
+  return mix(d, step(g_dissolveThr, d), u_inkDissolve);
 }
 
 // Supersampled line screen — same anti-moiré band-limiting as the dots, but
@@ -2496,18 +2519,11 @@ float paperEffect(vec2 pix){
 // mapped ONCE across the whole canvas with a cover-fit, so there is no repeat
 // lattice and therefore no "repeating squares" grid. Cover-fit keeps the fibers
 // isotropic (uniform scale) and crops the overflow on the longer axis. One tap.
-const float PAPER_AR = 1588.0 / 2048.0; // packed-map width/height
 vec3 applyPaperPBR(vec3 result, vec2 uv){
   if(u_usePaperPBR < 0.5 || u_paperTex < 0.01) return result;
-  // background-size:cover — fill the canvas, crop the longer-relative axis.
-  float boxAR = u_res.x / u_res.y;
-  vec2 vis = (boxAR > PAPER_AR) ? vec2(1.0, PAPER_AR / boxAR)
-                                : vec2(boxAR / PAPER_AR, 1.0);
-  // PAPER_ZOOM (<1) samples a sub-region, leaving a margin on BOTH axes so the
-  // per-frame sheet-feed jitter (u_paperPbrShift, up to ±0.07) can move the sheet
-  // without ever reaching the clamped edge. Zoom is uniform → fibers stay round.
-  const float PAPER_ZOOM = 0.84;        // ~8% margin per side
-  vec2 puv = (uv - 0.5) * vis * PAPER_ZOOM + 0.5 + u_paperPbrShift;
+  // Cover-fit + zoom + sheet-feed jitter — shared with dissolveInk via
+  // paperPbrUV() so ink speckle and visible tooth sample the same fibers.
+  vec2 puv = paperPbrUV(uv);
   vec4 p = texture2D(u_paperPBR, puv);
   // Paper-type character: u_paperPbrMul.x scales the height tooth, .y the
   // normal-mapped sheen (Smooth = low tooth / coated sheen, Kraft = heavy
@@ -2781,7 +2797,7 @@ void main(){
       float n2 = hash2(rpx * 3.1);
       d = processLayer(cmyk, rpx, pix, 0, u_chan0, u_angle0, n1, n2, u_dens0, pf, src, u_grainMul0, u_inkGamma0);
     }
-    d = dissolveInk(d, rpx, u_chan0); // export parity with the composite path
+    d = dissolveInk(d, uv); // export parity with the composite path
     float gray = 1.0 - d; // invert: black=ink for print production
     gl_FragColor = vec4(gray, gray, gray, 1.0);
     return;
@@ -2863,7 +2879,7 @@ void main(){
     float grain = (u_mode == 1 && u_stampShape == 5)
                 ? asciiStamp(skUV0, off0, 0, cov, pf) * printMask(skUV0, off0, lrpx)
                 : getGrainTexture(cov, lrpx, lpix, 0, u_angle0, pf, u_grainMul0);
-    grain = dissolveInk(grain, lrpx, 0);
+    grain = dissolveInk(grain, uv);
     // Letters legitimately OVERHANG content edges (anchor carries the tone),
     // but calBlend early-returns where the FRAGMENT's coverage is ~0 — which
     // sliced every overhang exactly at the content boundary. Let stamp ink
@@ -2916,7 +2932,7 @@ void main(){
     float grain = (u_mode == 1 && u_stampShape == 5)
                 ? asciiStamp(skUV1, off1, 1, cov, pf) * printMask(skUV1, off1, lrpx)
                 : getGrainTexture(cov, lrpx, lpix, 1, u_angle1, pf, u_grainMul1);
-    grain = dissolveInk(grain, lrpx, 1);
+    grain = dissolveInk(grain, uv);
     // Letters legitimately OVERHANG content edges (anchor carries the tone),
     // but calBlend early-returns where the FRAGMENT's coverage is ~0 — which
     // sliced every overhang exactly at the content boundary. Let stamp ink
@@ -2967,7 +2983,7 @@ void main(){
     float grain = (u_mode == 1 && u_stampShape == 5)
                 ? asciiStamp(skUV2, off2, 2, cov, pf) * printMask(skUV2, off2, lrpx)
                 : getGrainTexture(cov, lrpx, lpix, 2, u_angle2, pf, u_grainMul2);
-    grain = dissolveInk(grain, lrpx, 2);
+    grain = dissolveInk(grain, uv);
     // Letters legitimately OVERHANG content edges (anchor carries the tone),
     // but calBlend early-returns where the FRAGMENT's coverage is ~0 — which
     // sliced every overhang exactly at the content boundary. Let stamp ink
@@ -3016,7 +3032,7 @@ void main(){
     float grain = (u_mode == 1 && u_stampShape == 5)
                 ? asciiStamp(skUV3, off3, 3, cov, pf) * printMask(skUV3, off3, lrpx)
                 : getGrainTexture(cov, lrpx, lpix, 3, u_angle3, pf, u_grainMul3);
-    grain = dissolveInk(grain, lrpx, 3);
+    grain = dissolveInk(grain, uv);
     // Letters legitimately OVERHANG content edges (anchor carries the tone),
     // but calBlend early-returns where the FRAGMENT's coverage is ~0 — which
     // sliced every overhang exactly at the content boundary. Let stamp ink
