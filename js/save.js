@@ -923,6 +923,7 @@ async function exportSeparations(){
   gl.uniform1f(locs.u_lineAmount, window._lineAmount ?? 1.0);
   gl.uniform1f(locs.u_lineWeight, window._lineWeight ?? 1.0);
   gl.uniform1f(locs.u_lineRoughness, window._lineRoughness ?? 0.5);
+  gl.uniform1f(locs.u_lineGrain, window._lineGrain ?? 0.6);
   // Per-layer line center (CONCENTRIC/RADIAL pivot per plate). Falls
   // back to 0.5/0.5 (image center) when arrays not initialized.
   for(let li=0; li<4; li++){

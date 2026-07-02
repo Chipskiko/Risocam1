@@ -696,6 +696,7 @@ window._lineShape = window._lineShape ?? 0;
 window._lineAmount = window._lineAmount ?? 1.0;
 window._lineWeight = window._lineWeight ?? 1.0;
 window._lineRoughness = window._lineRoughness ?? 0.5;
+window._lineGrain = window._lineGrain ?? 0.6;
 function cycleLineShape(){
   window._lineShape = (window._lineShape + 1) % LINE_SHAPES.length;
   const lbl = LINE_SHAPES[window._lineShape];
@@ -739,6 +740,18 @@ function cycleLineRoughness(){
   window._lineRoughness = LINE_ROUGH_STEPS[i].v;
   const v = el('lineRoughBtnVal'); if(v) v.textContent = LINE_ROUGH_STEPS[i].l;
   R.toast('Edge roughness: ' + LINE_ROUGH_STEPS[i].l);
+  markDirty();
+}
+// Ink grain within line fills — blends the RISO Grain-Touch blue-noise field
+// into the stroke coverage so line fills read as grainy ink, not flat color.
+const LINE_GRAIN_STEPS = [{v:0.0, l:'Off'}, {v:0.3, l:'Low'}, {v:0.6, l:'Med'}, {v:1.0, l:'High'}];
+function cycleLineGrain(){
+  let i = LINE_GRAIN_STEPS.findIndex(s => Math.abs(s.v - (window._lineGrain ?? 0.6)) < 0.05);
+  if(i < 0) i = 2;
+  i = (i + 1) % LINE_GRAIN_STEPS.length;
+  window._lineGrain = LINE_GRAIN_STEPS[i].v;
+  const v = el('lineGrainBtnVal'); if(v) v.textContent = LINE_GRAIN_STEPS[i].l;
+  R.toast('Ink grain: ' + LINE_GRAIN_STEPS[i].l);
   markDirty();
 }
 
@@ -1939,6 +1952,7 @@ R.cycleLineShape = cycleLineShape;
 R.cycleLineWeight = cycleLineWeight;
 R.cycleLineAmount = cycleLineAmount;
 R.cycleLineRoughness = cycleLineRoughness;
+R.cycleLineGrain = cycleLineGrain;
 R.cycleLineEdgeThickness = cycleLineEdgeThickness;
 R.cycleLineCount = cycleLineCount;
 R.cycleMisreg = cycleMisreg;

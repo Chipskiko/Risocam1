@@ -154,6 +154,7 @@
             <button class="regmark-btn" id="lineWeightBtn" onclick="R.cycleLineWeight()" title="Line weight"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><line x1="2" y1="5" x2="18" y2="5" stroke="currentColor" stroke-width="0.8"/><line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" stroke-width="1.6"/><line x1="2" y1="15" x2="18" y2="15" stroke="currentColor" stroke-width="3"/></svg><span class="regmark-val" id="lineWeightBtnVal">1×</span></button>
             <button class="regmark-btn" id="lineAmountBtn" onclick="R.cycleLineAmount()" title="Shape amount (wave amplitude / variation strength / spiral twirl)"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><path d="M2 10 Q5 6 8 10 T14 10 T20 10" stroke="currentColor" stroke-width="1.4" fill="none"/></svg><span class="regmark-val" id="lineAmountBtnVal">100%</span></button>
             <button class="regmark-btn" id="lineRoughBtn" onclick="R.cycleLineRoughness()" title="Edge roughness / fray"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><path d="M2 6 L4 5 L6 7 L8 5.5 L10 6.5 L12 5 L14 7 L16 5.5 L18 6" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M2 14 L4 13 L6 15 L8 13.5 L10 14.5 L12 13 L14 15 L16 13.5 L18 14" stroke="currentColor" stroke-width="1.2" fill="none"/></svg><span class="regmark-val" id="lineRoughBtnVal">Med</span></button>
+            <button class="regmark-btn" id="lineGrainBtn" onclick="R.cycleLineGrain()" title="Ink grain within lines (Grain-Touch texture)"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><rect x="2" y="7" width="16" height="6" rx="1" stroke="currentColor" stroke-width="1.2" fill="none"/><circle cx="5" cy="9.5" r="0.7" fill="currentColor"/><circle cx="8" cy="11" r="0.7" fill="currentColor"/><circle cx="10.5" cy="9" r="0.7" fill="currentColor"/><circle cx="13" cy="10.8" r="0.7" fill="currentColor"/><circle cx="15.5" cy="9.3" r="0.7" fill="currentColor"/></svg><span class="regmark-val" id="lineGrainBtnVal">Med</span></button>
           </div>
         </div>
         <!-- Row 3 — shape-specific sub-settings. Visible only for
@@ -531,6 +532,7 @@ uniform int u_lineShape;     // 0=straight 1=wavy 2=guilloche 3=concentric 4=rad
 uniform float u_lineAmount;  // 0..1 strength of the shape's distinctive parameter
 uniform float u_lineWeight;  // 0.5..2.0 multiplier on stripe thickness (visual line weight)
 uniform float u_lineRoughness; // 0..1 amount of edge fray / position jitter
+uniform float u_lineGrain;     // 0..1 Grain-Touch ink texture blended into line fills
 // Per-layer CONCENTRIC/RADIAL pivot — independent X/Y per plate so the
 // rings/spokes of each ink can radiate from a different point.
 uniform vec2 u_lineCenter0, u_lineCenter1, u_lineCenter2, u_lineCenter3;
@@ -2082,7 +2084,19 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
     }
     return screenSampled(val, jitPix, u_screenCell, angle, float(idx));  // 4× supersampled (anti-moiré)
   }
-  if(u_mode == 2) return lineSampled(val, jitPix, u_screenCell, angle, idx);  // 8× supersampled (anti-moiré)
+  if(u_mode == 2){
+    float line = lineSampled(val, jitPix, u_screenCell, angle, idx);  // 8× supersampled (anti-moiré)
+    // Ink grain within strokes: blend the same V&C blue-noise Grain-Touch
+    // field RISO mode uses (same u_bnVC texture, same scale/gamma tuning) so
+    // line fills read as grainy riso ink instead of flat color. The 0.88
+    // density bias keeps even SOLID strokes breaking into sparse holes —
+    // step(threshold, 1.0) would be featureless.
+    if(u_lineGrain > 0.005){
+      float g = gpuGrainTouch(line * 0.88, jitPix);
+      line = mix(line, line * g, u_lineGrain);
+    }
+    return line;
+  }
   // u_mode == 0 → GRAIN. Within grain, ditherMode picks the algorithm.
   if(u_ditherMode == 1) return stuckiDither(val, sRpx, lo);
   if(u_ditherMode == 2) return jjnDither(val, sRpx, lo);
@@ -3212,10 +3226,10 @@ void main(){
 <script src="js/compare.js?v=6"></script>
 <script src="js/riso-amt.js?v=24"></script>
 <script src="js/riso-amt-webgpu.js?v=5"></script>
-<script src="js/renderer.js?v=129"></script>
+<script src="js/renderer.js?v=130"></script>
 <script src="js/source.js?v=49"></script>
-<script src="js/save.js?v=54"></script>
-<script src="js/ui-controls.js?v=57"></script>
+<script src="js/save.js?v=55"></script>
+<script src="js/ui-controls.js?v=58"></script>
 <script src="js/ui-paper.js?v=13"></script>
 <script src="js/phone.js?v=20"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL
