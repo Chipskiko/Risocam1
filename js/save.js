@@ -804,6 +804,12 @@ async function exportSeparations(){
   if(!layers.length){R.toast('No channels to export');return;}
   if(!hasSrc){R.toast('No image loaded');return;}
   if(!window.jspdf||!window.jspdf.jsPDF){R.toast('PDF library not loaded');return;}
+  // RISO mode: the plates ARE the AMT masters. Exporting while the FS prepass
+  // is still baking would silently produce smooth-tone plates (no halftone).
+  if(mode==='flat' && window._amtPrepassRunning){
+    R.toast('RISO halftone still rendering — try again in a moment');
+    return;
+  }
 
   R.toast('Rendering separations…');
   _saving=true;
@@ -996,6 +1002,16 @@ async function exportSeparations(){
     // In CMYK mode: u_chan0 = CMYK channel index (C=0, M=1, Y=2, K=3)
     gl.uniform1i(chanLocs[0], cached.sepType===1 ? i : L.ch);
     gl.uniform1f(densLocs[0],cached.layerDens[L.ch]);
+    // RISO mode: the sep shader renders one plate at a time through SLOT 0,
+    // and the AMT branch samples u_amtMaster0 (hardcoded idx=0). The prepass
+    // keys master planes by CHANNEL id on units 9+ch — so without this rebind
+    // every page exported channel 0's plate. Bind THIS layer's plane to unit 9
+    // (u_amtMaster0) so the hardcoded slot-0 sample reads the right master.
+    if(mode==='flat' && window._amtMasterTex && window._amtMasterTex[L.ch]){
+      gl.activeTexture(gl.TEXTURE9);
+      gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[L.ch]);
+      gl.activeTexture(gl.TEXTURE0);
+    }
     gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
 
     // Snapshot this layer's plate to an opaque temp canvas (white bg, no alpha).
@@ -1017,8 +1033,18 @@ async function exportSeparations(){
     grp.ctx.drawImage(tmpC,0,0);
     grp.ctx.globalCompositeOperation='source-over';
     grp.channels.push(CH_NAMES[L.ch]);
+    // Debug hook: lets tests/console verify per-plate output without
+    // parsing the PDF (set window._sepDebugCapture = [] before export).
+    if(window._sepDebugCapture) window._sepDebugCapture.push({ch:L.ch, color:L.color, canvas:tmpC});
     R.toast('Rendered '+(i+1)+'/'+layers.length+' ('+L.color+')');
     await new Promise(r=>requestAnimationFrame(r));
+  }
+  // Undo the per-plate unit-9 rebind: the live render expects u_amtMaster0
+  // to hold channel 0's plane (prepass keying) — restore it.
+  if(mode==='flat' && window._amtMasterTex && window._amtMasterTex[0]){
+    gl.activeTexture(gl.TEXTURE9);
+    gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[0]);
+    gl.activeTexture(gl.TEXTURE0);
   }
 
   // One page per unique color (combined plate). Channel label lists the slots
@@ -1065,11 +1091,12 @@ async function exportSeparations(){
   const colorNames=pages.map(p=>p.colorName).join('+');
   const filename='riso_seps_'+colorNames+'_'+dw+'x'+dh+'_'+ts+'.pdf';
   const pdfBlob=pdf.output('blob');
+  const nPages=pages.length; // capture BEFORE the cleanup below zeroes it
   // Free dataURL strings (each ~10 MB at hi-res) before saving
   for(const p of pages) p.dataUrl=null;
   pages.length=0;
   await doSaveBlob(pdfBlob, filename, dw, dh);
-  R.toast(pages.length+' separation'+(pages.length>1?'s':'')+' saved as PDF');
+  R.toast(nPages+' separation'+(nPages>1?'s':'')+' saved as PDF');
   }catch(e){
     console.error('Separations export error:',e);
     R.toast('Export failed: '+(e.message||e));
@@ -1172,7 +1199,16 @@ async function savePdf(){
         const baseSize=2400, saveScale=Math.max(resScale,3);
         if(ar>=1){rasterW=Math.round(baseSize*ar*saveScale/3);rasterH=Math.round(baseSize*saveScale/3);}
         else{rasterW=Math.round(baseSize*saveScale/3);rasterH=Math.round(baseSize/ar*saveScale/3);}
+        // Page geometry comes from the PRE-bump raster (nominal 300dpi) so the
+        // quality bumps below raise effective DPI instead of inflating the page.
         pageWpt=rasterW*72/300; pageHpt=rasterH*72/300;
+        // Sizing parity with saveHiRes: halftone modes need enough pixels per
+        // cell for round dots; grain needs a 4000px short side for detail.
+        if(mode!=='grain'&&cached.lpi>0){
+          const minShort=Math.ceil(12*8.267*cached.lpi);
+          if(Math.min(rasterW,rasterH)<minShort){const s=minShort/Math.min(rasterW,rasterH);rasterW=Math.round(rasterW*s);rasterH=Math.round(rasterH*s);}
+        }
+        if(mode==='grain'&&Math.min(rasterW,rasterH)<4000){const s=4000/Math.min(rasterW,rasterH);rasterW=Math.round(rasterW*s);rasterH=Math.round(rasterH*s);}
       }
       // Cap at GPU max texture
       const maxTex=gl.getParameter(gl.MAX_TEXTURE_SIZE);
@@ -1192,7 +1228,10 @@ async function savePdf(){
       // Encode JPEG. Try OffscreenCanvas.convertToBlob (non-blocking, can
       // run on browser worker thread) first; fall back to toDataURL.
       let dataUrl;
-      if(typeof OffscreenCanvas!=='undefined' && $gl.transferToImageBitmap){
+      // (Gate previously checked $gl.transferToImageBitmap, which only exists
+      // on OffscreenCanvas — so this fast path was dead code and every page
+      // encoded via synchronous toDataURL. The body uses createImageBitmap.)
+      if(typeof OffscreenCanvas!=='undefined' && typeof createImageBitmap==='function'){
         // Copy WebGL output to an OffscreenCanvas (which can encode off-thread)
         try{
           const bitmap=await createImageBitmap($gl);
