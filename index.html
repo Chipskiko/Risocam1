@@ -238,7 +238,7 @@
             <div class="slider-row" title="Ink mottle within LINES-mode strokes — continuous noise density variation (0 = flat ink).">
               <span class="slider-label">Line Grain</span><input type="range" id="lineGrainDbg" min="0" max="100" value="60" step="5" oninput="window._lineGrain=this.value/100; document.getElementById('lineGrainDbgVal').textContent=this.value+'%'; markDirty();"><span class="slider-value" id="lineGrainDbgVal">60%</span>
             </div>
-            <div class="slider-row" title="Dissolve compositing (all modes) — partial ink resolves to discrete specks sitting on the paper instead of a smooth fade. 0 = off.">
+            <div class="slider-row" title="Dissolve compositing (LINES mode) — partial ink resolves to discrete specks on the paper fibers instead of a smooth fade. 0 = off.">
               <span class="slider-label">Dissolve</span><input type="range" id="inkDissolveDbg" min="0" max="100" value="0" step="5" oninput="window._inkDissolve=this.value/100; document.getElementById('inkDissolveDbgVal').textContent=this.value+'%'; markDirty();"><span class="slider-value" id="inkDissolveDbgVal">0%</span>
             </div>
           </div>
@@ -3280,7 +3280,7 @@ void main(){
 <script src="js/compare.js?v=6"></script>
 <script src="js/riso-amt.js?v=24"></script>
 <script src="js/riso-amt-webgpu.js?v=5"></script>
-<script src="js/renderer.js?v=131"></script>
+<script src="js/renderer.js?v=133"></script>
 <script src="js/source.js?v=49"></script>
 <script src="js/save.js?v=56"></script>
 <script src="js/ui-controls.js?v=58"></script>

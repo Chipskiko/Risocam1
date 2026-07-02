@@ -924,7 +924,8 @@ async function exportSeparations(){
   gl.uniform1f(locs.u_lineWeight, window._lineWeight ?? 1.0);
   gl.uniform1f(locs.u_lineRoughness, window._lineRoughness ?? 0.5);
   gl.uniform1f(locs.u_lineGrain, window._lineGrain ?? 0.6);
-  gl.uniform1f(locs.u_inkDissolve, window._inkDissolve ?? 0.0);
+  // Dissolve is LINES-only (match the live path in setRenderUniforms)
+  gl.uniform1f(locs.u_inkDissolve, (mode === 'lines') ? (window._inkDissolve ?? 0.0) : 0.0);
   // Per-layer line center (CONCENTRIC/RADIAL pivot per plate). Falls
   // back to 0.5/0.5 (image center) when arrays not initialized.
   for(let li=0; li<4; li++){

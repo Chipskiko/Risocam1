@@ -754,8 +754,9 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   gl.uniform1f(locs.u_lineWeight, window._lineWeight ?? 1.0);
   gl.uniform1f(locs.u_lineRoughness, window._lineRoughness ?? 0.5);
   gl.uniform1f(locs.u_lineGrain, window._lineGrain ?? 0.6);
-  // Experimental 'dissolve' ink compositing — off by default, tune via console
-  gl.uniform1f(locs.u_inkDissolve, window._inkDissolve ?? 0.0);
+  // 'Dissolve' ink compositing — LINES mode only (user call: other modes have
+  // their own halftone texture; dissolve there reads as noise on noise).
+  gl.uniform1f(locs.u_inkDissolve, (mode === 'lines') ? (window._inkDissolve ?? 0.0) : 0.0);
   // Per-layer line center: each plate gets its own X/Y for CONCENTRIC/
   // RADIAL pivot. Sourced from layerLineCenterX/Y by the channel index
   // of each active layer (so plate ordering / spot-mode dedup works).
@@ -1079,6 +1080,12 @@ function _renderInner(){
     if(!isPhoneNow) setTimeout(()=>{R.updateCropGuide(0,0,0,0);},50);
   }
 
+  // Capture the dirty flag BEFORE the animation branches below: the shimmer
+  // tick calls R.newMisreg() which itself calls markDirty(), which would
+  // misclassify every animation tick as a user change and defeat the
+  // animation LOD. Read here = "was this frame REQUESTED by a state change".
+  const _dirtyFrame = needsRedraw;
+
   // ─── Riso-FPS throttle: choppy print-animation feel ───
   const now=performance.now();
   let newCamFrame=false;
@@ -1186,13 +1193,25 @@ function _renderInner(){
   // off during recording/save so captures stay full quality. u_resScale is
   // lowered to match so grain/paper detail doesn't alias at the smaller size.
   const interacting = !!window._interacting && !isRecording && !_saving;
-  const effScale = interacting ? Math.max(2, dpr) : Math.max(resScale, dpr);
+  // Animation LOD: CONTINUOUS frames — grain-shimmer ticks and live camera /
+  // video frames — render at a reduced supersample. A full-res 6× frame at
+  // 14 MP costs ~95-125 ms of GPU; the 5 fps idle shimmer alone burned ~half a
+  // GPU core forever (the "100% CPU" complaint). Shimmer frames are noise —
+  // at 3× (~4× fewer fragments, ~24 ms) the difference is invisible in motion.
+  // Dirty frames (slider, upload, mode switch, settle) still render full 6×,
+  // and recording/saving always run full quality.
+  const animTick = !_dirtyFrame && !isRecording && !_saving
+                   && (cached.grainStatic > 0 || camOn || videoOn);
+  const animScale = Math.min(Math.max(resScale, dpr), Math.max(3, dpr * 1.5));
+  const effScale = interacting ? Math.max(2, dpr)
+                 : animTick    ? animScale
+                 : Math.max(resScale, dpr);
   const dw=Math.round(cssW*effScale), dh=Math.round(cssH*effScale);
   if($gl.width!==dw||$gl.height!==dh){$gl.width=dw;$gl.height=dh;}
   gl.viewport(0,0,dw,dh);
 
   // ─── Uniforms — all from cached values, zero DOM access ───
-  setRenderUniforms(dw, dh, interacting ? Math.max(2, dpr) : resScale, isPhoneNow);
+  setRenderUniforms(dw, dh, interacting ? Math.max(2, dpr) : (animTick ? animScale : resScale), isPhoneNow);
 
   // Anchor-tone prepasses (ASCII pass 1 / circles soft-edge pass 2) — shared
   // with the export paths in save.js via R._runTonePrepass.
