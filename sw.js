@@ -1,32 +1,36 @@
-const CACHE = 'risocam-v9';
+const CACHE = 'risocam-v10';
+// Paths are RELATIVE to sw.js's location so the cache is correct under any
+// mount point (localhost root, /risocam/ subpath, etc.). The old root-absolute
+// list ('/index.html', '/js/...') only worked when the app was served at the
+// domain root.
 const ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/css/main.css',
-  '/riso_halftones.json',
-  '/riso_trc.json',
-  '/js/state.js',
-  '/js/data.js',
-  '/js/renderer.js',
-  '/js/save.js',
-  '/js/source.js',
-  '/js/undo.js',
-  '/js/compare.js',
-  '/js/ui-controls.js',
-  '/js/ui-paper.js',
-  '/js/phone.js',
-  '/js/riso-amt.js',
-  '/js/riso-amt-worker.js',
-  '/js/riso-amt-webgpu.js',
-  '/js/cal-lut-worker.js',
-  '/textures/kraft.jpg',
-  '/textures/riso_standard.jpg',
-  '/textures/smooth.jpg',
-  '/textures/textured.jpg',
-  '/textures/paper002_pbr_2k.png',
-  '/icon-192.png',
-  '/icon-512.png'
+  './',
+  './index.html',
+  './manifest.json',
+  './css/main.css',
+  './riso_halftones.json',
+  './riso_trc.json',
+  './js/state.js',
+  './js/data.js',
+  './js/renderer.js',
+  './js/save.js',
+  './js/source.js',
+  './js/undo.js',
+  './js/compare.js',
+  './js/ui-controls.js',
+  './js/ui-paper.js',
+  './js/phone.js',
+  './js/riso-amt.js',
+  './js/riso-amt-worker.js',
+  './js/riso-amt-webgpu.js',
+  './js/cal-lut-worker.js',
+  './textures/kraft.jpg',
+  './textures/riso_standard.jpg',
+  './textures/smooth.jpg',
+  './textures/textured.jpg',
+  './textures/paper002_pbr_2k.png',
+  './icon-192.png',
+  './icon-512.png'
 ];
 
 self.addEventListener('install', e => {
@@ -47,7 +51,7 @@ self.addEventListener('fetch', e => {
   // Network-first for navigation, cache-first for assets
   if (e.request.mode === 'navigate') {
     e.respondWith(
-      fetch(e.request).catch(() => caches.match('/index.html'))
+      fetch(e.request).catch(() => caches.match('./index.html'))
     );
   } else {
     e.respondWith(

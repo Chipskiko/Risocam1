@@ -3218,9 +3218,10 @@ void main(){
 <script src="js/ui-controls.js?v=57"></script>
 <script src="js/ui-paper.js?v=13"></script>
 <script src="js/phone.js?v=20"></script>
-<!-- Relative path so the scope is correct under /risocam/ on Neocities; .catch because
-     Neocities' CSP (worker-src blob:) blocks ALL service workers - registration always
-     throws SecurityError there. Offline caching still works where CSP allows (localhost). -->
-<script>if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function(){});</script>
+<!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL
+     service workers, and even the attempt makes the browser print a CSP-violation report
+     that no .catch can silence. Offline caching works where CSP allows (e.g. localhost).
+     If Neocities ever relaxes their CSP, delete the hostname test to re-enable. -->
+<script>if('serviceWorker' in navigator && !/\.neocities\.org$/.test(location.hostname)) navigator.serviceWorker.register('sw.js').catch(function(){});</script>
 </body>
 </html>
