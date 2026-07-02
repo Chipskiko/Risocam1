@@ -1,4 +1,4 @@
-const CACHE = 'risocam-v8';
+const CACHE = 'risocam-v9';
 const ASSETS = [
   '/',
   '/index.html',

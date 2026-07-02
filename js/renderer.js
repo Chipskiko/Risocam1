@@ -1389,26 +1389,45 @@ function _yield(){ return new Promise(r => setTimeout(r, 0)); }
 let _calLutWorker = null;
 let _calLutWorkerNextId = 0;
 let _calLutWorkerPending = new Map();
+// Async (blob-built, CSP-safe — see _buildWorkerBlobUrl). _calLutWorkerInit
+// guards against double-spawn while the source fetch is in flight. Until the
+// worker is up, _calLutWorker stays null so bakes use the sync fallback.
+let _calLutWorkerInit = null;
 function _initCalLutWorker(){
-  if (_calLutWorker || typeof Worker === 'undefined') return;
-  _calLutWorker = new Worker('js/cal-lut-worker.js?v=1');
-  _calLutWorker.onmessage = function(e){
-    const { id, lut } = e.data;
-    const resolver = _calLutWorkerPending.get(id);
-    if (!resolver) return;
-    _calLutWorkerPending.delete(id);
-    resolver(new Uint8Array(lut));
-  };
-  _calLutWorker.onerror = function(e){
-    console.warn('[CalLut worker] error:', e.message);
-    _calLutWorker = null;
-    // Drop stranded in-flight bakes — their callbacks will never fire now —
-    // and reset the cache key so the next bakeCalLutIfNeeded call re-bakes
-    // (via the sync fallback, since the worker is gone) instead of leaving
-    // the stale/seed LUT in place.
-    _calLutWorkerPending.clear();
-    window._calLutLastKey = '';
-  };
+  if (_calLutWorkerInit) return _calLutWorkerInit;
+  if (typeof Worker === 'undefined') { _calLutWorkerInit = Promise.resolve(); return _calLutWorkerInit; }
+  _calLutWorkerInit = (async () => {
+    let blobUrl;
+    try {
+      blobUrl = await _buildWorkerBlobUrl('js/cal-lut-worker.js?v=1');
+    } catch (e) {
+      console.warn('[CalLut] worker blob build failed, using sync fallback:', e);
+      return;
+    }
+    let w;
+    try { w = new Worker(blobUrl); }
+    catch (e) { console.warn('[CalLut] worker create failed, using sync fallback:', e); return; }
+    w.onmessage = function(e){
+      const { id, lut } = e.data;
+      const resolver = _calLutWorkerPending.get(id);
+      if (!resolver) return;
+      _calLutWorkerPending.delete(id);
+      resolver(new Uint8Array(lut));
+    };
+    w.onerror = function(e){
+      console.warn('[CalLut worker] error:', e.message);
+      _calLutWorker = null;
+      // Drop stranded in-flight bakes — their callbacks will never fire now —
+      // and reset the cache key so the next bakeCalLutIfNeeded call re-bakes
+      // (via the sync fallback, since the worker is gone) instead of leaving
+      // the stale/seed LUT in place.
+      _calLutWorkerPending.clear();
+      window._calLutLastKey = '';
+    };
+    _calLutWorker = w;
+    console.log('[CalLut] worker initialized via blob: URL');
+  })();
+  return _calLutWorkerInit;
 }
 
 // Build cache key from current active layer order + ink identity. Recomputes
@@ -1525,6 +1544,42 @@ function _bakeCalLutSync(inks){
 // FS run concurrently → up to ~4× wall-clock on the prepass with bit-identical
 // output. Jobs round-robin across the pool; a shared pending map keys results
 // by a global job id, so any worker can satisfy any job.
+
+// CSP-safe worker loading. Neocities serves `Content-Security-Policy` with
+// `worker-src blob:` (and no `script-src 'self'` for workers), so
+// `new Worker('js/foo.js')` is BLOCKED — the constructor succeeds but the
+// script load fires onerror, leaving a dead worker. We instead fetch the
+// worker source (+ inline any importScripts() deps), wrap it in a Blob, and
+// create the worker from a blob: URL — which the CSP allows. `connect-src
+// 'self'` permits the fetch; inlining the dep removes the script-src
+// dependency entirely (no importScripts at runtime). Cached per worker path.
+const _workerBlobCache = new Map();
+async function _buildWorkerBlobUrl(workerPath){
+  if (_workerBlobCache.has(workerPath)) return _workerBlobCache.get(workerPath);
+  const baseDir = workerPath.replace(/[^/]+$/, '');           // 'js/foo.js?v=1' -> 'js/'
+  const wr = await fetch(workerPath);
+  if (!wr.ok) throw new Error('fetch ' + workerPath + ' -> ' + wr.status);
+  let src = await wr.text();
+  // Inline each importScripts('./dep.js') ahead of the worker body. './' and
+  // bare relative paths resolve against blob: URLs incorrectly, so we must
+  // inline rather than rewrite. Deps are assumed self-contained (one level).
+  const deps = [];
+  src = src.replace(/self\.importScripts\(\s*['"]([^'"]+)['"]\s*\)\s*;?/g, function(_, p){
+    deps.push(p); return '/* importScripts(' + p + ') inlined below-then-above */';
+  });
+  let prelude = '';
+  for (const d of deps) {
+    const durl = d.replace(/^\.\//, baseDir);                 // './riso-amt.js?v=24' -> 'js/riso-amt.js?v=24'
+    const dr = await fetch(durl);
+    if (!dr.ok) throw new Error('fetch ' + durl + ' -> ' + dr.status);
+    prelude += '// ===== inlined: ' + durl + ' =====\n' + (await dr.text()) + '\n';
+  }
+  const blob = new Blob([prelude + '\n' + src], { type: 'application/javascript' });
+  const url = URL.createObjectURL(blob);
+  _workerBlobCache.set(workerPath, url);
+  return url;
+}
+
 let _amtWorkerPool = [];
 let _amtWorkerPending = new Map();
 let _amtWorkerNextId = 0;
@@ -1533,11 +1588,26 @@ let _amtWorkerRR = 0;
 // every core gets a band, so the cap is the limiter. Leave 2 cores for the
 // main thread + compositor, cap at 8 (diminishing returns past that).
 const _AMT_POOL_SIZE = Math.max(2, Math.min(8, ((typeof navigator !== 'undefined' && navigator.hardwareConcurrency) ? navigator.hardwareConcurrency : 4) - 2));
+// Init is async because the worker source is fetched + blob-wrapped (see
+// _buildWorkerBlobUrl). _amtWorkerReady resolves once the pool is up (or the
+// attempt failed) so the prepass can await it before deciding worker-vs-sync.
+let _amtWorkerReady = null;
 function _initAmtWorker(){
-  if (_amtWorkerPool.length || typeof Worker === 'undefined') return;
-  try {
+  if (_amtWorkerReady) return _amtWorkerReady;
+  if (typeof Worker === 'undefined') { _amtWorkerReady = Promise.resolve(); return _amtWorkerReady; }
+  _amtWorkerReady = (async () => {
+    let blobUrl;
+    try {
+      blobUrl = await _buildWorkerBlobUrl('js/riso-amt-worker.js?v=4');
+    } catch (e) {
+      console.warn('[RisoAmt] worker blob build failed, falling back to sync:', e);
+      _amtWorkerPool = [];
+      return;
+    }
     for (let i = 0; i < _AMT_POOL_SIZE; i++) {
-      const w = new Worker('js/riso-amt-worker.js?v=4');
+      let w;
+      try { w = new Worker(blobUrl); }
+      catch (e) { console.warn('[RisoAmt] worker create failed, falling back to sync:', e); break; }
       w.onmessage = function(e){
         const { id, plane, error, on, outH } = e.data;
         const resolver = _amtWorkerPending.get(id);
@@ -1548,9 +1618,14 @@ function _initAmtWorker(){
       };
       w.onerror = function(e){
         console.warn('[RisoAmt worker] error:', e.message);
-        // Reject every in-flight job so Promise.all in the prepass can't hang
-        // forever (which would wedge _amtPrepassRunning and block all future
-        // prepasses). The next prepass re-dispatches cleanly.
+        // Remove THIS dead worker from the pool so _amtWorkerPool.length tracks
+        // only LIVE workers. When the last one dies the pool empties and
+        // runAmtAsync's `!length` check routes to the sync fallback — instead of
+        // posting jobs to a dead worker that never replies (which would hang
+        // Promise.all forever and wedge every future prepass).
+        const idx = _amtWorkerPool.indexOf(w);
+        if (idx >= 0) _amtWorkerPool.splice(idx, 1);
+        // Reject every in-flight job so Promise.all in the prepass can't hang.
         for (const [id, resolver] of _amtWorkerPending) {
           try { resolver.reject(new Error('worker error: ' + (e.message || 'unknown'))); } catch(_){}
           _amtWorkerPending.delete(id);
@@ -1558,11 +1633,11 @@ function _initAmtWorker(){
       };
       _amtWorkerPool.push(w);
     }
-    console.log(`[RisoAmt] worker pool initialized — ${_amtWorkerPool.length} workers (FS runs off-main-thread, channels in parallel)`);
-  } catch (e) {
-    console.warn('[RisoAmt] Worker pool init failed, falling back to sync:', e);
-    _amtWorkerPool = [];
-  }
+    if (_amtWorkerPool.length) {
+      console.log(`[RisoAmt] worker pool initialized — ${_amtWorkerPool.length} workers via blob: URL (FS off-main-thread)`);
+    }
+  })();
+  return _amtWorkerReady;
 }
 
 // Async wrapper: runs runAmt() + bit unpack (+ optional ink-spread blur) inside
@@ -1644,6 +1719,10 @@ async function runAmtPrepass(){
 }
 
 async function _runAmtPrepassImpl(){
+  // Wait for the (async, blob-built) worker pool to finish coming up before we
+  // decide worker-vs-sync. Without this the very first prepass can race ahead of
+  // init, see an empty pool, and run the whole FS on the main thread.
+  try { await _initAmtWorker(); } catch(e){}
   // Live source detection: RISO mode is static-only. With a live source (camera
   // or video element), running prepass once would give a snapshot dither pattern
   // that quickly goes stale, causing the "old pattern overlaid on new frame" bug.
