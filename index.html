@@ -533,6 +533,7 @@ uniform float u_lineAmount;  // 0..1 strength of the shape's distinctive paramet
 uniform float u_lineWeight;  // 0.5..2.0 multiplier on stripe thickness (visual line weight)
 uniform float u_lineRoughness; // 0..1 amount of edge fray / position jitter
 uniform float u_lineGrain;     // 0..1 Grain-Touch ink texture blended into line fills
+uniform float u_inkDissolve;   // 0..1 'dissolve' compositing: partial ink resolves to discrete specks on paper
 // Per-layer CONCENTRIC/RADIAL pivot — independent X/Y per plate so the
 // rings/spokes of each ink can radiate from a different point.
 uniform vec2 u_lineCenter0, u_lineCenter1, u_lineCenter2, u_lineCenter3;
@@ -1926,6 +1927,18 @@ float gpuGrainTouch(float val, vec2 pix){
   return step(threshold, density);
 }
 
+// 'Dissolve' ink compositing (like Photoshop's Dissolve blend): stochastically
+// resolve PARTIAL ink to a full speck or nothing per sheet-fixed cell, so AA
+// edges and light tones read as discrete ink specks sitting ON the paper
+// instead of an airbrush fade. d=0 stays clean paper, d=1 stays solid ink —
+// only the in-between dissolves. Cells live in rpx (sheet) space so the
+// speckle is zoom/export invariant; idx decorrelates the pattern per drum.
+float dissolveInk(float d, vec2 rpx, int idx){
+  if(u_inkDissolve < 0.005) return d;
+  float n = hash(floor(rpx * 0.15) + vec2(float(idx) * 29.17, float(idx) * 7.31));
+  return mix(d, step(n + 0.001, d), u_inkDissolve);
+}
+
 // Supersampled line screen — same anti-moiré band-limiting as the dots, but
 // LINES need more samples because radial/concentric patterns converge and reach
 // very high spatial frequencies over a large area (the worst moiré case). 8 taps
@@ -2748,6 +2761,7 @@ void main(){
       float n2 = hash2(rpx * 3.1);
       d = processLayer(cmyk, rpx, pix, 0, u_chan0, u_angle0, n1, n2, u_dens0, pf, src, u_grainMul0, u_inkGamma0);
     }
+    d = dissolveInk(d, rpx, u_chan0); // export parity with the composite path
     float gray = 1.0 - d; // invert: black=ink for print production
     gl_FragColor = vec4(gray, gray, gray, 1.0);
     return;
@@ -2829,6 +2843,7 @@ void main(){
     float grain = (u_mode == 1 && u_stampShape == 5)
                 ? asciiStamp(skUV0, off0, 0, cov, pf) * printMask(skUV0, off0, lrpx)
                 : getGrainTexture(cov, lrpx, lpix, 0, u_angle0, pf, u_grainMul0);
+    grain = dissolveInk(grain, lrpx, 0);
     // Letters legitimately OVERHANG content edges (anchor carries the tone),
     // but calBlend early-returns where the FRAGMENT's coverage is ~0 — which
     // sliced every overhang exactly at the content boundary. Let stamp ink
@@ -2881,6 +2896,7 @@ void main(){
     float grain = (u_mode == 1 && u_stampShape == 5)
                 ? asciiStamp(skUV1, off1, 1, cov, pf) * printMask(skUV1, off1, lrpx)
                 : getGrainTexture(cov, lrpx, lpix, 1, u_angle1, pf, u_grainMul1);
+    grain = dissolveInk(grain, lrpx, 1);
     // Letters legitimately OVERHANG content edges (anchor carries the tone),
     // but calBlend early-returns where the FRAGMENT's coverage is ~0 — which
     // sliced every overhang exactly at the content boundary. Let stamp ink
@@ -2931,6 +2947,7 @@ void main(){
     float grain = (u_mode == 1 && u_stampShape == 5)
                 ? asciiStamp(skUV2, off2, 2, cov, pf) * printMask(skUV2, off2, lrpx)
                 : getGrainTexture(cov, lrpx, lpix, 2, u_angle2, pf, u_grainMul2);
+    grain = dissolveInk(grain, lrpx, 2);
     // Letters legitimately OVERHANG content edges (anchor carries the tone),
     // but calBlend early-returns where the FRAGMENT's coverage is ~0 — which
     // sliced every overhang exactly at the content boundary. Let stamp ink
@@ -2979,6 +2996,7 @@ void main(){
     float grain = (u_mode == 1 && u_stampShape == 5)
                 ? asciiStamp(skUV3, off3, 3, cov, pf) * printMask(skUV3, off3, lrpx)
                 : getGrainTexture(cov, lrpx, lpix, 3, u_angle3, pf, u_grainMul3);
+    grain = dissolveInk(grain, lrpx, 3);
     // Letters legitimately OVERHANG content edges (anchor carries the tone),
     // but calBlend early-returns where the FRAGMENT's coverage is ~0 — which
     // sliced every overhang exactly at the content boundary. Let stamp ink
@@ -3226,9 +3244,9 @@ void main(){
 <script src="js/compare.js?v=6"></script>
 <script src="js/riso-amt.js?v=24"></script>
 <script src="js/riso-amt-webgpu.js?v=5"></script>
-<script src="js/renderer.js?v=130"></script>
+<script src="js/renderer.js?v=131"></script>
 <script src="js/source.js?v=49"></script>
-<script src="js/save.js?v=55"></script>
+<script src="js/save.js?v=56"></script>
 <script src="js/ui-controls.js?v=58"></script>
 <script src="js/ui-paper.js?v=13"></script>
 <script src="js/phone.js?v=20"></script>
