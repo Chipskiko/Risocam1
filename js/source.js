@@ -68,9 +68,13 @@ function startGifLoop(now){
   gifRafId=requestAnimationFrame(startGifLoop);
 }
 function loadGifFallback(f){
-  // Fallback for browsers without ImageDecoder: use <img> DOM approach
+  // Fallback for browsers without ImageDecoder: use <img> DOM approach.
+  // NOTE: canvas drawImage() of an animated <img> samples the FIRST frame by
+  // spec in Chrome/Safari — this path only truly animates in old Firefox.
+  // It exists as a last-resort static fallback, not an animation path.
   const url=URL.createObjectURL(f);
   const img=new Image();
+  img.onerror=()=>{URL.revokeObjectURL(url);R.toast('GIF failed to load');};
   img.onload=()=>{
     URL.revokeObjectURL(url);
     gifImg=img;
@@ -960,7 +964,12 @@ const CORS_PROXY = 'https://nplg-proxy.georgekikoria.workers.dev/fetch?url=';
 //   B) <img crossOrigin> + canvas (works for image hosts with permissive CORS)
 //   C) Cloudflare worker proxy (catches everything else; preserves original bytes)
 async function urlToFile(url){
-  // Strategy A: direct fetch
+  const isGifUrl=/\.gif([?#]|$)/i.test(url);
+  // Strategy A: direct fetch — the only path that preserves GIF ANIMATION
+  // bytes. On Neocities the CSP (connect-src 'self') blocks this AND the
+  // proxy (C), so cross-site gifs there degrade to strategy B's flattened
+  // still — flagged via _gifFlattened so the drop handler can tell the user
+  // to save + re-drop the file (which keeps animation).
   try{
     const resp=await fetch(url, {mode:'cors', credentials:'omit'});
     if(resp.ok){
@@ -970,7 +979,7 @@ async function urlToFile(url){
     }
   }catch(_){/* fall through */}
 
-  // Strategy B: <img crossOrigin> + canvas (images only)
+  // Strategy B: <img crossOrigin> + canvas (images only — FLATTENS animation)
   try{
     return await new Promise((resolve, reject) => {
       const img=new Image();
@@ -982,8 +991,14 @@ async function urlToFile(url){
         try{
           c.toBlob(b=>{
             if(!b) return reject(new Error('toBlob failed'));
-            const name=(url.split('/').pop()||'dropped.png').split(/[?#]/)[0];
-            resolve(new File([b], name, {type: b.type||'image/png'}));
+            // Name honestly as .png: the bytes ARE a canvas PNG snapshot now.
+            // (Keeping a foreign extension would misroute handleFile's
+            // extension-based type detection.)
+            const raw=(url.split('/').pop()||'dropped').split(/[?#]/)[0]||'dropped';
+            const name=raw.replace(/\.(png|jpe?g|webp|avif|gif|bmp)$/i,'')+'.png';
+            const file=new File([b], name, {type: b.type||'image/png'});
+            if(isGifUrl) file._gifFlattened=true; // animation lost — tell the user
+            resolve(file);
           },'image/png');
         }catch(e){ reject(e); }
       };
@@ -1045,6 +1060,7 @@ function initDragDrop(){
     try{
       const file=await urlToFile(url);
       handleFile(file);
+      if(file._gifFlattened) R.toast('GIF loaded as a still — for animation, save the GIF and drop the file');
     }catch(err){
       console.error('Cross-site drop failed:',err);
       R.toast('Drop blocked by site CORS — save image and re-drop');
