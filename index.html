@@ -25,9 +25,10 @@
     <a class="header-btn header-back" href="../" title="Art Tools">←</a>
     <div class="header-mode">
       <button class="header-mode-btn active" id="modeGrain" onclick="R.setMode('grain')" title="Stochastic grain — random dot placement, like real riso">GRAIN</button>
+      <button class="header-mode-btn" id="modeFlat" onclick="R.setMode('flat')" title="RISO — true Riso driver pipeline (vanilla Floyd-Steinberg + empirical tone curve from real captured prints). CPU prepass, static source only. All physical effects (paper, misreg, slip jitter, drum noise) still animate on top.">RISO</button>
       <button class="header-mode-btn" id="modeScreen" onclick="R.setMode('screen')" title="Halftone screen — circular dots in a regular grid">SCREEN</button>
       <button class="header-mode-btn" id="modeLines" onclick="R.setMode('lines')" title="Line screen — parallel lines varying in thickness, like litho/engraving">LINES</button>
-      <button class="header-mode-btn" id="modeFlat" onclick="R.setMode('flat')" title="RISO — true Riso driver pipeline (vanilla Floyd-Steinberg + empirical tone curve from real captured prints). CPU prepass, static source only. All physical effects (paper, misreg, slip jitter, drum noise) still animate on top.">RISO</button>
+      <button class="header-mode-btn" id="modeLetters" onclick="R.setMode('letters')" title="Letter screen — the image is halftoned out of stamped letterforms (random letters, or your own word/sentence). Latin + Georgian + custom fonts.">LETTERS</button>
     </div>
     <div class="header-dl">
       <span class="header-dl-arrow"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg></span>
@@ -127,11 +128,16 @@
           <!-- SCREEN: LPI + halftone stamp shape -->
           <div id="screenPrimary" style="display:none;gap:6px">
             <button class="regmark-btn active" id="lpiBtnScreen" onclick="R.cycleLpi()" title="Lines Per Inch"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><g transform="rotate(45 10 10)"><circle cx="5" cy="5" r="1.5" fill="currentColor"/><circle cx="13" cy="5" r="1.5" fill="currentColor"/><circle cx="5" cy="13" r="1.5" fill="currentColor"/><circle cx="13" cy="13" r="1.5" fill="currentColor"/><circle cx="9" cy="9" r="2" fill="currentColor"/></g></svg><span class="regmark-val" id="lpiBtnVal">Fine</span></button>
-            <button class="regmark-btn" id="stampShapeBtn" onclick="R.cycleStampShape()" title="Halftone stamp shape — replaces the round dot with a custom shape (square, diamond, plus, star, ASCII map: random letters &amp; symbols incl. Georgian, tone-ranked like classic ASCII art; best at low LPI)."><span class="regmark-icon" id="stampShapeIcon" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px"></span><span class="regmark-val" id="stampShapeBtnVal">Circle</span></button>
-            <button class="regmark-btn" id="asciiCharsetBtn" style="display:none" onclick="R.cycleAsciiCharset()" title="ASCII charset — Latin / Georgian Mkhedruli / mixed"><span class="regmark-val" id="asciiCharsetVal">ABC</span></button>
-            <button class="regmark-btn" id="asciiFontBtn" style="display:none" onclick="R.asciiFontClick()" title="ASCII font — click to upload a TTF/OTF/WOFF; click again to reset to default"><span class="regmark-val" id="asciiFontVal">Aa</span></button>
-            <input type="file" id="asciiFontFile" accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2" style="display:none" onchange="R.uploadAsciiFont(this.files[0])">
+            <button class="regmark-btn" id="stampShapeBtn" onclick="R.cycleStampShape()" title="Halftone stamp shape — replaces the round dot with a custom shape (square, diamond, plus, star). For letterform stamps use the LETTERS mode."><span class="regmark-icon" id="stampShapeIcon" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px"></span><span class="regmark-val" id="stampShapeBtnVal">Circle</span></button>
             <button class="regmark-btn" id="screenCleanBtn" onclick="R.toggleScreenClean()" title="Clean halftone preview — bypasses paper texture, drum jitter, ink noise, dot gain, etc. Pure halftone dots like Spectrolite's preview, what a printer's RIP would receive."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="6" cy="6" r="1.5" fill="currentColor"/><circle cx="14" cy="6" r="1.5" fill="currentColor"/><circle cx="6" cy="14" r="1.5" fill="currentColor"/><circle cx="14" cy="14" r="1.5" fill="currentColor"/><circle cx="10" cy="10" r="1.5" fill="currentColor"/></svg><span class="regmark-val" id="screenCleanBtnVal">Off</span></button>
+          </div>
+          <!-- LETTERS: letter density + text + charset/font (screen engine, glyph stamp) -->
+          <div id="lettersPrimary" style="display:none;gap:6px;flex-wrap:wrap;align-items:center">
+            <button class="regmark-btn active" id="lpiBtnLetters" onclick="R.cycleLpi()" title="Letter density (lines per inch — coarser = bigger letters)"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><text x="10" y="15" text-anchor="middle" font-size="13" font-weight="bold" font-family="monospace" fill="currentColor">A</text></svg><span class="regmark-val" id="lpiBtnLettersVal">Fine</span></button>
+            <input type="text" id="lettersTextInput" maxlength="128" placeholder="random letters — type a word…" title="Stamp a specific word or sentence — letters repeat across the image in typewriter order, spaces become gaps. Empty = random letters." style="flex:1;min-width:130px;max-width:260px;font-family:'Space Mono',monospace;font-size:10px;padding:6px 8px;border:1px solid var(--border);background:transparent;color:var(--text)" oninput="R.setLettersText(this.value)">
+            <button class="regmark-btn" id="asciiCharsetBtn" style="display:none" onclick="R.cycleAsciiCharset()" title="Charset for random letters — Latin / Georgian Mkhedruli / mixed"><span class="regmark-val" id="asciiCharsetVal">ABC</span></button>
+            <button class="regmark-btn" id="asciiFontBtn" style="display:none" onclick="R.asciiFontClick()" title="Letter font — click to upload a TTF/OTF/WOFF; click again to reset to default"><span class="regmark-val" id="asciiFontVal">Aa</span></button>
+            <input type="file" id="asciiFontFile" accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2" style="display:none" onchange="R.uploadAsciiFont(this.files[0])">
           </div>
           <!-- LINES: LPI + line shape -->
           <div id="linesPrimary" style="display:none;gap:6px">
@@ -3286,14 +3292,14 @@ void main(){
 <script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
 <script src="js/data.js?v=16"></script>
 <script src="js/state.js?v=15"></script>
-<script src="js/undo.js?v=7"></script>
+<script src="js/undo.js?v=8"></script>
 <script src="js/compare.js?v=6"></script>
 <script src="js/riso-amt.js?v=24"></script>
 <script src="js/riso-amt-webgpu.js?v=5"></script>
-<script src="js/renderer.js?v=133"></script>
+<script src="js/renderer.js?v=134"></script>
 <script src="js/source.js?v=50"></script>
-<script src="js/save.js?v=56"></script>
-<script src="js/ui-controls.js?v=58"></script>
+<script src="js/save.js?v=57"></script>
+<script src="js/ui-controls.js?v=59"></script>
 <script src="js/ui-paper.js?v=13"></script>
 <script src="js/phone.js?v=20"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL

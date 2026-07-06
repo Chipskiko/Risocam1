@@ -852,7 +852,7 @@ async function exportSeparations(){
   // shader scales by u_simNoise; FLAT and SCREEN+Clean set it to 0.
   // Grain Touch no longer bypasses physical sim noise — paper texture +
   // ink jitter applies on top of the AMT-derived master.
-  const _cleanRender = (mode === 'flat') || (mode === 'screen' && window._screenClean);
+  const _cleanRender = (mode === 'flat') || ((mode === 'screen' || mode === 'letters') && window._screenClean);
   gl.uniform1f(locs.u_simNoise, _cleanRender ? 0 : 1);
   gl.uniform1f(locs.u_dotGain,   cached.dotGain);
   gl.uniform1f(locs.u_inkNoise,  cached.inkNoise);
@@ -890,12 +890,12 @@ async function exportSeparations(){
   gl.uniform1f(locs.u_opacityCap, cached.opacityCap * 0.01);
   gl.uniform3fv(locs.u_paperColor,cached.paperColor);
   gl.uniform4f(locs.u_crop,cropRect[0],cropRect[1],cropRect[2],cropRect[3]);
-  gl.uniform1i(locs.u_mode, ({grain:0, screen:1, lines:2, flat:3})[mode] ?? 0);
+  gl.uniform1i(locs.u_mode, ({grain:0, screen:1, lines:2, flat:3, letters:1})[mode] ?? 0);
   // SCREEN engine + per-mode unit-8 bind (match live render path, incl. the
   // ASCII-stamp glyph atlas which time-shares the u_ht5Matrix sampler).
   if(locs.u_screenType) gl.uniform1f(locs.u_screenType, (window._screenType ?? 0) ? 1.0 : 0.0);
   if(window._amScreenTex && window._ht5MatrixTex){
-    let u8tex = (mode==='screen') ? window._amScreenTex : window._ht5MatrixTex;
+    let u8tex = (mode==='screen' || mode==='letters') ? window._amScreenTex : window._ht5MatrixTex;
     if(mode==='screen' && (window._screenType ?? 0) && (window._stampShape|0)===0){
       // Matrix engine (circles only): driver matrix for the snapped LPI preset
       // (TRC-calibrated by default — match live path).
@@ -905,8 +905,12 @@ async function exportSeparations(){
         u8tex = ((window._screenTrc ?? 1) && m.cal) ? m.cal : m.tex;
         if(locs.u_mtxTexel) gl.uniform2f(locs.u_mtxTexel, 1.0/m.w, 1.0/m.h);
       }
-    } else if(mode==='screen' && (window._stampShape|0)===5 && window._glyphAtlasTex){
-      u8tex = window._glyphAtlasTex;
+    } else if(mode==='letters' || (mode==='screen' && (window._stampShape|0)===5)){
+      // Lazy build (parity with the live path): renderer nulls _glyphAtlasTex
+      // on font/charset changes — without this, a seps export before the next
+      // live frame would silently bind the AM screen texture instead.
+      if(!window._glyphAtlasTex && R._buildGlyphAtlas) try { R._buildGlyphAtlas(); } catch(e){ console.warn('[glyphAtlas]', e); }
+      if(window._glyphAtlasTex) u8tex = window._glyphAtlasTex;
     }
     gl.activeTexture(gl.TEXTURE8);
     gl.bindTexture(gl.TEXTURE_2D, u8tex);
@@ -940,7 +944,7 @@ async function exportSeparations(){
   gl.uniform1f(locs.u_colorQuant, window._colorQuant ?? 0.0);
   gl.uniform1f(locs.u_useLabResidual, window._useLabResidual ? 1.0 : 0.0);
   gl.uniform1f(locs.u_warmCool, (cached.warmCool ?? 0) * 0.02);
-  gl.uniform1i(locs.u_stampShape, window._stampShape || 0);
+  gl.uniform1i(locs.u_stampShape, mode === 'letters' ? 5 : (window._stampShape || 0));
   gl.uniform1f(locs.u_ditherScale, window._ditherScale ?? 1.0);
   // Text routing — same as render path so separation exports respect the
   // PDF-mode text channel choice (text appears only on its routed plate).

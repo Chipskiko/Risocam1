@@ -747,8 +747,10 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   gl.uniform1f(locs.u_frameSeed,frameSeed);
   gl.uniform1f(locs.u_resScale,scale);
   gl.uniform1i(locs.u_layers,hasSrc?nLayers:0);
-  // 0=grain, 1=screen, 2=lines, 3=flat (production-preview, no simulation)
-  gl.uniform1i(locs.u_mode, ({grain:0, screen:1, lines:2, flat:3})[mode] ?? 0);
+  // 0=grain, 1=screen, 2=lines, 3=flat (production-preview, no simulation).
+  // 'letters' is a UI-level mode riding the SCREEN engine (u_mode=1) with the
+  // glyph stamp forced (u_stampShape=5) — the shader has no letters concept.
+  gl.uniform1i(locs.u_mode, ({grain:0, screen:1, lines:2, flat:3, letters:1})[mode] ?? 0);
   gl.uniform1i(locs.u_lineShape, window._lineShape||0);
   gl.uniform1f(locs.u_lineAmount, window._lineAmount ?? 1.0);
   gl.uniform1f(locs.u_lineWeight, window._lineWeight ?? 1.0);
@@ -787,7 +789,9 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   if (locs.u_useCalLutTex) gl.uniform1f(locs.u_useCalLutTex, (window._useCalLutTex ?? true) ? 1.0 : 0.0);
   bakeCalLutIfNeeded(layers);
   gl.uniform1f(locs.u_warmCool, (cached.warmCool ?? 0) * 0.02); // slider -50..50 → -1..1
-  gl.uniform1i(locs.u_stampShape, window._stampShape || 0);
+  // LETTERS mode forces the glyph stamp at the uniform (window._stampShape is
+  // NOT mutated — it stays the screen mode's shape so switching back restores).
+  gl.uniform1i(locs.u_stampShape, mode === 'letters' ? 5 : (window._stampShape || 0));
   // ASCII stamp layout seed: re-rolled by ANIMATION ticks only (grain-static
   // ticks / live frames / recording) — slider-drag re-renders keep the layout.
   if(locs.u_stampSeed) gl.uniform1f(locs.u_stampSeed, window._stampSeed || 17);
@@ -812,7 +816,7 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   // noise (paper texture, ink-density variation, drum jitter) on top of
   // the matrix. Keep sim noise ON so the output looks like printed paper,
   // not the digital master file.
-  const _cleanRender = (mode === 'flat') || (mode === 'screen' && window._screenClean);
+  const _cleanRender = (mode === 'flat') || ((mode === 'screen' || mode === 'letters') && window._screenClean);
   gl.uniform1f(locs.u_simNoise, _cleanRender ? 0 : 1);
   gl.uniform1f(locs.u_dotGain,   cached.dotGain);
   gl.uniform1f(locs.u_inkNoise,  cached.inkNoise);
@@ -826,7 +830,7 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   //   • screen mode, matrix engine (screenType=1): the AM matrix
   //   • screen mode, procedural engine + ASCII stamp: the glyph atlas
   if(window._amScreenTex && window._ht5MatrixTex){
-    let u8tex = (mode==='screen') ? window._amScreenTex : window._ht5MatrixTex;
+    let u8tex = (mode==='screen' || mode==='letters') ? window._amScreenTex : window._ht5MatrixTex;
     if(mode === 'screen' && (window._screenType ?? 0) && (window._stampShape|0) === 0){
       // Matrix engine (CIRCLES only — the faithful screen is confined to the
       // circle stamp): bind the driver matrix for the snapped LPI preset.
@@ -836,7 +840,7 @@ function setRenderUniforms(dw, dh, scale, isPhone){
         u8tex = ((window._screenTrc ?? 1) && m.cal) ? m.cal : m.tex;
         if(locs.u_mtxTexel) gl.uniform2f(locs.u_mtxTexel, 1.0/m.w, 1.0/m.h);
       }
-    } else if(mode === 'screen' && (window._stampShape|0) === 5){
+    } else if(mode === 'letters' || (mode === 'screen' && (window._stampShape|0) === 5)){
       if(!window._glyphAtlasTex) try { _buildGlyphAtlas(); } catch(e){ console.warn('[glyphAtlas]', e); }
       if(window._glyphAtlasTex) u8tex = window._glyphAtlasTex;
     }
@@ -2058,6 +2062,21 @@ R.setAsciiGeorgian = function(on){
   try { markDirty(); } catch(e) {}
 };
 
+// LETTERS word/sentence text (empty = random letters). The text's characters
+// are baked into the atlas (dedicated slots + the word-strip row), so the
+// atlas must rebuild. Debounced — fires while the user types.
+let _lettersTextTimer = 0;
+R.setLettersText = function(str){
+  clearTimeout(_lettersTextTimer);
+  _lettersTextTimer = setTimeout(() => {
+    const t = (str || '').slice(0, 128);
+    if(t === (window._lettersText || '')) return;
+    window._lettersText = t;
+    window._glyphAtlasTex = null;   // rebuild embeds word slots + strip
+    try { markDirty(); } catch(e) {}
+  }, 250);
+};
+
 // ASCII charset chip: Latin → Georgian → mixed. Atlas rebuilds next frame.
 R.cycleAsciiCharset = function(){
   window._asciiCharset = ((window._asciiCharset || 0) + 1) % 3;
@@ -2220,8 +2239,10 @@ function _screenSoftActive(){
 }
 R._screenSoftActive = _screenSoftActive;
 function _runTonePrepass(dw, dh){
-  const _stampNow = (window._stampShape|0);
-  const _wantAsciiTone  = mode === 'screen' && _stampNow === 5;
+  // LETTERS mode = screen engine + glyph stamp (see setRenderUniforms) — it
+  // always wants the ASCII anchor bake regardless of screen's shape picker.
+  const _stampNow = (mode === 'letters') ? 5 : (window._stampShape|0);
+  const _wantAsciiTone  = (mode === 'screen' || mode === 'letters') && _stampNow === 5;
   const _wantCircleTone = mode === 'screen' && _stampNow === 0 && _screenSoftActive();
   if((_wantAsciiTone || _wantCircleTone) && locs.u_asciiTonePass){
     let aMinX, aMinY, aW, aH, texW, texH, passId;
@@ -2387,6 +2408,9 @@ function uploadTextMask(canvas){
   markDirty();
 }
 R.uploadTextMask = uploadTextMask;
+// Exposed for save.js's separations path (lazy atlas build parity with the
+// live unit-8 bind — renderer nulls _glyphAtlasTex on font/charset changes).
+R._buildGlyphAtlas = _buildGlyphAtlas;
 
 // Upload the un-inpainted source raster to TEXTURE7 (u_srcOrig). Used by
 // the shader's text-plate path to read the actual glyph color for its

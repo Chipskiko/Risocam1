@@ -605,11 +605,12 @@ function setMode(m){
   window._mode=m; // expose for cross-file checks (source.js source-change hook)
   applyScreenDensity();
   // Desktop mode buttons (may not exist in phone-only scenarios)
-  const mg=el('modeGrain'),ms=el('modeScreen'),ml=el('modeLines'),mf=el('modeFlat');
+  const mg=el('modeGrain'),ms=el('modeScreen'),ml=el('modeLines'),mf=el('modeFlat'),mL=el('modeLetters');
   if(mg)mg.classList.toggle('active',m==='grain');
   if(ms)ms.classList.toggle('active',m==='screen');
   if(ml)ml.classList.toggle('active',m==='lines');
   if(mf)mf.classList.toggle('active',m==='flat');
+  if(mL)mL.classList.toggle('active',m==='letters');
   // RISO mode (button label says RISO, internal id still 'flat' for compat):
   // trigger the JS AMT prepass — vanilla FS + empirical Riso tone curve.
   // Static-source-only; the prepass takes ~200ms at 300dpi.
@@ -626,12 +627,13 @@ function setMode(m){
   //   Row 2 — mode-specific shared sub-settings (e.g. line weight/amount/rough)
   //   Row 3 — shape-specific sub-settings (e.g. radial center/density/edge)
   // Show the right primary block, hide the others.
-  const screenLike = m==='screen' || m==='lines';
-  const grnP=el('grainPrimary'), scrP=el('screenPrimary'), lnsP=el('linesPrimary'), fltP=el('flatPrimary');
+  const screenLike = m==='screen' || m==='lines' || m==='letters';
+  const grnP=el('grainPrimary'), scrP=el('screenPrimary'), lnsP=el('linesPrimary'), fltP=el('flatPrimary'), letP=el('lettersPrimary');
   if(grnP) grnP.style.display = (m==='grain') ? 'flex' : 'none';
   if(scrP) scrP.style.display = (m==='screen') ? 'flex' : 'none';
   if(lnsP) lnsP.style.display = (m==='lines') ? 'flex' : 'none';
   if(fltP) fltP.style.display = (m==='flat') ? 'flex' : 'none';
+  if(letP) letP.style.display = (m==='letters') ? 'flex' : 'none';
   // Row 2: dither scale (grain sub-mode), or line secondary (lines).
   const lnsSec = el('linesSecondary');
   if(lnsSec) lnsSec.style.display = (m==='lines') ? 'flex' : 'none';
@@ -873,8 +875,13 @@ function cycleFps(){
 }
 const resSteps=[6]; // always max
 // ─── Halftone stamp shape (SCREEN mode dot replacement) ───
-const STAMP_SHAPES = ['Circle', 'Square', 'Diamond', 'Plus', 'Star', 'ASCII'];
+// ASCII (shape 5) moved out of the screen cycle — it is now the top-level
+// LETTERS mode. The shader index 5 still exists; letters mode forces it at
+// the uniform uploads (renderer.js/save.js) without touching _stampShape.
+const STAMP_SHAPES = ['Circle', 'Square', 'Diamond', 'Plus', 'Star'];
 window._stampShape = window._stampShape ?? 0;
+// Legacy state (saved sessions/undo) may still hold 5 — snap into the cycle.
+if((window._stampShape|0) >= STAMP_SHAPES.length) window._stampShape = 0;
 function cycleStampShape(){
   window._stampShape = (window._stampShape + 1) % STAMP_SHAPES.length;
   const lbl = STAMP_SHAPES[window._stampShape];
@@ -891,7 +898,7 @@ function cycleStampShape(){
 // ASCII-only chips (charset + custom font) appear next to the stamp button
 // only while the ASCII stamp is active. Toggles both desktop and phone chips.
 function syncAsciiChips(){
-  const show = (window._stampShape|0) === 5;
+  const show = (mode === 'letters');
   ['asciiCharsetBtn','asciiFontBtn','phAsciiCharsetBtn','phAsciiFontBtn'].forEach(id => {
     const e = el(id); if(e) e.style.display = show ? '' : 'none';
   });
@@ -1517,6 +1524,7 @@ function updateRegmarkUI() {
   STEP_PRESETS.lpi.forEach(p => { if (Math.abs(p.v - lpiVal) < 0.01) lpiLabel = p.l; });
   const lpiSpanScreen = el('lpiBtnVal');      if(lpiSpanScreen) lpiSpanScreen.textContent = lpiLabel;
   const lpiSpanLines  = el('lpiBtnLinesVal'); if(lpiSpanLines)  lpiSpanLines.textContent  = lpiLabel;
+  const lpiSpanLet    = el('lpiBtnLettersVal'); if(lpiSpanLet)  lpiSpanLet.textContent    = lpiLabel;
   // Phone-mode LPI button uses the legacy id pattern
   const phLpi = el('phLpiBtn');
   if(phLpi){ const v = phLpi.querySelector('.regmark-val'); if(v) v.textContent = lpiLabel; }

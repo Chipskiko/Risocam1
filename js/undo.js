@@ -16,7 +16,8 @@ function getState(){
     grainSize:cached.grainSize, dotGain:cached.dotGain, inkNoise:cached.inkNoise,
     paperTex:cached.paperTex, lpi:cached.lpi, grainStatic:cached.grainStatic, ghosting:cached.ghosting, sepType:cached.sepType,
     imgBright:cached.imgBright, imgContrast:cached.imgContrast, imgSat:cached.imgSat,
-    paperColor:curPaperColor
+    paperColor:curPaperColor,
+    stamp:window._stampShape|0, lettersText:window._lettersText||''
   });
 }
 function pushUndo(){
@@ -50,6 +51,13 @@ function restoreState(json){
     }
     cached.grainSize=s.grainSize; cached.dotGain=s.dotGain; cached.inkNoise=s.inkNoise;
     cached.paperTex=s.paperTex; cached.lpi=s.lpi||65; cached.grainStatic=s.grainStatic; if(s.ghosting!==undefined)cached.ghosting=s.ghosting; cached.sepType=s.sepType||0;
+    // Letters/stamp state (added with the LETTERS mode branch-out)
+    if(s.stamp!==undefined) window._stampShape=s.stamp|0;
+    if(s.lettersText!==undefined && s.lettersText!==(window._lettersText||'')){
+      window._lettersText=s.lettersText;
+      window._glyphAtlasTex=null; // atlas embeds the word — rebuild
+      const inp=document.getElementById('lettersTextInput'); if(inp) inp.value=s.lettersText;
+    }
     cached.imgBright=s.imgBright; cached.imgContrast=s.imgContrast; cached.imgSat=s.imgSat;
     // Restore profile ref
     activeProf=s.prof?R.allProfiles().find(p=>p.name===s.prof)||null:null;
