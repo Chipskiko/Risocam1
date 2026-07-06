@@ -3058,6 +3058,13 @@ void main(){
   float paperLum = dot(paper, vec3(0.299, 0.587, 0.114));
   float resultLum = dot(result, vec3(0.299, 0.587, 0.114));
   float inkCoverage = clamp(1.0 - resultLum / (paperLum + 0.001), 0.0, 1.0);
+  // Snapshot the PURE ink-over-paper composite before any paper texture
+  // multiplies in (fiber reflectance below, PBR tooth after). The post-FX
+  // block masks its grading with the distance of THIS value from flat paper:
+  // bare paper == paper exactly here (mask 0 → texture stays ungraded), while
+  // the old mask compared the TEXTURED result against flat paper and leaked
+  // ~a third of the grading onto bare-paper tooth.
+  vec3 cleanComposite = result;
   float reflectStr = mix(0.2, 0.25, smoothstep(0.6, 0.95, inkCoverage));
   float reflectMod = 1.0 + (pf - 1.0) * reflectStr;
   result *= reflectMod;
@@ -3219,8 +3226,11 @@ void main(){
     float ps = clamp(1.0 + u_postSat * 0.02, 0.0, 2.0);
     adjusted = mix(vec3(pl), adjusted, ps);
   }
-  // Ink mask: blend post-processing only where ink is present
-  float inkAmount = clamp(length(prePost - paper) * 4.0, 0.0, 1.0);
+  // Ink mask: blend post-processing only where ink is present. Measured on
+  // cleanComposite (ink over FLAT paper, captured before the fiber/PBR paper
+  // texture multiplied in) so bare-paper tooth masks to exactly 0 and stays
+  // ungraded — only the printed part is affected.
+  float inkAmount = clamp(length(cleanComposite - paper) * 4.0, 0.0, 1.0);
   result = mix(prePost, adjusted, inkAmount);
 
   // ─── Highlight clamp ───────────────────────────────────────────────
