@@ -984,7 +984,7 @@ function setRenderUniforms(dw, dh, scale, isPhone){
       }
       gl.uniform2f(offLocs[i],misreg[L.ch][0],misreg[L.ch][1]);
       gl.uniform1f(skewLocs[i],layerSkews[L.ch]||0);
-      gl.uniform1f(angLocs[i],(layerAngles[L.ch]||0)*0.01745329);
+      gl.uniform1f(angLocs[i],(layerAngles[L.ch]||0)*0.01745329 + R._lineSpinOffset(i));
       gl.uniform1i(chanLocs[i],L.ch);
       // Multiply density by visibility flag so user can toggle plates
       // on/off via the channel badges. Hidden plates contribute 0 ink.
@@ -1066,10 +1066,13 @@ function render(){
   _rafId=0;
   if(_saving){return;} // block render during save
   if(gl.isContextLost()){return;} // GPU lost — wait for restore
-  // Pause: spacebar toggles. While paused, render() is a no-op so the canvas
-  // freezes at the last drawn frame (camera frames keep arriving but don't
-  // upload, FPS counter stops advancing). Press again to resume.
-  if(window._paused){return;}
+  // Pause: spacebar toggles. Pause stops the CONTINUOUS animation only —
+  // a dirty frame (any user change: slider, mode, ink, upload) still renders
+  // exactly once and re-seeds (the animation/still branches re-roll
+  // frameSeed/misreg on dirty renders), so you can keep working while
+  // paused without a stop/start dance. The frame it draws schedules one
+  // follow-up tick, which lands here non-dirty and stops the loop again.
+  if(window._paused && !needsRedraw){return;}
   // (Prepass no longer blocks render — FS runs in a Web Worker thread.)
   try{ _renderInner(); }catch(e){
     if(_renderErrorCount++<3)console.error('Render error:',e);
@@ -1077,6 +1080,17 @@ function render(){
     scheduleRender(); // keep loop alive
   }
 }
+// LINES angle animation ("ANIMATE" button): each plate's line angle precesses
+// at its own rate/direction, so the moiré between plates slowly evolves —
+// a live version of rotating the screens on a light table. Time-based (not
+// frame-based: shimmer ticks advance `frame` by random jumps), so rotation
+// speed is steady at any FPS setting. Exports capture the angles at the
+// moment of export (save.js seps use the same helper for parity).
+const LINE_SPIN_DIR = [1.0, -0.62, 0.45, -0.83]; // per-plate rate multipliers
+R._lineSpinOffset = function(slot){
+  if(!(mode === 'lines' && window._lineSpin)) return 0;
+  return performance.now() * 0.001 * 0.05 * LINE_SPIN_DIR[slot & 3]; // 0.05 rad/s base
+};
 R.togglePause=function(){
   window._paused=!window._paused;
   if(!window._paused){

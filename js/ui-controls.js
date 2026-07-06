@@ -744,6 +744,16 @@ function cycleLineRoughness(){
   R.toast('Edge roughness: ' + LINE_ROUGH_STEPS[i].l);
   markDirty();
 }
+// ANIMATE: precess each plate's line angle (see R._lineSpinOffset). Needs the
+// animation loop ticking — if FPS is STILL when enabling, bump it to 4.
+function toggleLineSpin(){
+  window._lineSpin = !window._lineSpin;
+  const v = el('lineSpinBtnVal'); if(v) v.textContent = window._lineSpin ? 'On' : 'Off';
+  const b = el('lineSpinBtn'); if(b) b.classList.toggle('active', !!window._lineSpin);
+  if(window._lineSpin && !(cached.grainStatic > 0) && R.setRisoFps) R.setRisoFps(4);
+  R.toast('Angle animation: ' + (window._lineSpin ? 'On' : 'Off'));
+  markDirty();
+}
 // Ink grain within line fills — blends the RISO Grain-Touch blue-noise field
 // into the stroke coverage so line fills read as grainy ink, not flat color.
 const LINE_GRAIN_STEPS = [{v:0.0, l:'Off'}, {v:0.3, l:'Low'}, {v:0.6, l:'Med'}, {v:1.0, l:'High'}];
@@ -1964,6 +1974,7 @@ R.cycleLineWeight = cycleLineWeight;
 R.cycleLineAmount = cycleLineAmount;
 R.cycleLineRoughness = cycleLineRoughness;
 R.cycleLineGrain = cycleLineGrain;
+R.toggleLineSpin = toggleLineSpin;
 R.cycleLineEdgeThickness = cycleLineEdgeThickness;
 R.cycleLineCount = cycleLineCount;
 R.cycleMisreg = cycleMisreg;
