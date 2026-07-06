@@ -899,9 +899,12 @@ function cycleStampShape(){
 // only while the ASCII stamp is active. Toggles both desktop and phone chips.
 function syncAsciiChips(){
   const show = (mode === 'letters');
-  ['asciiCharsetBtn','asciiFontBtn','phAsciiCharsetBtn','phAsciiFontBtn'].forEach(id => {
+  ['asciiCharsetBtn','asciiFontBtn','phAsciiCharsetBtn','phAsciiFontBtn','phLettersTextInput'].forEach(id => {
     const e = el(id); if(e) e.style.display = show ? '' : 'none';
   });
+  // Phone panel rebuilds from static defaults — restore the typed text.
+  const phT = el('phLettersTextInput');
+  if(phT && phT.value !== (window._lettersText||'')) phT.value = window._lettersText||'';
 }
 R.syncAsciiChips = syncAsciiChips;
 // Clean halftone toggle — Spectrolite-style preview where SCREEN renders

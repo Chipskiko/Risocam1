@@ -2811,11 +2811,22 @@ void main(){
       vec4 wts = nnlsDecompose(u_layers, u_paperColor, src, u_ink0, u_ink1, u_ink2, u_ink3);
       float w = u_chan0==0?wts.x:(u_chan0==1?wts.y:(u_chan0==2?wts.z:wts.w));
       float cov = getCoverageApprox(w, rpx, 0, n1, u_dens0, pf);
-      d = getGrainTexture(cov, rpx, pix, 0, u_angle0, pf, u_grainMul0);
+      // LETTERS/ASCII plates: stamp the actual glyphs (reads the LIVE frame's
+      // anchor bake on unit 9 — the lattice is resolution-invariant so it is
+      // valid at export dims). Previously stamp 5 fell through screenDither's
+      // trailing else and separations printed STARS instead of letters.
+      d = (u_mode == 1 && u_stampShape == 5)
+        ? asciiStamp(uv, u_off0, 0, cov, pf) * printMask(uv, u_off0, rpx)
+        : getGrainTexture(cov, rpx, pix, 0, u_angle0, pf, u_grainMul0);
     } else {
       vec4 cmyk = toCMYK(src);
       float n2 = hash2(rpx * 3.1);
-      d = processLayer(cmyk, rpx, pix, 0, u_chan0, u_angle0, n1, n2, u_dens0, pf, src, u_grainMul0, u_inkGamma0);
+      if(u_mode == 1 && u_stampShape == 5){
+        float cov = getCoverage(cmyk, rpx, 0, u_chan0, n1, u_dens0, pf, src, u_inkGamma0);
+        d = asciiStamp(uv, u_off0, 0, cov, pf) * printMask(uv, u_off0, rpx);
+      } else {
+        d = processLayer(cmyk, rpx, pix, 0, u_chan0, u_angle0, n1, n2, u_dens0, pf, src, u_grainMul0, u_inkGamma0);
+      }
     }
     d = dissolveInk(d, uv); // export parity with the composite path
     float gray = 1.0 - d; // invert: black=ink for print production
@@ -3313,9 +3324,9 @@ void main(){
 <script src="js/renderer.js?v=134"></script>
 <script src="js/source.js?v=50"></script>
 <script src="js/save.js?v=57"></script>
-<script src="js/ui-controls.js?v=59"></script>
+<script src="js/ui-controls.js?v=60"></script>
 <script src="js/ui-paper.js?v=13"></script>
-<script src="js/phone.js?v=20"></script>
+<script src="js/phone.js?v=21"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL
      service workers, and even the attempt makes the browser print a CSP-violation report
      that no .catch can silence. Offline caching works where CSP allows (e.g. localhost).
