@@ -916,6 +916,9 @@ async function exportSeparations(){
     gl.bindTexture(gl.TEXTURE_2D, u8tex);
     gl.activeTexture(gl.TEXTURE0);
   }
+  // WORD mode length (mirror of the live path — after the atlas ladder)
+  if(locs.u_wordLen) gl.uniform1f(locs.u_wordLen,
+    (mode === 'letters' && window._lettersTextLen) ? window._lettersTextLen : 0);
   // SEPARATIONS stay per-fragment (u_edgeSoft=0) on purpose: seps are the
   // production masters — a real 600dpi RIP slices dots at content edges, so
   // authentic thresholding IS the correct sep output. (PNG/JPG/GIF/PDF

@@ -70,7 +70,7 @@ function initGL(){
    'u_off0','u_off1','u_off2','u_off3',
    'u_angle0','u_angle1','u_angle2','u_angle3','u_screenCell',
    'u_chan0','u_chan1','u_chan2','u_chan3',
-   'u_stampSeed','u_asciiTonePass','u_aMin','u_aDims','u_aPitch','u_edgeSoft','u_mtxTexel','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineGrain','u_inkDissolve','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_useLabResidual','u_useCalChord','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
+   'u_stampSeed','u_asciiTonePass','u_aMin','u_aDims','u_aPitch','u_wordLen','u_edgeSoft','u_mtxTexel','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineGrain','u_inkDissolve','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_useLabResidual','u_useCalChord','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
    'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_paperShift','u_paperPbrShift','u_paperPbrMul','u_crop','u_paper',
    'u_paperPBR','u_usePaperPBR',
    'u_lutA0','u_lutA1','u_lutA2','u_lutA3',
@@ -685,7 +685,10 @@ function _buildGlyphAtlas(){
   // (curves below), not by glyph choice — free choice is what structurally
   // kills the "all As" failure. Row 0 blank, row 15 solid (floor/reserved).
   // Row 16 = curve strip: .r floor residual, .g presence(v), .b size(v).
-  const atlas = document.createElement('canvas'); atlas.width = COLS * CELL; atlas.height = (ROWS + 1) * CELL;
+  // Row 17 (appended below the curve strip) = WORD STRIP: the user's text as
+  // per-character glyph-slot indices, 8px per character (128 chars max at
+  // 1024px wide), sampled by prepass pass 1 when u_wordLen > 0.
+  const atlas = document.createElement('canvas'); atlas.width = COLS * CELL; atlas.height = (ROWS + 2) * CELL;
   const ac = atlas.getContext('2d', { willReadFrequently: true });
   ac.fillStyle = '#000'; ac.fillRect(0, 0, atlas.width, atlas.height); // paper = 0
   ac.fillStyle = '#fff';
@@ -698,6 +701,37 @@ function _buildGlyphAtlas(){
         drawGlyph(ac, pool[(gi++) % pool.length].ch, col * CELL, row * CELL);
   }
   ac.fillRect(0, (ROWS - 1) * CELL, COLS * CELL, CELL); // row 15 solid
+
+  // ── WORD MODE: overwrite the first K glyph slots with the text's unique
+  // characters at DETERMINISTIC positions (the shuffled library above makes
+  // chars unaddressable), then encode the text as slot indices in row 17.
+  // Space (and any tofu the font can't render) maps to a BLANK cell → word
+  // gaps fall out naturally, no shader special-casing.
+  const wordText = (window._lettersText || '').slice(0, 128);
+  window._lettersTextLen = 0;
+  if (wordText.length){
+    const slotOf = {};
+    let nextSlot = 0;
+    for (const ch of wordText){
+      if (slotOf[ch] !== undefined) continue;
+      const slot = nextSlot++;
+      slotOf[ch] = slot;
+      const col = slot % COLS, row = 1 + Math.floor(slot / COLS);
+      ac.fillStyle = '#000'; ac.fillRect(col * CELL, row * CELL, CELL, CELL); // clear pooled glyph
+      ac.fillStyle = '#fff';
+      const g = sig(ch);
+      const isBlank = ch === ' ' || g.cov <= 0.004 || (g.h === tofu.h && Math.abs(g.cov - tofu.cov) < 1e-4);
+      if (!isBlank) drawGlyph(ac, ch, col * CELL, row * CELL);
+    }
+    // Word strip: one 8px block per character of the text, gray = slot value.
+    const chars = Array.from(wordText);
+    for (let i = 0; i < chars.length; i++){
+      const s = slotOf[chars[i]];
+      ac.fillStyle = 'rgb(' + s + ',' + s + ',' + s + ')';
+      ac.fillRect(i * 8, (ROWS + 1) * CELL, 8, CELL);
+    }
+    window._lettersTextLen = chars.length;
+  }
 
   // ── Curve strip (P1: analytic initial guess; P2 replaces with Monte-Carlo
   // of the real stamp process). Boolean-law-derived presence/size with the
@@ -848,6 +882,10 @@ function setRenderUniforms(dw, dh, scale, isPhone){
     gl.bindTexture(gl.TEXTURE_2D, u8tex);
     gl.activeTexture(gl.TEXTURE0);
   }
+  // WORD mode length — set AFTER the atlas ladder above so a lazy rebuild has
+  // refreshed window._lettersTextLen (the strip and the length must agree).
+  if(locs.u_wordLen) gl.uniform1f(locs.u_wordLen,
+    (mode === 'letters' && window._lettersTextLen) ? window._lettersTextLen : 0);
   // Paper type: 'blank' forces zero texture (kills BOTH the PBR substrate and
   // the legacy procedural/scan path — both scale by u_paperTex). Other types
   // shape the PBR character via u_paperPbrMul (tooth strength, sheen).

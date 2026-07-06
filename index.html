@@ -588,7 +588,8 @@ uniform float u_useCalChord;     // 0=naive delta (ink100-paper), 1=calibrated c
                                  //   ink power at low/mid coverage → NNLS prescribes too little ink.
 uniform float u_simNoise;       // master noise multiplier — scales every hardcoded noise source (0 = none, 1 = full)
 uniform float u_warmCool;       // -1..1 — bias the CMYK split: <0 cool (more C+K), >0 warm (more M+Y)
-uniform int u_stampShape;       // SCREEN dot shape: 0=circle, 1=square, 2=diamond, 3=plus, 4=star, 5=heart
+uniform int u_stampShape;       // SCREEN dot shape: 0=circle, 1=square, 2=diamond, 3=plus, 4=star, 5=ASCII letters (glyph atlas on unit 8; LETTERS mode forces this)
+uniform float u_wordLen;        // LETTERS word mode: character count of the user text (0 = random letters). Text lives in the atlas word strip (row 17, 8px/char).
 uniform float u_screenType;     // SCREEN engine: 0=procedural round-dot (cross-faded), 1=RISO matrix (authentic)
 
 // ─── Hash (no diagonal artifacts) ───
@@ -2666,13 +2667,13 @@ float asciiStamp(vec2 skUVL, vec2 offL, int idx, float fragCov, float pf){
           vec2 d = dc / sz;
           d = vec2(d.x*cr - d.y*sr, d.x*sr + d.y*cr) + 0.5;
           if(d.x > 0.0 && d.x < 1.0 && d.y > 0.0 && d.y < 1.0){
-            ink0 = max(ink0, texture2D(u_ht5Matrix, (cell + 0.0234 + d * 0.9532) / vec2(16.0, 17.0)).r);
+            ink0 = max(ink0, texture2D(u_ht5Matrix, (cell + 0.0234 + d * 0.9532) / vec2(16.0, 18.0)).r);
           }
           if(twoTaps){
             d = (dc + tap) / sz;
             d = vec2(d.x*cr - d.y*sr, d.x*sr + d.y*cr) + 0.5;
             if(d.x > 0.0 && d.x < 1.0 && d.y > 0.0 && d.y < 1.0){
-              ink1 = max(ink1, texture2D(u_ht5Matrix, (cell + 0.0234 + d * 0.9532) / vec2(16.0, 17.0)).r);
+              ink1 = max(ink1, texture2D(u_ht5Matrix, (cell + 0.0234 + d * 0.9532) / vec2(16.0, 18.0)).r);
             }
           }
         }
@@ -2744,10 +2745,10 @@ void main(){
       float clump = 0.4 + 1.2 * valueNoise(aUV * 5.0 * REF * 0.01);
       bool wantPres = slot < 0.5;
       vec4 outv = vec4(0.0);
-      if(tones.r > 0.004){ vec3 cv = texture2D(u_ht5Matrix, vec2(mix(0.002, 0.998, tones.r), 16.5/17.0)).rgb; outv.r = wantPres ? clamp(cv.g * clump, 0.0, 1.0) : (0.3 + cv.b * 1.2) / 1.5; }
-      if(tones.g > 0.004){ vec3 cv = texture2D(u_ht5Matrix, vec2(mix(0.002, 0.998, tones.g), 16.5/17.0)).rgb; outv.g = wantPres ? clamp(cv.g * clump, 0.0, 1.0) : (0.3 + cv.b * 1.2) / 1.5; }
-      if(tones.b > 0.004){ vec3 cv = texture2D(u_ht5Matrix, vec2(mix(0.002, 0.998, tones.b), 16.5/17.0)).rgb; outv.b = wantPres ? clamp(cv.g * clump, 0.0, 1.0) : (0.3 + cv.b * 1.2) / 1.5; }
-      if(tones.a > 0.004){ vec3 cv = texture2D(u_ht5Matrix, vec2(mix(0.002, 0.998, tones.a), 16.5/17.0)).rgb; outv.a = wantPres ? clamp(cv.g * clump, 0.0, 1.0) : (0.3 + cv.b * 1.2) / 1.5; }
+      if(tones.r > 0.004){ vec3 cv = texture2D(u_ht5Matrix, vec2(mix(0.002, 0.998, tones.r), 16.5/18.0)).rgb; outv.r = wantPres ? clamp(cv.g * clump, 0.0, 1.0) : (0.3 + cv.b * 1.2) / 1.5; }
+      if(tones.g > 0.004){ vec3 cv = texture2D(u_ht5Matrix, vec2(mix(0.002, 0.998, tones.g), 16.5/18.0)).rgb; outv.g = wantPres ? clamp(cv.g * clump, 0.0, 1.0) : (0.3 + cv.b * 1.2) / 1.5; }
+      if(tones.b > 0.004){ vec3 cv = texture2D(u_ht5Matrix, vec2(mix(0.002, 0.998, tones.b), 16.5/18.0)).rgb; outv.b = wantPres ? clamp(cv.g * clump, 0.0, 1.0) : (0.3 + cv.b * 1.2) / 1.5; }
+      if(tones.a > 0.004){ vec3 cv = texture2D(u_ht5Matrix, vec2(mix(0.002, 0.998, tones.a), 16.5/18.0)).rgb; outv.a = wantPres ? clamp(cv.g * clump, 0.0, 1.0) : (0.3 + cv.b * 1.2) / 1.5; }
       gl_FragColor = outv;
       return;
     }
@@ -2762,7 +2763,20 @@ void main(){
     if(halfB < 0.5){
       gl_FragColor = vec4(hash(hs + 7.3), hash(hs + 19.1), hash(hs + 29.7), hash(hs)); // jit.x, jit.y, spreadT, gate
     } else {
-      gl_FragColor = vec4(hash(hs + 41.3), floor(hash(hs + 53.9) * 224.0) / 255.0, 0.0, 0.0); // rotT, glyphSlot/255
+      // Glyph identity: WORD mode reads the user text from the atlas word
+      // strip (row 17, 8px per character, .r = slot/255) in typewriter order
+      // along the lattice — each row starts one letter later so columns don't
+      // stripe. Deliberately independent of hs/u_stampSeed: animation ticks
+      // re-roll jitter and rotation but never re-scramble the message.
+      // RANDOM mode (u_wordLen == 0) keeps the classic free-library hash.
+      float glyphT;
+      if(u_wordLen > 0.5){
+        float wIdx = mod(aId.x + aId.y, u_wordLen);
+        glyphT = texture2D(u_ht5Matrix, vec2((wIdx * 8.0 + 4.0) / 1024.0, 17.5 / 18.0)).r;
+      } else {
+        glyphT = floor(hash(hs + 53.9) * 224.0) / 255.0;
+      }
+      gl_FragColor = vec4(hash(hs + 41.3), glyphT, 0.0, 0.0); // rotT, glyphSlot/255
     }
     return;
   }
