@@ -693,20 +693,40 @@ function setScale(s){
 // LINES mode shape variants — names + index match shader's u_lineShape uniform
 // Shape names — order MUST match the shader's u_lineShape branches.
 // 0=STRAIGHT, 1=WAVY, 2=GUILLOCHÉ, 3=CONCENTRIC, 4=RADIAL, 5=SPIRAL, 6=CROSS
-const LINE_SHAPES = ['STRAIGHT', 'WAVY', 'GUILLOCHÉ', 'CONCENTRIC', 'RADIAL', 'SPIRAL', 'CROSS'];
+// Straight/Wavy/Guilloché consolidated into ONE 'LINES' shape + the WAVE
+// modulation control (None/Wave/Braid — works on every shape). Shader shape
+// ids stay stable: 0=lines, 3=concentric, 4=radial, 5=spiral, 6=cross
+// (ids 1/2 are legacy aliases of 0 in the shader).
+const LINE_SHAPE_VALS = [0, 3, 4, 5, 6];
+const LINE_SHAPE_LABELS = {0:'LINES', 3:'CONCENTRIC', 4:'RADIAL', 5:'SPIRAL', 6:'CROSS'};
 window._lineShape = window._lineShape ?? 0;
+window._lineWave = window._lineWave ?? 0;
+// Legacy state: old wavy/guilloché shape ids become LINES + the matching wave
+if((window._lineShape|0) === 1){ window._lineShape = 0; window._lineWave = 1; }
+if((window._lineShape|0) === 2){ window._lineShape = 0; window._lineWave = 2; }
 window._lineAmount = window._lineAmount ?? 1.0;
 window._lineWeight = window._lineWeight ?? 1.0;
 window._lineRoughness = window._lineRoughness ?? 0.5;
 window._lineGrain = window._lineGrain ?? 0.6;
 function cycleLineShape(){
-  window._lineShape = (window._lineShape + 1) % LINE_SHAPES.length;
-  const lbl = LINE_SHAPES[window._lineShape];
+  const i = LINE_SHAPE_VALS.indexOf(window._lineShape|0);
+  window._lineShape = LINE_SHAPE_VALS[(i + 1) % LINE_SHAPE_VALS.length];
+  const lbl = LINE_SHAPE_LABELS[window._lineShape];
   const v = el('lineShapeBtnPanelVal'); if(v) v.textContent = lbl;
   const v2 = el('lineShapeBtnVal'); if(v2) v2.textContent = lbl; // legacy if present
   R.toast('Line shape: ' + lbl);
   refreshLineCenterUI();
   if(typeof refreshShapeIcons === 'function') refreshShapeIcons();
+  markDirty();
+}
+// WAVE modulation: None / Wave / Braid — displaces the stripes of ANY shape
+// (scalloped rings, wiggly spokes, braided lines). Depth = the Amount knob
+// (SPIRAL's Amount stays twirl; its wave depth is fixed).
+const LINE_WAVE_LABELS = ['None', 'Wave', 'Braid'];
+function cycleLineWave(){
+  window._lineWave = ((window._lineWave|0) + 1) % 3;
+  const v = el('lineWaveBtnVal'); if(v) v.textContent = LINE_WAVE_LABELS[window._lineWave];
+  R.toast('Wave: ' + LINE_WAVE_LABELS[window._lineWave]);
   markDirty();
 }
 // Line weight: 4 steps — Thin / 1× / Bold / Heavy
@@ -1998,6 +2018,7 @@ R.cycleLineRoughness = cycleLineRoughness;
 R.cycleLineGrain = cycleLineGrain;
 R.toggleLineSpin = toggleLineSpin;
 R.toggleLettersMode = toggleLettersMode;
+R.cycleLineWave = cycleLineWave;
 R.cycleLineEdgeThickness = cycleLineEdgeThickness;
 R.cycleLineCount = cycleLineCount;
 R.cycleMisreg = cycleMisreg;

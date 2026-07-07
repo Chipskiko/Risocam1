@@ -141,7 +141,7 @@
             <input type="file" id="asciiFontFile" accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2" style="display:none" onchange="R.uploadAsciiFont(this.files[0])">
           </div>
           <!-- LINES: LPI + line shape -->
-          <div id="linesPrimary" style="display:none;gap:6px;align-items:center;flex-wrap:wrap"><span style="font-size:8px;letter-spacing:1px;opacity:0.5;align-self:center;margin:0 2px 0 0;white-space:nowrap">SHAPE</span><button class="regmark-btn active" id="lineShapeBtnPanel" onclick="R.cycleLineShape()" title="Line shape"><span class="regmark-icon" id="lineShapeIcon" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px"></span><span class="regmark-val" id="lineShapeBtnPanelVal">STRAIGHT</span></button><button class="regmark-btn" id="lineAmountBtn" onclick="R.cycleLineAmount()" title="Shape amount (wave amplitude / variation strength / spiral twirl)"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><path d="M2 10 Q5 6 8 10 T14 10 T20 10" stroke="currentColor" stroke-width="1.4" fill="none"/></svg><span class="regmark-val" id="lineAmountBtnVal">100%</span></button><span style="font-size:8px;letter-spacing:1px;opacity:0.5;align-self:center;margin:0 2px 0 10px;white-space:nowrap">DENSITY</span><button class="regmark-btn active" id="lpiBtnLines" onclick="R.cycleLpi()" title="Lines Per Inch"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><line x1="2" y1="5" x2="18" y2="5" stroke="currentColor" stroke-width="1.4"/><line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" stroke-width="1.4"/><line x1="2" y1="15" x2="18" y2="15" stroke="currentColor" stroke-width="1.4"/></svg><span class="regmark-val" id="lpiBtnLinesVal">Fine</span></button></div>
+          <div id="linesPrimary" style="display:none;gap:6px;align-items:center;flex-wrap:wrap"><span style="font-size:8px;letter-spacing:1px;opacity:0.5;align-self:center;margin:0 2px 0 0;white-space:nowrap">SHAPE</span><button class="regmark-btn active" id="lineShapeBtnPanel" onclick="R.cycleLineShape()" title="Line shape"><span class="regmark-icon" id="lineShapeIcon" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px"></span><span class="regmark-val" id="lineShapeBtnPanelVal">STRAIGHT</span></button><button class="regmark-btn" id="lineWaveBtn" onclick="R.cycleLineWave()" title="Wave modulation — displaces the stripes of ANY shape: wavy/braided lines, scalloped rings, wiggly spokes. Depth = the amount knob (spiral: amount stays twirl)."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><path d="M2 7 Q5 3 8 7 T14 7 T20 7" stroke="currentColor" stroke-width="1.4" fill="none"/><path d="M2 13 Q5 9 8 13 T14 13 T20 13" stroke="currentColor" stroke-width="1.4" fill="none"/></svg><span class="regmark-val" id="lineWaveBtnVal">None</span></button><button class="regmark-btn" id="lineAmountBtn" onclick="R.cycleLineAmount()" title="Amount — wave depth for the wave modulation (spiral: twirl strength)"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><path d="M2 10 Q5 6 8 10 T14 10 T20 10" stroke="currentColor" stroke-width="1.4" fill="none"/></svg><span class="regmark-val" id="lineAmountBtnVal">100%</span></button><span style="font-size:8px;letter-spacing:1px;opacity:0.5;align-self:center;margin:0 2px 0 10px;white-space:nowrap">DENSITY</span><button class="regmark-btn active" id="lpiBtnLines" onclick="R.cycleLpi()" title="Lines Per Inch"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><line x1="2" y1="5" x2="18" y2="5" stroke="currentColor" stroke-width="1.4"/><line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" stroke-width="1.4"/><line x1="2" y1="15" x2="18" y2="15" stroke="currentColor" stroke-width="1.4"/></svg><span class="regmark-val" id="lpiBtnLinesVal">Fine</span></button></div>
           <!-- RISO: master density (FS prepass DPI) -->
           <div id="flatPrimary" style="display:none;gap:6px">
             <button class="regmark-btn active" id="amtDpiBtn" onclick="R.cycleAmtDpi()" title="Master density — resolution the 1-bit master is burned at. Real Riso = 600 dpi. Lower = faster prepass, coarser dots."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="4" cy="4" r="1.1" fill="currentColor"/><circle cx="10" cy="4" r="1.1" fill="currentColor"/><circle cx="16" cy="4" r="1.1" fill="currentColor"/><circle cx="4" cy="10" r="1.1" fill="currentColor"/><circle cx="10" cy="10" r="1.1" fill="currentColor"/><circle cx="16" cy="10" r="1.1" fill="currentColor"/><circle cx="4" cy="16" r="1.1" fill="currentColor"/><circle cx="10" cy="16" r="1.1" fill="currentColor"/><circle cx="16" cy="16" r="1.1" fill="currentColor"/></svg><span class="regmark-val" id="amtDpiBtnVal">150dpi</span></button>
@@ -541,6 +541,7 @@ uniform float u_lineAmount;  // 0..1 strength of the shape's distinctive paramet
 uniform float u_lineWeight;  // 0.5..2.0 multiplier on stripe thickness (visual line weight)
 uniform float u_lineRoughness; // 0..1 amount of edge fray / position jitter
 uniform float u_lineGrain;     // 0..1 Grain-Touch ink texture blended into line fills
+uniform int u_lineWave;        // LINES modulation: 0=none, 1=wave (sine), 2=braid (guilloché FM) — applies to EVERY line shape
 uniform float u_inkDissolve;   // 0..1 'dissolve' compositing: partial ink resolves to discrete specks on paper
 // Per-layer CONCENTRIC/RADIAL pivot — independent X/Y per plate so the
 // rings/spokes of each ink can radiate from a different point.
@@ -1547,6 +1548,25 @@ float lineRoughness(float lineID, float along){
   return (jitter + spread) * u_lineRoughness;
 }
 
+// WAVE modulation shared by every line shape (u_lineWave: 0/1/2).
+// `along` is the coordinate ALONG the stripe (px-ish), returns displacement
+// ACROSS it. depth = u_lineAmount (spiral passes a constant — its Amount
+// knob keeps meaning twirl).
+//   1 = WAVE:  two soft sines (the old WAVY shape)
+//   2 = BRAID: FM sine-in-sine (the old GUILLOCHÉ shape)
+float lineWobble(float along, float cellPx, float depth){
+  if(u_lineWave == 1){
+    return sin(along * (3.14159 / cellPx) * 0.7) * cellPx * 0.35 * depth
+         + sin(along * (3.14159 / cellPx) * 0.21) * cellPx * 0.25 * depth;
+  }
+  if(u_lineWave == 2){
+    float carrier = along * (3.14159 / cellPx) * 0.5;
+    float modulator = sin(along * (3.14159 / cellPx) * 0.05);
+    return sin(carrier + modulator * 3.0 * depth) * cellPx * 0.4 * depth;
+  }
+  return 0.0;
+}
+
 float lineDither(float val, vec2 pix, float cellPx, float angle, int idx){
   // Pick this layer's center (CONCENTRIC/RADIAL only — others ignore it).
   vec2 lineCenter = (idx == 0) ? u_lineCenter0
@@ -1557,23 +1577,11 @@ float lineDither(float val, vec2 pix, float cellPx, float angle, int idx){
   float dist;
   float aaFade = 1.0;  // 1 = full lines; <1 where the line period is sub-Nyquist
                        // (radial/concentric), used to blend toward the flat tone.
-  if(u_lineShape == 0){
-    // STRAIGHT — parallel lines
-    float pos = mod(rp.y, cellPx) / cellPx;
-    dist = abs(pos - 0.5) * 2.0;
-    dist += lineRoughness(floor(rp.y / cellPx), floor(rp.x * 0.5));
-  } else if(u_lineShape == 1){
-    // WAVY — sinusoidal stripe modulation, like an etched plate
-    float wob = sin(rp.x * (3.14159 / cellPx) * 0.7) * cellPx * 0.35 * u_lineAmount
-              + sin(rp.x * (3.14159 / cellPx) * 0.21) * cellPx * 0.25 * u_lineAmount;
-    float pos = mod(rp.y + wob, cellPx) / cellPx;
-    dist = abs(pos - 0.5) * 2.0;
-    dist += lineRoughness(floor((rp.y+wob) / cellPx), floor(rp.x * 0.5));
-  } else if(u_lineShape == 2){
-    // GUILLOCHE — banknote curves: sin nested in sin for braided look
-    float carrier = rp.x * (3.14159 / cellPx) * 0.5;
-    float modulator = sin(rp.x * (3.14159 / cellPx) * 0.05);
-    float wob = sin(carrier + modulator * 3.0 * u_lineAmount) * cellPx * 0.4 * u_lineAmount;
+  if(u_lineShape <= 2){
+    // LINES — parallel stripes; WAVE modulation via lineWobble (legacy shape
+    // ids 1=wavy / 2=guilloché map to shape 0 + u_lineWave in JS, kept here
+    // as aliases so old saved states still render lined).
+    float wob = lineWobble(rp.x, cellPx, u_lineAmount);
     float pos = mod(rp.y + wob, cellPx) / cellPx;
     dist = abs(pos - 0.5) * 2.0;
     dist += lineRoughness(floor((rp.y+wob) / cellPx), floor(rp.x * 0.5));
@@ -1581,8 +1589,21 @@ float lineDither(float val, vec2 pix, float cellPx, float angle, int idx){
     // CONCENTRIC — circles around configurable center, like ripples.
     // u_lineCount divides the cell so >1 gives more rings, <1 gives fewer.
     vec2 center = lineCenter * u_res;
-    float r = length(pix - center);
+    vec2 dC = pix - center;
+    float r = length(dC);
     float cellPxAdj = cellPx / max(u_lineCount, 0.01);
+    // WAVE: scallop the rings with an INTEGER number of angular waves per
+    // ring (k constant along each ring, integer → seamless at the atan
+    // branch cut). Wavelength tracks ~9 cells of arc; braid nests an FM term.
+    if(u_lineWave > 0){
+      float angC = atan(dC.y, dC.x);
+      float ringR = (floor(r / cellPxAdj) + 0.5) * cellPxAdj;
+      float k = max(3.0, floor(6.2832 * ringR / (cellPxAdj * 9.0)));
+      float w = (u_lineWave == 2)
+        ? sin(angC * k + sin(angC * 3.0) * 3.0 * u_lineAmount) * 0.40
+        : sin(angC * k) * 0.35;
+      r += w * cellPxAdj * u_lineAmount;
+    }
     float pos = mod(r, cellPxAdj) / cellPxAdj;
     dist = abs(pos - 0.5) * 2.0;
     // Anti-moiré: fade to flat tone where the ring period is sub-Nyquist.
@@ -1599,6 +1620,9 @@ float lineDither(float val, vec2 pix, float cellPx, float angle, int idx){
     float ang = atan(d.y, d.x) + angle;
     float spokes = max(8.0, u_res.x / cellPx * 0.7) * u_lineCount;
     float pos = mod(ang * spokes / 6.2832, 1.0);
+    // WAVE: wiggle the spokes as they travel outward (r-based → no seam).
+    pos += lineWobble(length(d), cellPx, u_lineAmount) / cellPx * 0.9;
+    pos = fract(pos);
     dist = abs(pos - 0.5) * 2.0;
     // Falloff near center to avoid the singularity
     float r = length(d);
@@ -1619,6 +1643,10 @@ float lineDither(float val, vec2 pix, float cellPx, float angle, int idx){
     float ang = atan(d.y, d.x) + angle + r * twirl / max(u_res.x, 1.0);
     float spokes = max(8.0, u_res.x / cellPx * 0.7) * u_lineCount;
     float pos = mod(ang * spokes / 6.2832, 1.0);
+    // WAVE: r-based spoke wiggle. Depth is a constant here — SPIRAL's Amount
+    // knob keeps its established meaning (twirl).
+    pos += lineWobble(r, cellPx, 0.7) / cellPx * 0.9;
+    pos = fract(pos);
     dist = abs(pos - 0.5) * 2.0;
     // Anti-moiré: the spoke spatial period (px) = 2π·r / spokes shrinks toward
     // the centre. Where it drops below ~Nyquist, fade to the flat tone (below)
@@ -1627,11 +1655,14 @@ float lineDither(float val, vec2 pix, float cellPx, float angle, int idx){
     aaFade = smoothstep(2.0, 6.0, 6.2832 * r / max(spokes, 1.0));
     dist += lineRoughness(floor(ang * spokes / 6.2832), floor(r / cellPx));
   } else {
-    // CROSS — two perpendicular line sets max'd together (cross-hatch in one layer)
-    float p1 = mod(rp.y, cellPx) / cellPx;
-    float p2 = mod(rp.x, cellPx) / cellPx;
-    float d1 = abs(p1 - 0.5) * 2.0 + lineRoughness(floor(rp.y / cellPx), floor(rp.x * 0.5));
-    float d2 = abs(p2 - 0.5) * 2.0 + lineRoughness(floor(rp.x / cellPx) + 13.0, floor(rp.y * 0.5));
+    // CROSS — two perpendicular line sets max'd together (cross-hatch in one
+    // layer). WAVE wobbles each set along its own axis.
+    float wob1 = lineWobble(rp.x, cellPx, u_lineAmount);
+    float wob2 = lineWobble(rp.y, cellPx, u_lineAmount);
+    float p1 = mod(rp.y + wob1, cellPx) / cellPx;
+    float p2 = mod(rp.x + wob2, cellPx) / cellPx;
+    float d1 = abs(p1 - 0.5) * 2.0 + lineRoughness(floor((rp.y+wob1) / cellPx), floor(rp.x * 0.5));
+    float d2 = abs(p2 - 0.5) * 2.0 + lineRoughness(floor((rp.x+wob2) / cellPx) + 13.0, floor(rp.y * 0.5));
     dist = min(d1, d2); // min = max of the two ink masks (closer of either line)
   }
   // Line weight: scale the threshold so heavier weight = thicker stripes
@@ -3348,10 +3379,10 @@ void main(){
 <script src="js/compare.js?v=6"></script>
 <script src="js/riso-amt.js?v=24"></script>
 <script src="js/riso-amt-webgpu.js?v=5"></script>
-<script src="js/renderer.js?v=136"></script>
+<script src="js/renderer.js?v=137"></script>
 <script src="js/source.js?v=51"></script>
-<script src="js/save.js?v=60"></script>
-<script src="js/ui-controls.js?v=62"></script>
+<script src="js/save.js?v=61"></script>
+<script src="js/ui-controls.js?v=63"></script>
 <script src="js/ui-paper.js?v=13"></script>
 <script src="js/phone.js?v=21"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL

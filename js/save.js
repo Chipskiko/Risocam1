@@ -952,6 +952,7 @@ async function exportSeparations(){
   if(locs.u_edgeSoft) gl.uniform1f(locs.u_edgeSoft, 0.0);
   if(locs.u_asciiTonePass) gl.uniform1f(locs.u_asciiTonePass, 0.0);
   gl.uniform1i(locs.u_lineShape, window._lineShape||0);
+  if(locs.u_lineWave) gl.uniform1i(locs.u_lineWave, window._lineWave|0);
   gl.uniform1f(locs.u_lineAmount, window._lineAmount ?? 1.0);
   gl.uniform1f(locs.u_lineWeight, window._lineWeight ?? 1.0);
   gl.uniform1f(locs.u_lineRoughness, window._lineRoughness ?? 0.5);
