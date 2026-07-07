@@ -1618,7 +1618,7 @@ float lineDither(float val, vec2 pix, float cellPx, float angle, int idx){
     // different angle (e.g. 15°/75°/0°/45°).
     vec2 d = pix - lineCenter * u_res;
     float ang = atan(d.y, d.x) + angle;
-    float spokes = max(8.0, u_res.x / cellPx * 0.7) * u_lineCount;
+    float spokes = max(3.0, floor(max(8.0, u_res.x / cellPx * 0.7) * u_lineCount + 0.5)); // INTEGER — a whole number of spokes closes the circle seamlessly at the atan ±180° wrap
     float pos = mod(ang * spokes / 6.2832, 1.0);
     // WAVE: wiggle the spokes as they travel outward (r-based → no seam).
     pos += lineWobble(length(d), cellPx, u_lineAmount) / cellPx * 0.9;
@@ -1631,7 +1631,7 @@ float lineDither(float val, vec2 pix, float cellPx, float angle, int idx){
     // so there's no sub-pixel detail left to alias — kills the radial moiré
     // without losing the tone (unlike fading to white).
     aaFade = smoothstep(2.0, 6.0, 6.2832 * r / max(spokes, 1.0));
-    dist += lineRoughness(floor(ang * spokes / 6.2832), floor(r / cellPx));
+    dist += lineRoughness(mod(floor(ang * spokes / 6.2832), spokes), floor(r / cellPx)); // stripe id wraps with the circle — same fray both sides of the seam
   } else if(u_lineShape == 5){
     // SPIRAL — radial spokes that twist as they grow outward. Same as
     // RADIAL but the polar angle picks up an extra rotation proportional
@@ -1641,7 +1641,7 @@ float lineDither(float val, vec2 pix, float cellPx, float angle, int idx){
     float r = length(d);
     float twirl = u_lineAmount * 6.0; // radians of rotation per unit r/u_res
     float ang = atan(d.y, d.x) + angle + r * twirl / max(u_res.x, 1.0);
-    float spokes = max(8.0, u_res.x / cellPx * 0.7) * u_lineCount;
+    float spokes = max(3.0, floor(max(8.0, u_res.x / cellPx * 0.7) * u_lineCount + 0.5)); // INTEGER — a whole number of spokes closes the circle seamlessly at the atan ±180° wrap
     float pos = mod(ang * spokes / 6.2832, 1.0);
     // WAVE: r-based spoke wiggle. Depth is a constant here — SPIRAL's Amount
     // knob keeps its established meaning (twirl).
@@ -1653,7 +1653,7 @@ float lineDither(float val, vec2 pix, float cellPx, float angle, int idx){
     // so there's no sub-pixel detail left to alias — kills the radial moiré
     // without losing the tone (unlike fading to white).
     aaFade = smoothstep(2.0, 6.0, 6.2832 * r / max(spokes, 1.0));
-    dist += lineRoughness(floor(ang * spokes / 6.2832), floor(r / cellPx));
+    dist += lineRoughness(mod(floor(ang * spokes / 6.2832), spokes), floor(r / cellPx)); // stripe id wraps with the circle — same fray both sides of the seam
   } else {
     // CROSS — two perpendicular line sets max'd together (cross-hatch in one
     // layer). WAVE wobbles each set along its own axis.
