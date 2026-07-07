@@ -17,7 +17,7 @@ function getState(){
     paperTex:cached.paperTex, lpi:cached.lpi, grainStatic:cached.grainStatic, ghosting:cached.ghosting, sepType:cached.sepType,
     imgBright:cached.imgBright, imgContrast:cached.imgContrast, imgSat:cached.imgSat,
     paperColor:curPaperColor,
-    stamp:window._stampShape|0, lettersText:window._lettersText||''
+    stamp:window._stampShape|0, lettersText:window._lettersText||'', lettersMode:window._lettersMode|0
   });
 }
 function pushUndo(){
@@ -57,6 +57,10 @@ function restoreState(json){
       window._lettersText=s.lettersText;
       window._glyphAtlasTex=null; // atlas embeds the word — rebuild
       const inp=document.getElementById('lettersTextInput'); if(inp) inp.value=s.lettersText;
+    }
+    if(s.lettersMode!==undefined){
+      window._lettersMode=s.lettersMode|0;
+      if(window.R && R.syncAsciiChips) R.syncAsciiChips();
     }
     cached.imgBright=s.imgBright; cached.imgContrast=s.imgContrast; cached.imgSat=s.imgSat;
     // Restore profile ref

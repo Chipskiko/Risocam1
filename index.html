@@ -134,16 +134,14 @@
           <!-- LETTERS: letter density + text + charset/font (screen engine, glyph stamp) -->
           <div id="lettersPrimary" style="display:none;gap:6px;flex-wrap:wrap;align-items:center">
             <button class="regmark-btn active" id="lpiBtnLetters" onclick="R.cycleLpi()" title="Letter density (lines per inch — coarser = bigger letters)"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><text x="10" y="15" text-anchor="middle" font-size="13" font-weight="bold" font-family="monospace" fill="currentColor">A</text></svg><span class="regmark-val" id="lpiBtnLettersVal">Fine</span></button>
-            <input type="text" id="lettersTextInput" maxlength="128" placeholder="random letters — type a word…" title="Stamp a specific word or sentence — letters repeat across the image in typewriter order, spaces become gaps. Empty = random letters." style="flex:1;min-width:130px;max-width:260px;font-family:'Space Mono',monospace;font-size:10px;padding:6px 8px;border:1px solid var(--border);background:transparent;color:var(--text)" oninput="R.setLettersText(this.value)">
+            <button class="regmark-btn" id="lettersModeBtn" onclick="R.toggleLettersMode()" title="Random letters (artistic stamp cloud, charset applies) ⇄ Sentence (your text spelled out readably — tone carried by letter size, no overlap)"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><text x="10" y="14" text-anchor="middle" font-size="10" font-weight="bold" font-family="monospace" fill="currentColor">Aa</text></svg><span class="regmark-val" id="lettersModeBtnVal">Random</span></button>
+            <input type="text" id="lettersTextInput" maxlength="128" placeholder="type your sentence…" title="The image is rendered out of your text, spelled out over and over — letters on a clean grid, tone carried by letter size, spaces become gaps." style="display:none;flex:1;min-width:130px;max-width:260px;font-family:'Space Mono',monospace;font-size:10px;padding:6px 8px;border:1px solid var(--border);background:transparent;color:var(--text)" oninput="R.setLettersText(this.value)">
             <button class="regmark-btn" id="asciiCharsetBtn" style="display:none" onclick="R.cycleAsciiCharset()" title="Charset for random letters — Latin / Georgian Mkhedruli / mixed"><span class="regmark-val" id="asciiCharsetVal">ABC</span></button>
             <button class="regmark-btn" id="asciiFontBtn" style="display:none" onclick="R.asciiFontClick()" title="Letter font — click to upload a TTF/OTF/WOFF; click again to reset to default"><span class="regmark-val" id="asciiFontVal">Aa</span></button>
             <input type="file" id="asciiFontFile" accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2" style="display:none" onchange="R.uploadAsciiFont(this.files[0])">
           </div>
           <!-- LINES: LPI + line shape -->
-          <div id="linesPrimary" style="display:none;gap:6px">
-            <button class="regmark-btn active" id="lpiBtnLines" onclick="R.cycleLpi()" title="Lines Per Inch"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><line x1="2" y1="5" x2="18" y2="5" stroke="currentColor" stroke-width="1.4"/><line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" stroke-width="1.4"/><line x1="2" y1="15" x2="18" y2="15" stroke="currentColor" stroke-width="1.4"/></svg><span class="regmark-val" id="lpiBtnLinesVal">Fine</span></button>
-            <button class="regmark-btn active" id="lineShapeBtnPanel" onclick="R.cycleLineShape()" title="Line shape"><span class="regmark-icon" id="lineShapeIcon" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px"></span><span class="regmark-val" id="lineShapeBtnPanelVal">STRAIGHT</span></button>
-          </div>
+          <div id="linesPrimary" style="display:none;gap:6px;align-items:center;flex-wrap:wrap"><span style="font-size:8px;letter-spacing:1px;opacity:0.5;align-self:center;margin:0 2px 0 0;white-space:nowrap">SHAPE</span><button class="regmark-btn active" id="lineShapeBtnPanel" onclick="R.cycleLineShape()" title="Line shape"><span class="regmark-icon" id="lineShapeIcon" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px"></span><span class="regmark-val" id="lineShapeBtnPanelVal">STRAIGHT</span></button><button class="regmark-btn" id="lineAmountBtn" onclick="R.cycleLineAmount()" title="Shape amount (wave amplitude / variation strength / spiral twirl)"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><path d="M2 10 Q5 6 8 10 T14 10 T20 10" stroke="currentColor" stroke-width="1.4" fill="none"/></svg><span class="regmark-val" id="lineAmountBtnVal">100%</span></button><span style="font-size:8px;letter-spacing:1px;opacity:0.5;align-self:center;margin:0 2px 0 10px;white-space:nowrap">DENSITY</span><button class="regmark-btn active" id="lpiBtnLines" onclick="R.cycleLpi()" title="Lines Per Inch"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><line x1="2" y1="5" x2="18" y2="5" stroke="currentColor" stroke-width="1.4"/><line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" stroke-width="1.4"/><line x1="2" y1="15" x2="18" y2="15" stroke="currentColor" stroke-width="1.4"/></svg><span class="regmark-val" id="lpiBtnLinesVal">Fine</span></button></div>
           <!-- RISO: master density (FS prepass DPI) -->
           <div id="flatPrimary" style="display:none;gap:6px">
             <button class="regmark-btn active" id="amtDpiBtn" onclick="R.cycleAmtDpi()" title="Master density — resolution the 1-bit master is burned at. Real Riso = 600 dpi. Lower = faster prepass, coarser dots."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="4" cy="4" r="1.1" fill="currentColor"/><circle cx="10" cy="4" r="1.1" fill="currentColor"/><circle cx="16" cy="4" r="1.1" fill="currentColor"/><circle cx="4" cy="10" r="1.1" fill="currentColor"/><circle cx="10" cy="10" r="1.1" fill="currentColor"/><circle cx="16" cy="10" r="1.1" fill="currentColor"/><circle cx="4" cy="16" r="1.1" fill="currentColor"/><circle cx="10" cy="16" r="1.1" fill="currentColor"/><circle cx="16" cy="16" r="1.1" fill="currentColor"/></svg><span class="regmark-val" id="amtDpiBtnVal">150dpi</span></button>
@@ -156,17 +154,11 @@
         <!-- Row 2 — mode-specific shared sub-settings. Hidden when empty. -->
         <div class="regmark-row" id="modeSecondaryRow" style="display:none">
           <button class="regmark-btn" id="ditherScaleBtn" onclick="R.cycleDitherScale()" title="Dither cell size — number of source pixels per dither cell. Only affects Bayer / Atkinson / FS / Stucki / JJN sub-modes." style="display:none"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><rect x="2" y="2" width="3" height="3" fill="currentColor"/><rect x="6" y="2" width="3" height="3" fill="currentColor" opacity="0.6"/><rect x="11" y="2" width="7" height="7" fill="currentColor"/><rect x="2" y="11" width="7" height="7" fill="currentColor" opacity="0.6"/></svg><span class="regmark-val" id="ditherScaleBtnVal">1×</span></button>
-          <div id="linesSecondary" style="display:none;gap:6px">
-            <button class="regmark-btn" id="lineWeightBtn" onclick="R.cycleLineWeight()" title="Line weight"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><line x1="2" y1="5" x2="18" y2="5" stroke="currentColor" stroke-width="0.8"/><line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" stroke-width="1.6"/><line x1="2" y1="15" x2="18" y2="15" stroke="currentColor" stroke-width="3"/></svg><span class="regmark-val" id="lineWeightBtnVal">1×</span></button>
-            <button class="regmark-btn" id="lineAmountBtn" onclick="R.cycleLineAmount()" title="Shape amount (wave amplitude / variation strength / spiral twirl)"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><path d="M2 10 Q5 6 8 10 T14 10 T20 10" stroke="currentColor" stroke-width="1.4" fill="none"/></svg><span class="regmark-val" id="lineAmountBtnVal">100%</span></button>
-            <button class="regmark-btn" id="lineRoughBtn" onclick="R.cycleLineRoughness()" title="Edge roughness / fray"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><path d="M2 6 L4 5 L6 7 L8 5.5 L10 6.5 L12 5 L14 7 L16 5.5 L18 6" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M2 14 L4 13 L6 15 L8 13.5 L10 14.5 L12 13 L14 15 L16 13.5 L18 14" stroke="currentColor" stroke-width="1.2" fill="none"/></svg><span class="regmark-val" id="lineRoughBtnVal">Med</span></button>
-            <button class="regmark-btn" id="lineGrainBtn" onclick="R.cycleLineGrain()" title="Ink grain within lines (noise mottle)"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><rect x="2" y="7" width="16" height="6" rx="1" stroke="currentColor" stroke-width="1.2" fill="none"/><circle cx="5" cy="9.5" r="0.7" fill="currentColor"/><circle cx="8" cy="11" r="0.7" fill="currentColor"/><circle cx="10.5" cy="9" r="0.7" fill="currentColor"/><circle cx="13" cy="10.8" r="0.7" fill="currentColor"/><circle cx="15.5" cy="9.3" r="0.7" fill="currentColor"/></svg><span class="regmark-val" id="lineGrainBtnVal">Med</span></button>
-            <button class="regmark-btn" id="lineSpinBtn" onclick="R.toggleLineSpin()" title="Animate — each plate's line angle slowly precesses (different rates/directions), so the moiré between plates evolves live. Uses the FPS animation clock; exports capture the current angles."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><path d="M10 3 A7 7 0 1 1 3.2 8" stroke="currentColor" stroke-width="1.4" fill="none"/><polygon points="1.5,4.5 5.5,8 1,9.5" fill="currentColor"/><line x1="10" y1="10" x2="14" y2="6.5" stroke="currentColor" stroke-width="1.2"/></svg><span class="regmark-val" id="lineSpinBtnVal">Off</span></button>
-          </div>
+          <div id="linesSecondary" style="display:none;gap:6px;align-items:center;flex-wrap:wrap"><span style="font-size:8px;letter-spacing:1px;opacity:0.5;align-self:center;margin:0 2px 0 0;white-space:nowrap">STROKE</span><button class="regmark-btn" id="lineWeightBtn" onclick="R.cycleLineWeight()" title="Line weight"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><line x1="2" y1="5" x2="18" y2="5" stroke="currentColor" stroke-width="0.8"/><line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" stroke-width="1.6"/><line x1="2" y1="15" x2="18" y2="15" stroke="currentColor" stroke-width="3"/></svg><span class="regmark-val" id="lineWeightBtnVal">1×</span></button><button class="regmark-btn" id="lineRoughBtn" onclick="R.cycleLineRoughness()" title="Edge roughness / fray"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><path d="M2 6 L4 5 L6 7 L8 5.5 L10 6.5 L12 5 L14 7 L16 5.5 L18 6" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M2 14 L4 13 L6 15 L8 13.5 L10 14.5 L12 13 L14 15 L16 13.5 L18 14" stroke="currentColor" stroke-width="1.2" fill="none"/></svg><span class="regmark-val" id="lineRoughBtnVal">Med</span></button><button class="regmark-btn" id="lineGrainBtn" onclick="R.cycleLineGrain()" title="Ink grain within lines (noise mottle)"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><rect x="2" y="7" width="16" height="6" rx="1" stroke="currentColor" stroke-width="1.2" fill="none"/><circle cx="5" cy="9.5" r="0.7" fill="currentColor"/><circle cx="8" cy="11" r="0.7" fill="currentColor"/><circle cx="10.5" cy="9" r="0.7" fill="currentColor"/><circle cx="13" cy="10.8" r="0.7" fill="currentColor"/><circle cx="15.5" cy="9.3" r="0.7" fill="currentColor"/></svg><span class="regmark-val" id="lineGrainBtnVal">Med</span></button><span style="font-size:8px;letter-spacing:1px;opacity:0.5;align-self:center;margin:0 2px 0 10px;white-space:nowrap">MOTION</span><button class="regmark-btn" id="lineSpinBtn" onclick="R.toggleLineSpin()" title="Animate — each plate's line angle slowly precesses (different rates/directions), so the moiré between plates evolves live. Uses the FPS animation clock; exports capture the current angles."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><path d="M10 3 A7 7 0 1 1 3.2 8" stroke="currentColor" stroke-width="1.4" fill="none"/><polygon points="1.5,4.5 5.5,8 1,9.5" fill="currentColor"/><line x1="10" y1="10" x2="14" y2="6.5" stroke="currentColor" stroke-width="1.2"/></svg><span class="regmark-val" id="lineSpinBtnVal">Off</span></button></div>
         </div>
         <!-- Row 3 — shape-specific sub-settings. Visible only for
              radial-ish shapes (CONCENTRIC / RADIAL / SPIRAL). -->
-        <div class="regmark-row line-center-btn" id="shapeSpecificRow" style="display:none">
+        <div class="regmark-row line-center-btn" id="shapeSpecificRow" style="display:none;align-items:center"><span style="font-size:8px;letter-spacing:1px;opacity:0.5;align-self:center;margin:0 2px 0 0;white-space:nowrap">RINGS / SPOKES</span>
           <button class="regmark-btn" id="lineCountBtn" onclick="R.cycleLineCount()" title="Density — multiplier for the number of rings/spokes. 1× = default; >1 = denser, <1 = sparser."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="3" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="10" r="6" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="10" r="9" fill="none" stroke="currentColor" stroke-width="1.4"/></svg><span class="regmark-val" id="lineCountBtnVal">1×</span></button>
           <button class="regmark-btn" id="lineEdgeBtn" onclick="R.cycleLineEdgeThickness()" title="Edge thickness — outer rings/spokes get progressively thicker than the ones near the center."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="2.5" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="10" cy="10" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="8.5" fill="none" stroke="currentColor" stroke-width="2.2"/></svg><span class="regmark-val" id="lineEdgeBtnVal">Off</span></button>
         </div>
@@ -2527,7 +2519,7 @@ float paperEffect(vec2 pix){
 // mapped ONCE across the whole canvas with a cover-fit, so there is no repeat
 // lattice and therefore no "repeating squares" grid. Cover-fit keeps the fibers
 // isotropic (uniform scale) and crops the overflow on the longer axis. One tap.
-vec3 applyPaperPBR(vec3 result, vec2 uv){
+vec3 applyPaperPBR(vec3 result, vec2 uv, float inkCov){
   if(u_usePaperPBR < 0.5 || u_paperTex < 0.01) return result;
   // Cover-fit + zoom + sheet-feed jitter — shared with dissolveInk via
   // paperPbrUV() so ink speckle and visible tooth sample the same fibers.
@@ -2537,7 +2529,16 @@ vec3 applyPaperPBR(vec3 result, vec2 uv){
   // normal-mapped sheen (Smooth = low tooth / coated sheen, Kraft = heavy
   // tooth / matte, etc). (1,1) = Standard.
   float strength = clamp(u_paperTex * 0.04, 0.0, 1.0) * u_paperPbrMul.x;
-  float h = p.r;                       // single sample → full tooth contrast
+  // GHOST-STREAK FIX, two parts:
+  // 1) dense ink HIDES paper creases (riso solids fill the tooth) — damp the
+  //    modulation with ink coverage so the map's scratch lines can't burn
+  //    bright streaks through solid ink; they stay on bare paper where they
+  //    read as paper character.
+  // 2) cap outlier height deviation: Paper002 has a few deep crease lines
+  //    (|h-mean| well past the ±0.08 typical tooth) that printed as
+  //    sheet-crossing light streaks. ±0.12 keeps tooth, trims the scars.
+  strength *= mix(1.0, 0.25, clamp(inkCov, 0.0, 1.0));
+  float h = 0.14 + clamp(p.r - 0.14, -0.12, 0.12);
   vec2 nxy = (p.gb - 0.5) * 2.0;
   // Tone from height, centered on the map's mean so paper isn't globally darkened.
   float tone = 1.0 + (h - 0.14) * strength * 2.6;
@@ -2631,7 +2632,10 @@ float asciiStamp(vec2 skUVL, vec2 offL, int idx, float fragCov, float pf){
   // ASCII pitch = 2x the dot-screen cell: at 10 LP letters are twice the old
   // size, and the whole LP range scales the same way.
   float cellPx = u_screenCell * 2.0;
-  float ca = cos(u_angle0), sa = sin(u_angle0);   // SHARED lattice angle
+  // SHARED lattice angle. SENTENCE mode forces 0 so the text runs in
+  // horizontal rows (readability beats the screen-angle aesthetic there).
+  float latAng = (u_wordLen > 0.5) ? 0.0 : u_angle0;
+  float ca = cos(latAng), sa = sin(latAng);
   vec2 lpixL = (skUVL + offL) * u_res;
   vec2 rp = vec2(lpixL.x*ca - lpixL.y*sa, lpixL.x*sa + lpixL.y*ca) / cellPx;
   vec2 aBase = floor(rp - 0.5);                   // 3x3 ring covers reach 1.5
@@ -2729,7 +2733,8 @@ void main(){
       // clump field + curve strip, exactly the per-anchor math the stamp
       // loop used to repeat per fragment per layer.
       float cpx = u_screenCell * 2.0;
-      float ca = cos(u_angle0), sa = sin(u_angle0);
+      float latAngP = (u_wordLen > 0.5) ? 0.0 : u_angle0; // sentence: horizontal rows
+      float ca = cos(latAngP), sa = sin(latAngP);
       vec2 aLat = (aId + 0.5) * cpx;
       vec2 aPix = vec2(aLat.x*ca + aLat.y*sa, -aLat.x*sa + aLat.y*ca);
       vec2 aUV = aPix / u_res;
@@ -2750,6 +2755,19 @@ void main(){
       if(tones.g > 0.004){ vec3 cv = texture2D(u_ht5Matrix, vec2(mix(0.002, 0.998, tones.g), 16.5/18.0)).rgb; outv.g = wantPres ? clamp(cv.g * clump, 0.0, 1.0) : (0.3 + cv.b * 1.2) / 1.5; }
       if(tones.b > 0.004){ vec3 cv = texture2D(u_ht5Matrix, vec2(mix(0.002, 0.998, tones.b), 16.5/18.0)).rgb; outv.b = wantPres ? clamp(cv.g * clump, 0.0, 1.0) : (0.3 + cv.b * 1.2) / 1.5; }
       if(tones.a > 0.004){ vec3 cv = texture2D(u_ht5Matrix, vec2(mix(0.002, 0.998, tones.a), 16.5/18.0)).rgb; outv.a = wantPres ? clamp(cv.g * clump, 0.0, 1.0) : (0.3 + cv.b * 1.2) / 1.5; }
+      // SENTENCE mode (u_wordLen > 0): READABLE typography instead of the
+      // stochastic stamp cloud. Presence is all-or-nothing (every toned anchor
+      // shows its letter — the text must stay legible), and TONE IS CARRIED BY
+      // LETTER SIZE alone: size = mix(0.16, 0.79, sqrt(v)) → after the stamp's
+      // ×1.5×0.78 chain the glyph spans 0.19..0.92 of a cell, so neighbours
+      // never overlap. 0.996 (=254/255) presence lets a 1.0 gate exclude the
+      // k=1,2 candidates exactly (see the A-texel write below).
+      if(u_wordLen > 0.5){
+        outv.r = tones.r > 0.015 ? (wantPres ? 0.996 : mix(0.16, 0.79, sqrt(tones.r))) : 0.0;
+        outv.g = tones.g > 0.015 ? (wantPres ? 0.996 : mix(0.16, 0.79, sqrt(tones.g))) : 0.0;
+        outv.b = tones.b > 0.015 ? (wantPres ? 0.996 : mix(0.16, 0.79, sqrt(tones.b))) : 0.0;
+        outv.a = tones.a > 0.015 ? (wantPres ? 0.996 : mix(0.16, 0.79, sqrt(tones.a))) : 0.0;
+      }
       gl_FragColor = outv;
       return;
     }
@@ -2762,22 +2780,31 @@ void main(){
     vec2 hs = aW * 13.1 + vec2(kf * 37.7 + u_stampSeed * 0.917,
                                kf * 23.9 + u_stampSeed * 1.131);
     if(halfB < 0.5){
-      gl_FragColor = vec4(hash(hs + 7.3), hash(hs + 19.1), hash(hs + 29.7), hash(hs)); // jit.x, jit.y, spreadT, gate
+      // SENTENCE mode: ONE centered candidate per anchor — jit 0.5/0.5 decodes
+      // to zero offset, spreadT 0 keeps size exact, and gate 1.0 > presence
+      // 0.996 kills candidates k=1,2 (k=0 gate 0.0 always draws). Clean grid.
+      gl_FragColor = (u_wordLen > 0.5)
+        ? vec4(0.5, 0.5, 0.0, kf < 0.5 ? 0.0 : 1.0)
+        : vec4(hash(hs + 7.3), hash(hs + 19.1), hash(hs + 29.7), hash(hs)); // jit.x, jit.y, spreadT, gate
     } else {
-      // Glyph identity: WORD mode reads the user text from the atlas word
-      // strip (row 17, 8px per character, .r = slot/255) in typewriter order
-      // along the lattice — each row starts one letter later so columns don't
-      // stripe. Deliberately independent of hs/u_stampSeed: animation ticks
-      // re-roll jitter and rotation but never re-scramble the message.
+      // Glyph identity: SENTENCE mode reads the user text from the atlas word
+      // strip (row 17, 8px per character, .r = slot/255) in typewriter order —
+      // rows aligned (index keyed on lattice x only) so the words stack into
+      // readable columns. Deliberately independent of hs/u_stampSeed:
+      // animation ticks never re-scramble the message. Rotation is zeroed
+      // (rotT 0.5) — upright letters read better.
       // RANDOM mode (u_wordLen == 0) keeps the classic free-library hash.
       float glyphT;
+      float rotT;
       if(u_wordLen > 0.5){
-        float wIdx = mod(aId.x + aId.y, u_wordLen);
+        float wIdx = mod(aId.x, u_wordLen);
         glyphT = texture2D(u_ht5Matrix, vec2((wIdx * 8.0 + 4.0) / 1024.0, 17.5 / 18.0)).r;
+        rotT = 0.5;
       } else {
         glyphT = floor(hash(hs + 53.9) * 224.0) / 255.0;
+        rotT = hash(hs + 41.3);
       }
-      gl_FragColor = vec4(hash(hs + 41.3), glyphT, 0.0, 0.0); // rotT, glyphSlot/255
+      gl_FragColor = vec4(rotT, glyphT, 0.0, 0.0); // rotT, glyphSlot/255
     }
     return;
   }
@@ -3104,8 +3131,9 @@ void main(){
   // PBR paper substrate (ambientCG Paper002) — height tooth + normal sheen.
   // Applied here in the shared tail so it affects every mode incl. RISO and
   // is captured on export. When off (u_usePaperPBR=0) this is a no-op and the
-  // legacy procedural/scan pf path above handles paper.
-  result = applyPaperPBR(result, uv);
+  // legacy procedural/scan pf path above handles paper. inkCoverage damps the
+  // tooth under dense ink (ghost-streak fix — see applyPaperPBR).
+  result = applyPaperPBR(result, uv, inkCoverage);
 
   // Micro scanner noise: breaks last traces of digital perfection
   // Simulates sensor grain in scanned prints (0.4% amplitude)
@@ -3318,14 +3346,14 @@ void main(){
 <script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
 <script src="js/data.js?v=16"></script>
 <script src="js/state.js?v=15"></script>
-<script src="js/undo.js?v=8"></script>
+<script src="js/undo.js?v=9"></script>
 <script src="js/compare.js?v=6"></script>
 <script src="js/riso-amt.js?v=24"></script>
 <script src="js/riso-amt-webgpu.js?v=5"></script>
-<script src="js/renderer.js?v=135"></script>
+<script src="js/renderer.js?v=136"></script>
 <script src="js/source.js?v=50"></script>
-<script src="js/save.js?v=58"></script>
-<script src="js/ui-controls.js?v=61"></script>
+<script src="js/save.js?v=59"></script>
+<script src="js/ui-controls.js?v=62"></script>
 <script src="js/ui-paper.js?v=13"></script>
 <script src="js/phone.js?v=21"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL

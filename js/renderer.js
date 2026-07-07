@@ -882,10 +882,11 @@ function setRenderUniforms(dw, dh, scale, isPhone){
     gl.bindTexture(gl.TEXTURE_2D, u8tex);
     gl.activeTexture(gl.TEXTURE0);
   }
-  // WORD mode length — set AFTER the atlas ladder above so a lazy rebuild has
-  // refreshed window._lettersTextLen (the strip and the length must agree).
+  // SENTENCE mode length — set AFTER the atlas ladder above so a lazy rebuild
+  // has refreshed window._lettersTextLen (the strip and the length must
+  // agree). Gated on the Random/Sentence toggle, not just text presence.
   if(locs.u_wordLen) gl.uniform1f(locs.u_wordLen,
-    (mode === 'letters' && window._lettersTextLen) ? window._lettersTextLen : 0);
+    (mode === 'letters' && (window._lettersMode|0) === 1 && window._lettersTextLen) ? window._lettersTextLen : 0);
   // Paper type: 'blank' forces zero texture (kills BOTH the PBR substrate and
   // the legacy procedural/scan path — both scale by u_paperTex). Other types
   // shape the PBR character via u_paperPbrMul (tooth strength, sheen).
@@ -2124,6 +2125,9 @@ R.setLettersText = function(str){
     const t = (str || '').slice(0, 128);
     if(t === (window._lettersText || '')) return;
     window._lettersText = t;
+    // Typing implies SENTENCE mode (matters on phone, which has no toggle
+    // button — the input is the mode switch there).
+    if(t) window._lettersMode = 1;
     window._glyphAtlasTex = null;   // rebuild embeds word slots + strip
     try { markDirty(); } catch(e) {}
   }, 250);

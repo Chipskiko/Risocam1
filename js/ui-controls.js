@@ -907,14 +907,36 @@ function cycleStampShape(){
 }
 // ASCII-only chips (charset + custom font) appear next to the stamp button
 // only while the ASCII stamp is active. Toggles both desktop and phone chips.
+// LETTERS sub-mode: 0 = random letters (charset chip applies), 1 = sentence
+// (text input applies; language comes from the typed text, charset hidden).
+window._lettersMode = window._lettersMode ?? 0;
+function toggleLettersMode(){
+  window._lettersMode = ((window._lettersMode|0) + 1) % 2;
+  syncAsciiChips();
+  if((window._lettersMode|0) === 1){
+    const t = el('lettersTextInput'); if(t) t.focus();
+  }
+  R.toast((window._lettersMode|0) === 1 ? 'Sentence — type your text' : 'Random letters');
+  markDirty();
+}
 function syncAsciiChips(){
-  const show = (mode === 'letters');
-  ['asciiCharsetBtn','asciiFontBtn','phAsciiCharsetBtn','phAsciiFontBtn','phLettersTextInput'].forEach(id => {
-    const e = el(id); if(e) e.style.display = show ? '' : 'none';
+  const letters = (mode === 'letters');
+  const sentence = letters && (window._lettersMode|0) === 1;
+  const show = (id, on) => { const e = el(id); if(e) e.style.display = on ? '' : 'none'; };
+  show('lettersModeBtn', letters);
+  show('asciiCharsetBtn', letters && !sentence);
+  show('phAsciiCharsetBtn', letters && !sentence);
+  show('asciiFontBtn', letters);
+  show('phAsciiFontBtn', letters);
+  show('lettersTextInput', sentence);
+  show('phLettersTextInput', sentence);
+  const mv = el('lettersModeBtnVal'); if(mv) mv.textContent = sentence ? 'Sentence' : 'Random';
+  // Panels rebuild from static defaults — restore the typed text (skip the
+  // field being edited so we never clobber mid-keystroke).
+  ['lettersTextInput','phLettersTextInput'].forEach(id => {
+    const t = el(id);
+    if(t && document.activeElement !== t && t.value !== (window._lettersText||'')) t.value = window._lettersText||'';
   });
-  // Phone panel rebuilds from static defaults — restore the typed text.
-  const phT = el('phLettersTextInput');
-  if(phT && phT.value !== (window._lettersText||'')) phT.value = window._lettersText||'';
 }
 R.syncAsciiChips = syncAsciiChips;
 // Clean halftone toggle — Spectrolite-style preview where SCREEN renders
@@ -1975,6 +1997,7 @@ R.cycleLineAmount = cycleLineAmount;
 R.cycleLineRoughness = cycleLineRoughness;
 R.cycleLineGrain = cycleLineGrain;
 R.toggleLineSpin = toggleLineSpin;
+R.toggleLettersMode = toggleLettersMode;
 R.cycleLineEdgeThickness = cycleLineEdgeThickness;
 R.cycleLineCount = cycleLineCount;
 R.cycleMisreg = cycleMisreg;
