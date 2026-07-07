@@ -23,7 +23,38 @@ function flattenAlpha(img){
   ctx.fillStyle='#fff';
   ctx.fillRect(0,0,c.width,c.height);
   ctx.drawImage(img,0,0,c.width,c.height);
-  return c;
+  return autoTrimBlank(c);
+}
+
+// Auto-trim uniformly BLANK borders (transparent padding — white after the
+// flatten above — or plain white margins baked into the file). Without this,
+// a logo PNG with transparent padding exports with lopsided-looking margins:
+// the padding renders as paper and reads as a broken crop. Conservative:
+// a row/col counts as blank only if ≥99.5% of its pixels are near-white, we
+// stop at the first content row, and we only trim when it actually matters
+// (>8px on some side) and leaves real content (≥40px both axes).
+function autoTrimBlank(c){
+  const w=c.width, h=c.height;
+  const ctx=c.getContext('2d');
+  let d;
+  try{ d=ctx.getImageData(0,0,w,h).data; }catch(e){ return c; }
+  const blankRow=(y)=>{ let n=0; const o=y*w*4;
+    for(let x=0;x<w;x++){ const i=o+x*4; if(d[i]>=248&&d[i+1]>=248&&d[i+2]>=248) n++; }
+    return n/w>=0.995; };
+  const blankCol=(x)=>{ let n=0;
+    for(let y=0;y<h;y++){ const i=(y*w+x)*4; if(d[i]>=248&&d[i+1]>=248&&d[i+2]>=248) n++; }
+    return n/h>=0.995; };
+  let top=0,bot=0,left=0,right=0;
+  while(top<h*0.45 && blankRow(top)) top++;
+  while(bot<h*0.45 && blankRow(h-1-bot)) bot++;
+  while(left<w*0.45 && blankCol(left)) left++;
+  while(right<w*0.45 && blankCol(w-1-right)) right++;
+  const nw=w-left-right, nh=h-top-bot;
+  if(Math.max(top,bot,left,right)<=8 || nw<40 || nh<40) return c;
+  const t=document.createElement('canvas'); t.width=nw; t.height=nh;
+  t.getContext('2d').drawImage(c, left, top, nw, nh, 0, 0, nw, nh);
+  try{ R.toast && R.toast('Trimmed blank border ('+left+'/'+top+'/'+right+'/'+bot+'px)'); }catch(e){}
+  return t;
 }
 function pickFile(){el('fileInput').click();}
 let gifCtx=null, gifRafId=0;

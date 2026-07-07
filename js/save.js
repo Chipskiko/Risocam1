@@ -14,6 +14,31 @@ function getSaveAspect(){
   if(Array.isArray(cropAspect)) return cropAspect[0]/cropAspect[1];
   return 4/3; // fallback
 }
+// Resize the GL canvas for an export and VERIFY the GPU actually allocated
+// it: under memory pressure browsers silently create a SMALLER drawing
+// buffer while canvas.width keeps the requested value — the draw then lands
+// scaled/shifted inside the oversized output (the intermittent "export cut
+// wrong / margins off" bug). If the buffer came up short, adopt what the GPU
+// gave us (aspect-preserved, even dims) so canvas === buffer.
+function sizeExportCanvas(w, h){
+  $gl.width = w; $gl.height = h;
+  if(gl.drawingBufferWidth === w && gl.drawingBufferHeight === h) return [w, h];
+  const s = Math.min(gl.drawingBufferWidth / w, gl.drawingBufferHeight / h);
+  $gl.width  = Math.max(2, Math.floor(w * s)) & ~1;
+  $gl.height = Math.max(2, Math.floor(h * s)) & ~1;
+  const aw = gl.drawingBufferWidth & ~1, ah = gl.drawingBufferHeight & ~1;
+  if($gl.width !== aw || $gl.height !== ah){ $gl.width = aw; $gl.height = ah; }
+  console.warn('[export] GPU allocated less than requested', w + 'x' + h, '— export reduced to', $gl.width + 'x' + $gl.height);
+  try{ R.toast('Export reduced to ' + $gl.width + '×' + $gl.height + ' (GPU memory)'); }catch(e){}
+  return [$gl.width, $gl.height];
+}
+
+// Pixels per halftone cell needed for clean export: round DOTS need ~12 to
+// stay round; LINES are 1D (8x supersampled) and are fine at 6 — halving the
+// short side quarters the pixel count, which is what pushed lines exports
+// past the GPU's silent-allocation limit in the first place.
+function exportPxPerCell(){ return (mode === 'lines') ? 6 : 12; }
+
 // Format options:
 //   'png'  → lossless PNG at full export resolution, preserves alpha (archival)
 //   'jpg'  → JPEG q=0.95 capped at 2400px wide (sharing-optimized, small file)
@@ -36,9 +61,9 @@ async function saveHiRes(format){
   let saveW,saveH;
   if(ar>=1){saveW=Math.round(baseSize*ar*saveScale/3);saveH=Math.round(baseSize*saveScale/3);}
   else{saveW=Math.round(baseSize*saveScale/3);saveH=Math.round(baseSize/ar*saveScale/3);}
-  // Halftone mode: ensure enough pixels per cell for round dots (min 8px/cell)
+  // Halftone modes: ensure enough pixels per cell (dots 12px, lines 6px)
   if(mode!=='grain'&&cached.lpi>0){
-    const minShort=Math.ceil(12*8.267*cached.lpi);
+    const minShort=Math.ceil(exportPxPerCell()*8.267*cached.lpi);
     if(Math.min(saveW,saveH)<minShort){const s=minShort/Math.min(saveW,saveH);saveW=Math.round(saveW*s);saveH=Math.round(saveH*s);}
   }
   // Grain mode: ensure minimum 4000px short side for fine grain detail
@@ -58,7 +83,7 @@ async function saveHiRes(format){
   $gl.style.width=$gl.clientWidth+'px';
   $gl.style.height=$gl.clientHeight+'px';
   $gl.style.visibility='hidden';
-  $gl.width=saveW;$gl.height=saveH;
+  [saveW,saveH]=sizeExportCanvas(saveW,saveH);
   gl.viewport(0,0,saveW,saveH);
   const effectiveScale=Math.min(saveW,saveH)/(baseSize/3);
   R.setRenderUniforms(saveW,saveH,effectiveScale,false);
@@ -823,9 +848,9 @@ async function exportSeparations(){
   let dw,dh;
   if(ar>=1){dw=Math.round(baseSize*ar*saveScale/3);dh=Math.round(baseSize*saveScale/3);}
   else{dw=Math.round(baseSize*saveScale/3);dh=Math.round(baseSize/ar*saveScale/3);}
-  // Halftone mode: ensure round dots
+  // Halftone modes: cell-quality minimum (dots 12px, lines 6px per cell)
   if(mode!=='grain'&&cached.lpi>0){
-    const minShort=Math.ceil(12*8.267*cached.lpi);
+    const minShort=Math.ceil(exportPxPerCell()*8.267*cached.lpi);
     if(Math.min(dw,dh)<minShort){const s=minShort/Math.min(dw,dh);dw=Math.round(dw*s);dh=Math.round(dh*s);}
   }
   // Cap at GPU max texture size
@@ -838,7 +863,7 @@ async function exportSeparations(){
   $gl.style.width=$gl.clientWidth+'px';
   $gl.style.height=$gl.clientHeight+'px';
   $gl.style.visibility='hidden';
-  $gl.width=dw;$gl.height=dh;
+  [dw,dh]=sizeExportCanvas(dw,dh);
   const effectiveScale=Math.min(dw,dh)/(baseSize/3);
   gl.viewport(0,0,dw,dh);
 
@@ -1215,7 +1240,7 @@ async function savePdf(){
         // Sizing parity with saveHiRes: halftone modes need enough pixels per
         // cell for round dots; grain needs a 4000px short side for detail.
         if(mode!=='grain'&&cached.lpi>0){
-          const minShort=Math.ceil(12*8.267*cached.lpi);
+          const minShort=Math.ceil(exportPxPerCell()*8.267*cached.lpi);
           if(Math.min(rasterW,rasterH)<minShort){const s=minShort/Math.min(rasterW,rasterH);rasterW=Math.round(rasterW*s);rasterH=Math.round(rasterH*s);}
         }
         if(mode==='grain'&&Math.min(rasterW,rasterH)<4000){const s=4000/Math.min(rasterW,rasterH);rasterW=Math.round(rasterW*s);rasterH=Math.round(rasterH*s);}
@@ -1228,7 +1253,7 @@ async function savePdf(){
       }
       rasterW=rasterW&~1; rasterH=rasterH&~1;
       // Render through the riso shader at the target raster size
-      $gl.width=rasterW; $gl.height=rasterH;
+      [rasterW,rasterH]=sizeExportCanvas(rasterW,rasterH);
       gl.viewport(0,0,rasterW,rasterH);
       const baseSize=2400;
       const effectiveScale=Math.min(rasterW,rasterH)/(baseSize/3);
