@@ -139,8 +139,8 @@ function loadGifFallback(f){
 // reset.
 function notifySourceChanged(){
   if(window.R && window.R.invalidateAmt) window.R.invalidateAmt();
-  if(window._mode === 'flat' && window.R && window.R.runAmtPrepass){
-    setTimeout(window.R.runAmtPrepass, 0);
+  if((window._mode === 'flat' || window._mode === 'stipple') && window.R && window.R.runMasterPrepass){
+    setTimeout(window.R.runMasterPrepass, 0);
   }
 }
 
@@ -270,9 +270,9 @@ function applyPdfSourceForMode(){
   // The visible source texture just changed (original ⇄ inpainted). In RISO mode
   // the AMT master was baked from the OLD source, so without invalidation the
   // halftone still carries the removed text (ghost glyphs). Drop it and rebake.
-  if(window._mode === 'flat' && window.R){
+  if((window._mode === 'flat' || window._mode === 'stipple') && window.R){
     if(window.R.invalidateAmt) window.R.invalidateAmt();
-    if(window.R.runAmtPrepass) setTimeout(window.R.runAmtPrepass, 0);
+    if(window.R.runMasterPrepass) setTimeout(window.R.runMasterPrepass, 0);
   }
   markDirty();
 }
@@ -669,9 +669,9 @@ function handleFile(e){
       // Same as camera path — RISO mode's static master would overlay the
       // previous image's dither over the video. Invalidate and disable.
       if(window.R && window.R.invalidateAmt) window.R.invalidateAmt();
-      if(window._mode === 'flat'){
+      if(window._mode === 'flat' || window._mode === 'stipple'){
         try { gl.uniform1f(locs.u_useAmt, 0.0); } catch(e) {}
-        try { R.toast && R.toast('RISO mode: video shows preview only, mode is static-source.', 3000); } catch(e) {}
+        try { R.toast && R.toast((window._mode==='stipple'?'STIPPLE':'RISO')+' mode: video shows preview only, mode is static-source.', 3000); } catch(e) {}
       }
       if($vid.requestVideoFrameCallback){
         R.onVideoFrame(); // start the generation-guarded rVFC loop (once)
@@ -893,9 +893,9 @@ async function toggleCam(){
     // bug). Invalidate the master and force u_useAmt=0 so the shader falls back
     // to per-fragment dither (the shader's mode-3 fallback path) for live frames.
     if(window.R && window.R.invalidateAmt) window.R.invalidateAmt();
-    if(window._mode === 'flat'){
+    if(window._mode === 'flat' || window._mode === 'stipple'){
       try { gl.uniform1f(locs.u_useAmt, 0.0); } catch(e) {}
-      try { R.toast && R.toast('RISO mode: camera shows preview only, mode is static-source.', 3000); } catch(e) {}
+      try { R.toast && R.toast((window._mode==='stipple'?'STIPPLE':'RISO')+' mode: camera shows preview only, mode is static-source.', 3000); } catch(e) {}
     }
     $gl.classList.toggle('mirrored',facingMode==='user');
     el('camBtn').textContent='STOP CAM';

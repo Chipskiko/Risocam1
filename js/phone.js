@@ -54,8 +54,8 @@ function phReset(){
 
 function phCycleMode(){
   // Same order as the desktop header: GRAIN → RISO → SCREEN → LINES → LETTERS
-  const PH_MODES=['grain','flat','screen','lines','letters'];
-  const PH_LABELS={grain:'GRAIN', flat:'RISO', screen:'SCREEN', lines:'LINES', letters:'LETTERS'};
+  const PH_MODES=['grain','flat','screen','lines','letters','stipple'];
+  const PH_LABELS={grain:'GRAIN', flat:'RISO', screen:'SCREEN', lines:'LINES', letters:'LETTERS', stipple:'STIPPLE'};
   const i=PH_MODES.indexOf(mode);
   mode=PH_MODES[(i+1) % PH_MODES.length];
   R.setMode(mode);

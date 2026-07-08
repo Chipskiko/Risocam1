@@ -605,18 +605,23 @@ function setMode(m){
   window._mode=m; // expose for cross-file checks (source.js source-change hook)
   applyScreenDensity();
   // Desktop mode buttons (may not exist in phone-only scenarios)
-  const mg=el('modeGrain'),ms=el('modeScreen'),ml=el('modeLines'),mf=el('modeFlat'),mL=el('modeLetters');
+  const mg=el('modeGrain'),ms=el('modeScreen'),ml=el('modeLines'),mf=el('modeFlat'),mL=el('modeLetters'),mSt=el('modeStipple');
   if(mg)mg.classList.toggle('active',m==='grain');
   if(ms)ms.classList.toggle('active',m==='screen');
   if(ml)ml.classList.toggle('active',m==='lines');
   if(mf)mf.classList.toggle('active',m==='flat');
   if(mL)mL.classList.toggle('active',m==='letters');
+  if(mSt)mSt.classList.toggle('active',m==='stipple');
   // RISO mode (button label says RISO, internal id still 'flat' for compat):
   // trigger the JS AMT prepass — vanilla FS + empirical Riso tone curve.
   // Static-source-only; the prepass takes ~200ms at 300dpi.
-  if(m === 'flat' && window.R && window.R.runAmtPrepass){
-    setTimeout(window.R.runAmtPrepass, 0);
-  } else if(m !== 'flat' && window.R && window.R.invalidateAmt){
+  if((m === 'flat' || m === 'stipple') && window.R && window.R.runMasterPrepass){
+    // FS masters and stipple masters live on the same units — switching
+    // between RISO and STIPPLE must invalidate before the rebuild so a stale
+    // master of the other engine can't composite while the new one bakes.
+    if(window.R.invalidateAmt) window.R.invalidateAmt();
+    setTimeout(window.R.runMasterPrepass, 0);
+  } else if(m !== 'flat' && m !== 'stipple' && window.R && window.R.invalidateAmt){
     // Leaving RISO (or entering a non-RISO mode): normalize u_useAmt → 0 so a
     // stale "master ready" flag (from flat, or grain Grain-Touch) can't leak
     // into the new mode's render path.
@@ -628,12 +633,13 @@ function setMode(m){
   //   Row 3 — shape-specific sub-settings (e.g. radial center/density/edge)
   // Show the right primary block, hide the others.
   const screenLike = m==='screen' || m==='lines' || m==='letters';
-  const grnP=el('grainPrimary'), scrP=el('screenPrimary'), lnsP=el('linesPrimary'), fltP=el('flatPrimary'), letP=el('lettersPrimary');
+  const grnP=el('grainPrimary'), scrP=el('screenPrimary'), lnsP=el('linesPrimary'), fltP=el('flatPrimary'), letP=el('lettersPrimary'), stpP=el('stipplePrimary');
   if(grnP) grnP.style.display = (m==='grain') ? 'flex' : 'none';
   if(scrP) scrP.style.display = (m==='screen') ? 'flex' : 'none';
   if(lnsP) lnsP.style.display = (m==='lines') ? 'flex' : 'none';
   if(fltP) fltP.style.display = (m==='flat') ? 'flex' : 'none';
   if(letP) letP.style.display = (m==='letters') ? 'flex' : 'none';
+  if(stpP) stpP.style.display = (m==='stipple') ? 'flex' : 'none';
   // Row 2: dither scale (grain sub-mode), or line secondary (lines).
   const lnsSec = el('linesSecondary');
   if(lnsSec) lnsSec.style.display = (m==='lines') ? 'flex' : 'none';

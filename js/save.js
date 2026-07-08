@@ -831,7 +831,7 @@ async function exportSeparations(){
   if(!window.jspdf||!window.jspdf.jsPDF){R.toast('PDF library not loaded');return;}
   // RISO mode: the plates ARE the AMT masters. Exporting while the FS prepass
   // is still baking would silently produce smooth-tone plates (no halftone).
-  if(mode==='flat' && window._amtPrepassRunning){
+  if((mode==='flat' || mode==='stipple') && window._amtPrepassRunning){
     R.toast('RISO halftone still rendering — try again in a moment');
     return;
   }
@@ -877,7 +877,7 @@ async function exportSeparations(){
   // shader scales by u_simNoise; FLAT and SCREEN+Clean set it to 0.
   // Grain Touch no longer bypasses physical sim noise — paper texture +
   // ink jitter applies on top of the AMT-derived master.
-  const _cleanRender = (mode === 'flat') || ((mode === 'screen' || mode === 'letters') && window._screenClean);
+  const _cleanRender = (mode === 'flat' || mode === 'stipple') || ((mode === 'screen' || mode === 'letters') && window._screenClean);
   gl.uniform1f(locs.u_simNoise, _cleanRender ? 0 : 1);
   gl.uniform1f(locs.u_dotGain,   cached.dotGain);
   gl.uniform1f(locs.u_inkNoise,  cached.inkNoise);
@@ -915,7 +915,7 @@ async function exportSeparations(){
   gl.uniform1f(locs.u_opacityCap, cached.opacityCap * 0.01);
   gl.uniform3fv(locs.u_paperColor,cached.paperColor);
   gl.uniform4f(locs.u_crop,cropRect[0],cropRect[1],cropRect[2],cropRect[3]);
-  gl.uniform1i(locs.u_mode, ({grain:0, screen:1, lines:2, flat:3, letters:1})[mode] ?? 0);
+  gl.uniform1i(locs.u_mode, ({grain:0, screen:1, lines:2, flat:3, letters:1, stipple:3})[mode] ?? 0);
   // SCREEN engine + per-mode unit-8 bind (match live render path, incl. the
   // ASCII-stamp glyph atlas which time-shares the u_ht5Matrix sampler).
   if(locs.u_screenType) gl.uniform1f(locs.u_screenType, (window._screenType ?? 0) ? 1.0 : 0.0);
@@ -1043,7 +1043,7 @@ async function exportSeparations(){
     // keys master planes by CHANNEL id on units 9+ch — so without this rebind
     // every page exported channel 0's plate. Bind THIS layer's plane to unit 9
     // (u_amtMaster0) so the hardcoded slot-0 sample reads the right master.
-    if(mode==='flat' && window._amtMasterTex && window._amtMasterTex[L.ch]){
+    if((mode==='flat' || mode==='stipple') && window._amtMasterTex && window._amtMasterTex[L.ch]){
       gl.activeTexture(gl.TEXTURE9);
       gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[L.ch]);
       gl.activeTexture(gl.TEXTURE0);
@@ -1077,7 +1077,7 @@ async function exportSeparations(){
   }
   // Undo the per-plate unit-9 rebind: the live render expects u_amtMaster0
   // to hold channel 0's plane (prepass keying) — restore it.
-  if(mode==='flat' && window._amtMasterTex && window._amtMasterTex[0]){
+  if((mode==='flat' || mode==='stipple') && window._amtMasterTex && window._amtMasterTex[0]){
     gl.activeTexture(gl.TEXTURE9);
     gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[0]);
     gl.activeTexture(gl.TEXTURE0);

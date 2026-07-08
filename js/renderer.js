@@ -784,7 +784,7 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   // 0=grain, 1=screen, 2=lines, 3=flat (production-preview, no simulation).
   // 'letters' is a UI-level mode riding the SCREEN engine (u_mode=1) with the
   // glyph stamp forced (u_stampShape=5) — the shader has no letters concept.
-  gl.uniform1i(locs.u_mode, ({grain:0, screen:1, lines:2, flat:3, letters:1})[mode] ?? 0);
+  gl.uniform1i(locs.u_mode, ({grain:0, screen:1, lines:2, flat:3, letters:1, stipple:3})[mode] ?? 0);
   gl.uniform1i(locs.u_lineShape, window._lineShape||0);
   if(locs.u_lineWave) gl.uniform1i(locs.u_lineWave, window._lineWave|0);
   gl.uniform1f(locs.u_lineAmount, window._lineAmount ?? 1.0);
@@ -851,7 +851,7 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   // noise (paper texture, ink-density variation, drum jitter) on top of
   // the matrix. Keep sim noise ON so the output looks like printed paper,
   // not the digital master file.
-  const _cleanRender = (mode === 'flat') || ((mode === 'screen' || mode === 'letters') && window._screenClean);
+  const _cleanRender = (mode === 'flat' || mode === 'stipple') || ((mode === 'screen' || mode === 'letters') && window._screenClean);
   gl.uniform1f(locs.u_simNoise, _cleanRender ? 0 : 1);
   gl.uniform1f(locs.u_dotGain,   cached.dotGain);
   gl.uniform1f(locs.u_inkNoise,  cached.inkNoise);
@@ -2085,6 +2085,143 @@ async function _runAmtPrepassImpl(){
   try { R.toast && R.toast('RISO ready', 1200); } catch(e){}
 }
 R.runAmtPrepass = runAmtPrepass;
+
+// ══ STIPPLE mode prepass ═══════════════════════════════════════════════════
+// Same skeleton as the RISO/AMT prepass — per-channel coverage projection →
+// per-plate MASTERS on units 9+ch, rendered by the u_mode==3 shader path with
+// inks/misreg/paper — but the master content is Pointillist-style variable-
+// density blue-noise dots (StippleCore) instead of Floyd-Steinberg dither.
+// Reuses the SAME staleness machinery (window._amtSeq, _amtPrepassRunning) so
+// every existing guard (seps wait, re-entrancy, requeue-on-change) inherits.
+const STIPPLE_SIZES = [
+  {l:'Fine', min:0.8, max:5}, {l:'Med', min:1.2, max:9},
+  {l:'Big',  min:2.0, max:14},{l:'Huge', min:3.5, max:22},
+];
+window._stippleSize = window._stippleSize ?? 1;
+async function runStipplePrepass(){
+  if(!gl || !window.StippleCore || !window._amtMasterTex){
+    console.warn('[Stipple] prerequisites missing');
+    return;
+  }
+  if (window._amtPrepassRunning) return;      // shared re-entrancy guard
+  window._amtPrepassRunning = true;
+  const startSeq = window._amtSeq || 0;
+  try {
+    await _runStipplePrepassImpl();
+  } catch(e) {
+    console.error('[Stipple] prepass failed:', e);
+  } finally {
+    window._amtPrepassRunning = false;
+    try { markDirty(); } catch(e) {}
+    try { scheduleRender(); } catch(e) {}
+    if ((window._amtSeq || 0) !== startSeq && window._mode === 'stipple') {
+      setTimeout(runStipplePrepass, 0);
+    }
+  }
+}
+async function _runStipplePrepassImpl(){
+  // Static-source-only, like RISO: live camera/video falls back to the
+  // per-fragment shader path (u_useAmt = 0).
+  const camActive = (typeof camOn !== 'undefined' && camOn);
+  const videoActive = (typeof videoOn !== 'undefined' && videoOn);
+  if (camActive || videoActive) {
+    try { gl.uniform1f(locs.u_useAmt, 0.0); } catch(e) {}
+    return;
+  }
+  try { R.toast && R.toast('STIPPLE: placing dots…', 99999); } catch(e){}
+  let srcCanvas = (typeof srcImg !== 'undefined' && srcImg && srcImg.width) ? srcImg : window._lastSourceCanvas;
+  if(!srcCanvas || !srcCanvas.width){ try { gl.uniform1f(locs.u_useAmt, 0.0); } catch(e) {} return; }
+
+  // Master resolution: long edge capped at 1600 — dot radii are tuned to it.
+  const capM = 1600;
+  const sM = Math.min(1, capM / Math.max(srcCanvas.width, srcCanvas.height));
+  const W = Math.max(2, Math.round(srcCanvas.width * sM));
+  const H = Math.max(2, Math.round(srcCanvas.height * sM));
+  const rc = document.createElement('canvas'); rc.width = W; rc.height = H;
+  const rctx = rc.getContext('2d', { willReadFrequently: true });
+  rctx.drawImage(srcCanvas, 0, 0, W, H);
+  const src = rctx.getImageData(0, 0, W, H).data;
+
+  const layers = activeLayers();
+  const activeChans = (typeof channels !== 'undefined') ? channels.map((c,i)=>c?i:-1).filter(i=>i>=0) : [0];
+  if(!activeChans.length){ gl.uniform1f(locs.u_useAmt, 0.0); return; }
+  const paperRGB = cached.paperColor || [1,1,1];
+  const PR = paperRGB[0]*255, PG = paperRGB[1]*255, PB = paperRGB[2]*255;
+  const inkRGB = cached.inkRGB || [[0,0,0],[0,0,0],[0,0,0],[0,0,0]];
+
+  const size = STIPPLE_SIZES[(window._stippleSize|0) % STIPPLE_SIZES.length];
+  const scaleR = W / capM;                    // radii track master resolution
+  const opts = {
+    rMin: Math.max(0.5, size.min * Math.max(scaleR, 0.4)),
+    rMax: size.max * Math.max(scaleR, 0.4),
+    whiteZone: 250, quality: 1,
+    seed: ((window._stampSeed || 17) * 2654435761) >>> 0,
+  };
+
+  const draw = document.createElement('canvas'); draw.width = W; draw.height = H;
+  const dctx = draw.getContext('2d', { willReadFrequently: true });
+
+  for(let chIdx = 0; chIdx < 4; chIdx++){
+    if(!activeChans.includes(chIdx)){
+      // inactive → 1×1 dummy so a stale plane can't composite (same as AMT)
+      gl.activeTexture(gl.TEXTURE9 + chIdx);
+      gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[chIdx]);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0,0,0,255]));
+      continue;
+    }
+    // Coverage projection onto the paper→ink axis (verbatim AMT semantics):
+    // inputGray 255 = paper (no ink) … 0 = full ink — which IS the stipple
+    // sampler's "brightness" convention (bright = sparse) with no remap.
+    const ink = inkRGB[chIdx];
+    const IR = ink[0]*255, IG = ink[1]*255, IB = ink[2]*255;
+    const dr = IR - PR, dg = IG - PG, db = IB - PB;
+    const dLen2 = dr*dr + dg*dg + db*db;
+    const luma = new Uint8Array(W * H);
+    if(dLen2 < 0.5){ luma.fill(255); }
+    else for(let i = 0, j = 0; i < src.length; i += 4, j++){
+      const vr = src[i] - PR, vg = src[i+1] - PG, vb = src[i+2] - PB;
+      let t = (vr*dr + vg*dg + vb*db) / dLen2;
+      if(t < 0) t = 0; else if(t > 1) t = 1;
+      luma[j] = (255 * (1 - t)) | 0;
+    }
+    const res = await _stippleFromLuma(luma, W, H, W, H,
+      Object.assign({}, opts, { seed: (opts.seed + chIdx * 977) >>> 0 }));
+    // Rasterize: white dots (= ink) on black, AA edges read as ink spread.
+    dctx.fillStyle = '#000'; dctx.fillRect(0, 0, W, H);
+    dctx.fillStyle = '#fff';
+    const d = res.data;
+    for(let i = 0; i < res.count; i++){
+      const b = d[i*4+3];
+      if(b >= res.whiteZone) continue;          // ghosts: spacing only
+      dctx.beginPath();
+      dctx.arc(d[i*4], d[i*4+1], d[i*4+2] * 0.55, 0, 6.2832);
+      dctx.fill();
+    }
+    gl.activeTexture(gl.TEXTURE9 + chIdx);
+    gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[chIdx]);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, draw);
+  }
+  gl.activeTexture(gl.TEXTURE0);
+  if(locs.u_amtTexel) gl.uniform2f(locs.u_amtTexel, 1.0 / W, 1.0 / H);
+  gl.uniform1f(locs.u_useAmt, 1.0);
+  try { R.toast && R.toast('STIPPLE ready', 1200); } catch(e){}
+}
+R.runStipplePrepass = runStipplePrepass;
+// Mode-aware master prepass dispatcher — trigger sites don't need to know
+// which engine builds the plates.
+R.runMasterPrepass = function(){
+  if(window._mode === 'stipple') return runStipplePrepass();
+  return runAmtPrepass();
+};
+R.cycleStippleSize = function(){
+  window._stippleSize = ((window._stippleSize|0) + 1) % STIPPLE_SIZES.length;
+  const lbl = STIPPLE_SIZES[window._stippleSize].l;
+  const v = document.getElementById('stippleSizeBtnVal'); if(v) v.textContent = lbl;
+  R.toast && R.toast('Dot size: ' + lbl);
+  if(window._mode === 'stipple') setTimeout(runStipplePrepass, 0);
+};
 // Drops the cached AMT halftone masters. Critical: also flips u_useAmt → 0
 // so the shader stops sampling the now-stale per-channel master textures
 // while the next prepass is in flight (and at 600 dpi the in-flight window
@@ -2190,7 +2327,7 @@ R.setAmtWebGPU = function(on){
   window._amtWebGPU = !!on;
   console.log('[RisoAmt] WebGPU wavefront ED', window._amtWebGPU ? 'ON (experimental)' : 'OFF');
   R.invalidateAmt();
-  if(window._mode === 'flat' && R.runAmtPrepass) setTimeout(R.runAmtPrepass, 0);
+  if((window._mode === 'flat' || window._mode === 'stipple') && R.runMasterPrepass) setTimeout(R.runMasterPrepass, 0);
 };
 
 // Toggle LCG threshold modulation in driver-faithful FS:
@@ -2204,8 +2341,8 @@ R.setLcgModulation = function(on){
   window.RisoAmt.DEFAULTS.driverFaithful = !!on;
   console.log('[RisoAmt] LCG modulation:', on ? 'ON (driver-faithful)' : 'OFF (plain FS)');
   R.invalidateAmt();
-  if(window._mode === 'flat' && window.R && window.R.runAmtPrepass){
-    setTimeout(window.R.runAmtPrepass, 0);
+  if((window._mode === 'flat' || window._mode === 'stipple') && window.R && window.R.runMasterPrepass){
+    setTimeout(window.R.runMasterPrepass, 0);
   }
 };
 
@@ -2245,8 +2382,8 @@ R.setRisoParams = function(opts){
   }
   if(fsAffected){
     R.invalidateAmt();
-    if(window._mode === 'flat' && window.R && window.R.runAmtPrepass){
-      setTimeout(window.R.runAmtPrepass, 0);
+    if((window._mode === 'flat' || window._mode === 'stipple') && window.R && window.R.runMasterPrepass){
+      setTimeout(window.R.runMasterPrepass, 0);
     }
   }
   return {
@@ -2414,8 +2551,8 @@ R.setGpuInkSpread = function(on){
   window._gpuInkSpread = !!on;
   console.log('[RisoAmt] GPU ink-spread:', on ? 'ON (shader, no CPU blur)' : 'OFF (CPU blur)');
   R.invalidateAmt();
-  if(window._mode === 'flat' && window.R && window.R.runAmtPrepass){
-    setTimeout(window.R.runAmtPrepass, 0);
+  if((window._mode === 'flat' || window._mode === 'stipple') && window.R && window.R.runMasterPrepass){
+    setTimeout(window.R.runMasterPrepass, 0);
   }
 };
 R.amtInfo = function(){
@@ -2507,6 +2644,21 @@ function _initStippleWorker(){
   })();
   return _stippleInit;
 }
+// Lower-level entry: caller already has a brightness map (the stipple-mode
+// prepass feeds per-plate coverage projections through here). Worker when
+// available, sync StippleCore otherwise. NOTE: transfers `luma`'s buffer.
+async function _stippleFromLuma(luma, aw, ah, outW, outH, opts){
+  await _initStippleWorker();
+  if(_stippleWorker){
+    return await new Promise((resolve, reject) => {
+      const id = _stippleNextId++;
+      _stipplePending.set(id, { resolve, reject });
+      _stippleWorker.postMessage({ id, luma: luma.buffer, aw, ah, outW, outH, opts }, [luma.buffer]);
+    });
+  }
+  const r = (self.StippleCore || window.StippleCore).generate(luma, aw, ah, outW, outH, opts);
+  return { data: r.data, count: r.count, whiteZone: r.whiteZone };
+}
 R.stipple = async function(source, opts){
   opts = opts || {};
   const t0 = performance.now();
@@ -2528,18 +2680,7 @@ R.stipple = async function(source, opts){
     const j = i * 4;
     luma[i] = ((rgba[j] + rgba[j + 1] + rgba[j + 2]) / 3) | 0;  // Pointillist: (R+G+B)/3
   }
-  await _initStippleWorker();
-  let res;
-  if(_stippleWorker){
-    res = await new Promise((resolve, reject) => {
-      const id = _stippleNextId++;
-      _stipplePending.set(id, { resolve, reject });
-      _stippleWorker.postMessage({ id, luma: luma.buffer, aw, ah, outW: srcW, outH: srcH, opts }, [luma.buffer]);
-    });
-  } else {
-    const r = (self.StippleCore || window.StippleCore).generate(luma, aw, ah, srcW, srcH, opts);
-    res = { data: r.data, count: r.count, whiteZone: r.whiteZone };
-  }
+  const res = await _stippleFromLuma(luma, aw, ah, srcW, srcH, opts);
   res.width = srcW; res.height = srcH;
   res.ms = Math.round(performance.now() - t0);
   return res;

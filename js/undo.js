@@ -44,9 +44,9 @@ function restoreState(json){
       window.R.setMode(s.mode);
     } else {
       mode=s.mode;
-      if(mode==='flat' && window.R && window.R.invalidateAmt){
+      if((mode==='flat' || mode==='stipple') && window.R && window.R.invalidateAmt){
         window.R.invalidateAmt();
-        if(window.R.runAmtPrepass) setTimeout(window.R.runAmtPrepass, 0);
+        if(window.R.runMasterPrepass) setTimeout(window.R.runMasterPrepass, 0);
       }
     }
     cached.grainSize=s.grainSize; cached.dotGain=s.dotGain; cached.inkNoise=s.inkNoise;
@@ -142,6 +142,8 @@ function reseedAll(){
   newMisreg();
   frameSeed = Math.random();
   window._stampSeed = Math.floor(Math.random() * 1021); // ASCII letters re-roll on reseed
+  // Stipple layouts are seeded from _stampSeed — the dice re-rolls the dots
+  if(window._mode === 'stipple' && window.R && window.R.runMasterPrepass) setTimeout(window.R.runMasterPrepass, 0);
   R.toast && R.toast('Reseeded');
   markDirty();
 }
