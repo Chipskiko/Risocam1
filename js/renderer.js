@@ -2210,18 +2210,37 @@ async function _runStipplePrepassImpl(){
   const plane = new Uint8Array(W * H * 4);
   const _tGen = [0, 0]; // [generate ms, raster+upload ms] telemetry
 
+  // Inactive slots → 1×1 dummy so a stale plane can't composite (same as
+  // AMT). NB: typed-array sources need the 9-arg texImage2D overload (the
+  // 6-arg form only accepts canvas/image sources) — the 6-arg call threw
+  // and killed the whole bake for any state with an empty ink slot.
   for(let chIdx = 0; chIdx < 4; chIdx++){
-    if(!activeChans.includes(chIdx)){
-      // inactive → 1×1 dummy so a stale plane can't composite (same as AMT).
-      // NB: typed-array sources need the 9-arg overload (the 6-arg form only
-      // accepts canvas/image sources) — the 6-arg call threw and killed the
-      // whole bake for any state with an empty ink slot.
-      gl.activeTexture(gl.TEXTURE9 + chIdx);
-      gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[chIdx]);
-      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0,0,0,255]));
-      continue;
-    }
+    if(activeChans.includes(chIdx)) continue;
+    gl.activeTexture(gl.TEXTURE9 + chIdx);
+    gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[chIdx]);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0,0,0,255]));
+  }
+
+  // SAME-INK SLOTS SHARE ONE DOT LAYOUT. Two slots running the same ink are
+  // one drum passed twice (the RISO-mode convention — syncSameColorPlates
+  // already locks their misreg/skew). Independent per-slot seeds gave each
+  // slot its own layout, so same-ink dots crossed at random and every
+  // intersection composited as double ink — the 'transparency overlap'
+  // artifact. Grouping by resolved ink RGB makes their masters identical:
+  // dots coincide exactly (union look), and each distinct color generates
+  // and rasterizes only once.
+  const inkGroups = [];
+  { const byKey = new Map();
+    for(const chIdx of activeChans){
+      const ink = inkRGB[chIdx];
+      const key = Math.round(ink[0]*255) + ',' + Math.round(ink[1]*255) + ',' + Math.round(ink[2]*255);
+      if(!byKey.has(key)){ const g = []; byKey.set(key, g); inkGroups.push(g); }
+      byKey.get(key).push(chIdx);
+    } }
+
+  for(const slots of inkGroups){
+    const chIdx = slots[0];
     // Coverage projection onto the paper→ink axis (verbatim AMT semantics):
     // inputGray 255 = paper (no ink) … 0 = full ink — which IS the stipple
     // sampler's "brightness" convention (bright = sparse) with no remap.
@@ -2250,10 +2269,12 @@ async function _runStipplePrepassImpl(){
       const b = d[i*4+3];
       if(b >= res.whiteZone) continue;          // ghosts: spacing only
       const cx = d[i*4], cy = d[i*4+1];
-      // 0.80 of the exclusion radius: dense inky tone (~1.7× the ink area of
-      // the earlier 0.62) while same-plate dots stay separated (gap ≥ 20% of
-      // the pair spacing by construction).
-      const r = Math.max(0.65, d[i*4+2] * 0.80);
+      // FULL exclusion radius (fill 1.0) — the reference app draws at the
+      // collision radius itself, so the densest packing reaches ~55% ink
+      // area with tangent (never overlapping) dots. Needed since same-ink
+      // slots became coincident: the old 0.80 was tuned when duplicate
+      // slots accidentally double-printed their coverage.
+      const r = Math.max(0.65, d[i*4+2]);
       const x0 = Math.max(0, (cx - r - 1) | 0), x1 = Math.min(W - 1, Math.ceil(cx + r + 1));
       const y0 = Math.max(0, (cy - r - 1) | 0), y1 = Math.min(H - 1, Math.ceil(cy + r + 1));
       for(let y = y0; y <= y1; y++){
@@ -2269,19 +2290,23 @@ async function _runStipplePrepassImpl(){
         }
       }
     }
-    gl.activeTexture(gl.TEXTURE9 + chIdx);
-    gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[chIdx]);
+    // Upload the SAME plane to every slot running this ink — identical
+    // masters + locked misreg = coincident dots (no same-ink intersections).
     // LINEAR: hardware bilinear turns the AA'd discs into a smooth coverage
     // field; the shader thresholds it (u_amtCrisp) — classic alpha-test →
     // hard, round dot edges at any zoom, exports included. AMT prepasses
     // reassert NEAREST (FS planes must stay binary texels).
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, plane);
+    for(const slot of slots){
+      gl.activeTexture(gl.TEXTURE9 + slot);
+      gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[slot]);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, plane);
+    }
     _tGen[1] += performance.now() - _t1;
   }
-  console.log(`[stipple] masters ${W}x${H}: generate ${_tGen[0].toFixed(0)} ms, raster+upload ${_tGen[1].toFixed(0)} ms, plates [${activeChans.join(',')}]`);
+  console.log(`[stipple] masters ${W}x${H}: generate ${_tGen[0].toFixed(0)} ms, raster+upload ${_tGen[1].toFixed(0)} ms, plates [${activeChans.join(',')}], ${inkGroups.length} ink(s)`);
   gl.activeTexture(gl.TEXTURE0);
   if(locs.u_amtTexel) gl.uniform2f(locs.u_amtTexel, 1.0 / W, 1.0 / H);
   // SOFT ROUND dots ("middle look, never pixelated"): masters are LINEAR
