@@ -1928,6 +1928,7 @@ async function _runAmtPrepassImpl(){
           const inkSpreadG = window._inkSpread != null ? window._inkSpread : 0.5;
           if (locs.u_amtTexel) gl.uniform2f(locs.u_amtTexel, 1.0 / W, 1.0 / H);
           if (locs.u_amtInkSpread) gl.uniform1f(locs.u_amtInkSpread, (window._gpuInkSpread ?? true) ? inkSpreadG : 0.0);
+          if (locs.u_amtSuperSample) gl.uniform1f(locs.u_amtSuperSample, 1.5); // FS masters need the grain-touch footprint (stipple lowers it)
           const D = window.RisoAmt.DEFAULTS;
           const res = await window.RisoAmtGPU.runChannelsFromRGBA(src, W, H, chans, {
             coverageScale: _runOpts.coverageScale,
@@ -2013,6 +2014,7 @@ async function _runAmtPrepassImpl(){
   // its supersampling footprint reproduces the soft dot edge on the GPU.
   if(locs.u_amtTexel) gl.uniform2f(locs.u_amtTexel, 1.0 / W, 1.0 / H);
   if(locs.u_amtInkSpread) gl.uniform1f(locs.u_amtInkSpread, gpuSpread ? inkSpread : 0.0);
+  if(locs.u_amtSuperSample) gl.uniform1f(locs.u_amtSuperSample, 1.5); // FS masters need the grain-touch footprint (stipple lowers it)
 
   // (#3) BAND-PARALLEL FS: each channel splits into K horizontal bands that
   // dither concurrently across the pool, so all cores work even on a 1-2 color
@@ -2195,7 +2197,7 @@ async function _runStipplePrepassImpl(){
       const b = d[i*4+3];
       if(b >= res.whiteZone) continue;          // ghosts: spacing only
       dctx.beginPath();
-      dctx.arc(d[i*4], d[i*4+1], d[i*4+2] * 0.55, 0, 6.2832);
+      dctx.arc(d[i*4], d[i*4+1], Math.max(0.65, d[i*4+2] * 0.62), 0, 6.2832);
       dctx.fill();
     }
     gl.activeTexture(gl.TEXTURE9 + chIdx);
@@ -2205,6 +2207,13 @@ async function _runStipplePrepassImpl(){
   }
   gl.activeTexture(gl.TEXTURE0);
   if(locs.u_amtTexel) gl.uniform2f(locs.u_amtTexel, 1.0 / W, 1.0 / H);
+  // CRISP dots: the mode-3 sampler's stochastic supersampling exists to melt
+  // BINARY FS masters into grain-touch — on already-antialiased stipple dots
+  // it is just a box blur that also washes tone (averaging a dot against its
+  // black surround drops coverage below 1 → paler ink). Sample near-point;
+  // the AMT prepass reasserts its own footprint when it runs.
+  if(locs.u_amtSuperSample) gl.uniform1f(locs.u_amtSuperSample, 0.5);
+  if(locs.u_amtInkSpread) gl.uniform1f(locs.u_amtInkSpread, 0.0);
   gl.uniform1f(locs.u_useAmt, 1.0);
   try { R.toast && R.toast('STIPPLE ready', 1200); } catch(e){}
 }
