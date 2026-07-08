@@ -654,15 +654,14 @@ function setMode(m){
   // convention exists. In LINES the per-plate angle is a freeform line
   // rotation; in GRAIN angles do nothing at all.
   const lockBtn=el('lockAnglesBtn');
-  if(lockBtn) lockBtn.style.display = (m==='screen') ? '' : 'none';
+  // DEFAULT rosette angles apply wherever per-plate angles shape the pattern:
+  // SCREEN dot orientation and LINES rotation (the button's own tooltip
+  // already said both — the gate previously showed it for screen only).
+  if(lockBtn) lockBtn.style.display = (m==='screen'||m==='lines') ? '' : 'none';
   // Phone settings wrappers — 'lines' shares LPI controls with 'screen'
   const phScr=el('phScreenSettings'),phGrn=el('phGrainSettings');
   if(phScr)phScr.style.display=screenLike?'block':'none';
   if(phGrn)phGrn.style.display=m==='grain'?'block':'none';
-  // Phone overlay mode buttons
-  document.querySelectorAll('.ph-overlay .mode-btn').forEach(b=>{
-    b.classList.toggle('active',b.textContent.trim().toLowerCase()===m);
-  });
   // Rebuild channels to show/hide angle buttons
   buildChannelUI();
   if(el('phChannelList')&&el('phChannelList').children.length) buildChannelUI('phChannelList');
@@ -783,9 +782,24 @@ function cycleLineGrain(){
   i = (i + 1) % LINE_GRAIN_STEPS.length;
   window._lineGrain = LINE_GRAIN_STEPS[i].v;
   const v = el('lineGrainBtnVal'); if(v) v.textContent = LINE_GRAIN_STEPS[i].l;
+  syncLineGrainDbg();
   R.toast('Ink grain: ' + LINE_GRAIN_STEPS[i].l);
   markDirty();
 }
+// Two controls drive _lineGrain (panel button + DEBUG slider) — keep both
+// displays honest whichever one moved.
+function syncLineGrainDbg(){
+  const s = el('lineGrainDbg'), sv = el('lineGrainDbgVal');
+  const pct = Math.round((window._lineGrain ?? 0.6) * 100);
+  if(s) s.value = pct;
+  if(sv) sv.textContent = pct + '%';
+}
+R.syncLineGrainLabel = function(){
+  const g = window._lineGrain ?? 0.6;
+  let best = LINE_GRAIN_STEPS[0];
+  LINE_GRAIN_STEPS.forEach(st => { if(Math.abs(st.v - g) < Math.abs(best.v - g)) best = st; });
+  const v = el('lineGrainBtnVal'); if(v) v.textContent = (Math.abs(best.v - g) < 0.05) ? best.l : Math.round(g*100) + '%';
+};
 
 // Center position for CONCENTRIC + RADIAL line shapes. Cycles through
 // 0/25/50/75/100% along each axis. Visibility of these buttons is

@@ -50,7 +50,7 @@ function restoreState(json){
       }
     }
     cached.grainSize=s.grainSize; cached.dotGain=s.dotGain; cached.inkNoise=s.inkNoise;
-    cached.paperTex=s.paperTex; cached.lpi=s.lpi||65; cached.grainStatic=s.grainStatic; if(s.ghosting!==undefined)cached.ghosting=s.ghosting; cached.sepType=s.sepType||0;
+    cached.paperTex=s.paperTex; cached.lpi=s.lpi||43; cached.grainStatic=s.grainStatic; if(s.ghosting!==undefined)cached.ghosting=s.ghosting; cached.sepType=s.sepType||0;
     // Letters/stamp state (added with the LETTERS mode branch-out)
     if(s.stamp!==undefined) window._stampShape=s.stamp|0;
     if(s.lettersText!==undefined && s.lettersText!==(window._lettersText||'')){

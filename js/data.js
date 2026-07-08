@@ -162,13 +162,12 @@ const CH_NAMES=['C','M','Y','K'];
 const STEP_PRESETS={
   grainSize:[{v:1.5,l:'600dpi'},{v:3,l:'300dpi'},{v:9,l:'100dpi'}],
   // v IS true lines-per-inch (u_screenCell divides by 8.267·lpi — the A4 short
-  // edge in inches). Labels are by DOT SIZE (what you see), not the number:
-  // Poster=biggest pop-art dots … Micro=finest. v=5 is double the size of
-  // v=10. The matrix engine + measured tone curve snap to the nearest REAL
-  // driver frequency (43/71/106 = Med/Fine/Micro); the dot PITCH follows v
-  // freely, exactly as the real driver synthesizes arbitrary frequencies
-  // (its "Screen 40" preset prints 38.6 lpi).
-  lpi:[{v:5,l:'Poster'},{v:10,l:'Huge'},{v:25,l:'Big'},{v:43,l:'Med'},{v:71,l:'Fine'},{v:106,l:'Micro'}],
+  // edge in inches). Labels are by DENSITY: Low=biggest pop-art dots … Fine=
+  // finest. (Was 6 steps ending Fine/Micro — 71/106 were near-identical in
+  // LINES mode, so the ladder is now 4 steps topping out at the real driver's
+  // 43 lpi; the matrix engine + measured tone curve snap to 43 there, and the
+  // debug slider still reaches any free value.)
+  lpi:[{v:5,l:'Low'},{v:10,l:'Med'},{v:25,l:'High'},{v:43,l:'Fine'}],
   misreg:[{v:0,l:'OFF'},{v:2,l:'Low'},{v:4,l:'Med'},{v:6,l:'Hi'}],
   margin:[{v:0,l:'0'},{v:2,l:'2'},{v:4,l:'4'},{v:6,l:'6'},{v:8,l:'8'},{v:12,l:'12'}],
   ghosting:[{v:0,l:'OFF'},{v:40,l:'Med'},{v:80,l:'High'}],
