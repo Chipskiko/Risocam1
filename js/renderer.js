@@ -2247,7 +2247,10 @@ async function _runStipplePrepassImpl(){
       const b = d[i*4+3];
       if(b >= res.whiteZone) continue;          // ghosts: spacing only
       const cx = d[i*4], cy = d[i*4+1];
-      const r = Math.max(0.65, d[i*4+2] * 0.62);
+      // 0.80 of the exclusion radius: dense inky tone (~1.7× the ink area of
+      // the earlier 0.62) while same-plate dots stay separated (gap ≥ 20% of
+      // the pair spacing by construction).
+      const r = Math.max(0.65, d[i*4+2] * 0.80);
       const x0 = Math.max(0, (cx - r - 1) | 0), x1 = Math.min(W - 1, Math.ceil(cx + r + 1));
       const y0 = Math.max(0, (cy - r - 1) | 0), y1 = Math.min(H - 1, Math.ceil(cy + r + 1));
       for(let y = y0; y <= y1; y++){
