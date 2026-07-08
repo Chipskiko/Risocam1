@@ -2469,6 +2469,82 @@ R.uploadTextMask = uploadTextMask;
 // live unit-8 bind — renderer nulls _glyphAtlasTex on font/charset changes).
 R._buildGlyphAtlas = _buildGlyphAtlas;
 
+// ── Stipple sampler (Pointillist-style variable-density blue-noise points) ──
+// R.stipple(source, opts) → Promise<{data: Float32Array [x,y,r,brightness]×N,
+// count, width, height, whiteZone, ms}>. Points ARE placed for pixels ≥
+// whiteZone (they keep spacing honest) — skip them when rendering. Runs in a
+// blob-loaded worker (CSP-safe); falls back to sync StippleCore on the main
+// thread if the worker can't come up.
+let _stippleWorker = null, _stippleInit = null, _stippleNextId = 0;
+const _stipplePending = new Map();
+function _initStippleWorker(){
+  if(_stippleInit) return _stippleInit;
+  if(typeof Worker === 'undefined'){ _stippleInit = Promise.resolve(); return _stippleInit; }
+  _stippleInit = (async () => {
+    let blobUrl;
+    try { blobUrl = await _buildWorkerBlobUrl('js/stipple-worker.js?v=1'); }
+    catch(e){ console.warn('[stipple] worker blob build failed, sync fallback:', e); return; }
+    let w;
+    try { w = new Worker(blobUrl); }
+    catch(e){ console.warn('[stipple] worker create failed, sync fallback:', e); return; }
+    w.onmessage = function(e){
+      const { id, data, count, whiteZone, error } = e.data;
+      const p = _stipplePending.get(id);
+      if(!p) return;
+      _stipplePending.delete(id);
+      if(error) p.reject(new Error(error));
+      else p.resolve({ data: new Float32Array(data), count, whiteZone });
+    };
+    w.onerror = function(e){
+      console.warn('[stipple worker] error:', e.message);
+      for(const [id, p] of _stipplePending){
+        try { p.reject(new Error('stipple worker error')); } catch(_){}
+        _stipplePending.delete(id);
+      }
+      _stippleWorker = null; // next call falls back to sync
+    };
+    _stippleWorker = w;
+  })();
+  return _stippleInit;
+}
+R.stipple = async function(source, opts){
+  opts = opts || {};
+  const t0 = performance.now();
+  // Geometry dims = the source's native size (caller renders in this space)
+  const srcW = source.videoWidth || source.naturalWidth || source.width;
+  const srcH = source.videoHeight || source.naturalHeight || source.height;
+  if(!srcW || !srcH) throw new Error('stipple: source has no dimensions');
+  // Brightness analysis map — downscaled (luma varies smoothly; banding at
+  // analysis res is visually identical and 4-9× cheaper to scan)
+  const maxA = opts.analysisMax || 1024;
+  const s = Math.min(1, maxA / Math.max(srcW, srcH));
+  const aw = Math.max(1, Math.round(srcW * s)), ah = Math.max(1, Math.round(srcH * s));
+  const c = document.createElement('canvas'); c.width = aw; c.height = ah;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(source, 0, 0, aw, ah);
+  const rgba = ctx.getImageData(0, 0, aw, ah).data;
+  const luma = new Uint8Array(aw * ah);
+  for(let i = 0; i < luma.length; i++){
+    const j = i * 4;
+    luma[i] = ((rgba[j] + rgba[j + 1] + rgba[j + 2]) / 3) | 0;  // Pointillist: (R+G+B)/3
+  }
+  await _initStippleWorker();
+  let res;
+  if(_stippleWorker){
+    res = await new Promise((resolve, reject) => {
+      const id = _stippleNextId++;
+      _stipplePending.set(id, { resolve, reject });
+      _stippleWorker.postMessage({ id, luma: luma.buffer, aw, ah, outW: srcW, outH: srcH, opts }, [luma.buffer]);
+    });
+  } else {
+    const r = (self.StippleCore || window.StippleCore).generate(luma, aw, ah, srcW, srcH, opts);
+    res = { data: r.data, count: r.count, whiteZone: r.whiteZone };
+  }
+  res.width = srcW; res.height = srcH;
+  res.ms = Math.round(performance.now() - t0);
+  return res;
+};
+
 // Upload the un-inpainted source raster to TEXTURE7 (u_srcOrig). Used by
 // the shader's text-plate path to read the actual glyph color for its
 // single-ink NNLS fit, while the main u_src texture (TEXTURE0) holds the
