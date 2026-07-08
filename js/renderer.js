@@ -2151,7 +2151,8 @@ async function _runStipplePrepassImpl(){
     try { gl.uniform1f(locs.u_useAmt, 0.0); } catch(e) {}
     return;
   }
-  try { R.toast && R.toast('STIPPLE: placing dots…', 99999); } catch(e){}
+  // LIVE mode re-bakes every few seconds — a toast per tick would be noise.
+  try { if(!window._stippleLive) R.toast && R.toast('STIPPLE: placing dots…', 99999); } catch(e){}
   let srcCanvas = (typeof srcImg !== 'undefined' && srcImg && srcImg.width) ? srcImg : window._lastSourceCanvas;
   if(!srcCanvas || !srcCanvas.width){ try { gl.uniform1f(locs.u_useAmt, 0.0); } catch(e) {} return; }
 
@@ -2322,7 +2323,7 @@ async function _runStipplePrepassImpl(){
   if(locs.u_amtInkSpread) gl.uniform1f(locs.u_amtInkSpread, 0.0);
   if(locs.u_amtCrisp) gl.uniform1f(locs.u_amtCrisp, _edgeW);
   gl.uniform1f(locs.u_useAmt, 1.0);
-  try { R.toast && R.toast('STIPPLE ready', 1200); } catch(e){}
+  try { if(!window._stippleLive) R.toast && R.toast('STIPPLE ready', 1200); } catch(e){}
 }
 R.runStipplePrepass = runStipplePrepass;
 // Mode-aware master prepass dispatcher — trigger sites don't need to know

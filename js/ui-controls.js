@@ -779,6 +779,27 @@ function toggleLineSpin(){
   R.toast('Angle animation: ' + (window._lineSpin ? 'On' : 'Off'));
   markDirty();
 }
+// LIVE dots: slow stop-motion re-roll of the stipple layout. Each tick bumps
+// the stamp seed and re-bakes the masters (~0.5 s, async) — far too heavy per
+// animation frame, just right every few seconds. Ticks skip while paused,
+// saving, hidden, mid-bake, or outside stipple mode (toggle state survives a
+// mode round-trip). Interval tunable via window._stippleLiveMs.
+let _stippleLiveTimer = 0;
+function toggleStippleLive(){
+  window._stippleLive = !window._stippleLive;
+  const v = el('stippleLiveBtnVal'); if(v) v.textContent = window._stippleLive ? 'On' : 'Off';
+  const b = el('stippleLiveBtn'); if(b) b.classList.toggle('active', !!window._stippleLive);
+  clearInterval(_stippleLiveTimer);
+  if(window._stippleLive){
+    _stippleLiveTimer = setInterval(function(){
+      if(window._mode !== 'stipple' || window._paused || window._saving
+         || window._amtPrepassRunning || document.hidden) return;
+      window._stampSeed = Math.floor(Math.random() * 1021);
+      if(window.R && R.runMasterPrepass) R.runMasterPrepass();
+    }, +(window._stippleLiveMs) || 3000);
+  }
+  R.toast('LIVE dots: ' + (window._stippleLive ? 'On' : 'Off'));
+}
 // Ink grain within line fills — blends the RISO Grain-Touch blue-noise field
 // into the stroke coverage so line fills read as grainy ink, not flat color.
 const LINE_GRAIN_STEPS = [{v:0.0, l:'Off'}, {v:0.3, l:'Low'}, {v:0.6, l:'Med'}, {v:1.0, l:'High'}];
@@ -2037,6 +2058,7 @@ R.cycleLineAmount = cycleLineAmount;
 R.cycleLineRoughness = cycleLineRoughness;
 R.cycleLineGrain = cycleLineGrain;
 R.toggleLineSpin = toggleLineSpin;
+R.toggleStippleLive = toggleStippleLive;
 R.toggleLettersMode = toggleLettersMode;
 R.cycleLineWave = cycleLineWave;
 R.cycleLineEdgeThickness = cycleLineEdgeThickness;
