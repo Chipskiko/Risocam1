@@ -493,9 +493,6 @@ uniform float u_amtSuperSample; // sample radius multiplier (in master texels). 
 uniform float u_amtInkSpread;   // (D) ink-spread radius in master texels. >0 widens the master-sampling
                                 //     footprint so soft round-dot edges emerge on the GPU instead of from
                                 //     a per-channel CPU Gaussian blur. 0 = spread already baked in (CPU path).
-uniform float u_amtCrisp;       // 1.0 = STIPPLE masters: threshold the jitter-averaged coverage at 0.5.
-                                //     The master's AA ramp is sub-texel edge position; step() reconstructs
-                                //     the disc boundary at DISPLAY precision → hard-edged dots at any zoom.
 // GPU Grain Touch path — replaces JS AMT pre-pass with a per-fragment V&C
 // blue-noise threshold + density-gamma. ~60fps on phone GPUs vs ~5fps for JS FS.
 uniform sampler2D u_bnVC;        // 64×64 Void-and-Cluster blue-noise threshold mask, REPEAT + NEAREST
@@ -2114,15 +2111,7 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
         else              v = texture2D(u_amtMaster3, sUV).r;
         total += v;
       }
-      float cov = total * 0.125;
-      // STIPPLE crisp reconstruction (alpha-test): masters are LINEAR-filtered
-      // AA'd discs, so cov is a smooth analytic coverage field; thresholding
-      // at its midpoint re-draws the disc boundary at display precision —
-      // hard vector-like dot edges instead of the magnified AA blur. The
-      // narrow smoothstep (~0.16 of the AA ramp) is one display-pixel of AA,
-      // just enough to kill boundary stair-stepping.
-      if(u_amtCrisp > 0.5) cov = smoothstep(0.42, 0.58, cov);
-      return cov;
+      return total * 0.125;
     }
     // No AMT master (u_useAmt=0). For LIVE sources (camera/video) the master
     // can't be rebuilt per frame, so use the real-time GPU Grain-Touch. For
@@ -3396,7 +3385,7 @@ void main(){
 <script src="js/riso-amt.js?v=24"></script>
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/riso-amt-webgpu.js?v=5"></script>
-<script src="js/renderer.js?v=145"></script>
+<script src="js/renderer.js?v=146"></script>
 <script src="js/source.js?v=52"></script>
 <script src="js/save.js?v=62"></script>
 <script src="js/ui-controls.js?v=65"></script>
