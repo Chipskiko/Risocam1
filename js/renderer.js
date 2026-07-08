@@ -94,7 +94,7 @@ function initGL(){
    'u_driverLUT','u_useDriverLUT',
    'u_ht5Matrix',
    'u_amtMaster0','u_amtMaster1','u_amtMaster2','u_amtMaster3','u_useAmt','u_liveSource',
-   'u_amtTexel','u_amtSuperSample','u_amtInkSpread',
+   'u_amtTexel','u_amtSuperSample','u_amtInkSpread','u_amtCrisp',
    'u_bnVC','u_risoGamma','u_risoGrainScale','u_risoDebugBaseline',
    // T3-F: pre-baked per-ink coverage→color LUT texture
    'u_calLutTex','u_useCalLutTex'
@@ -361,6 +361,7 @@ function initGL(){
   // master texels → averages the dot-stochastic noise into a smooth halftone.
   if(locs.u_amtTexel) gl.uniform2f(locs.u_amtTexel, 1/1241, 1/931);  // placeholder
   if(locs.u_amtSuperSample) gl.uniform1f(locs.u_amtSuperSample, 1.5);
+  if(locs.u_amtCrisp) gl.uniform1f(locs.u_amtCrisp, 0.0);
   // (D) GPU ink-spread radius in master texels. 0 = no spread (CPU blur path).
   // Set per-prepass from the ink-spread slider; default seeded here.
   if(locs.u_amtInkSpread) gl.uniform1f(locs.u_amtInkSpread, 0.5);
@@ -1268,6 +1269,18 @@ function _renderInner(){
   if($gl.width!==dw||$gl.height!==dh){$gl.width=dw;$gl.height=dh;}
   gl.viewport(0,0,dw,dh);
 
+  // Stipple masters bake at a resolution read from the viewport; if a
+  // full-quality frame later renders substantially LARGER (window grew, or
+  // the tab was hidden/0×0 while the bake ran), the magnified master would
+  // go soft — rebake once at the real size. The prepass reads the (now
+  // correctly sized) drawing buffer, and _stippleBakedCap updating stops
+  // this from re-firing.
+  if(mode === 'stipple' && !animTick && !interacting && window._stippleBakedCap
+     && Math.min(2600, Math.max(dw, dh)) > window._stippleBakedCap * 1.3
+     && !window._amtPrepassRunning && window.R && window.R.runMasterPrepass){
+    setTimeout(window.R.runMasterPrepass, 0);
+  }
+
   // ─── Uniforms — all from cached values, zero DOM access ───
   setRenderUniforms(dw, dh, interacting ? Math.max(2, dpr) : (animTick ? animScale : resScale), isPhoneNow);
 
@@ -1929,6 +1942,7 @@ async function _runAmtPrepassImpl(){
           if (locs.u_amtTexel) gl.uniform2f(locs.u_amtTexel, 1.0 / W, 1.0 / H);
           if (locs.u_amtInkSpread) gl.uniform1f(locs.u_amtInkSpread, (window._gpuInkSpread ?? true) ? inkSpreadG : 0.0);
           if (locs.u_amtSuperSample) gl.uniform1f(locs.u_amtSuperSample, 1.5); // FS masters need the grain-touch footprint (stipple lowers it)
+          if (locs.u_amtCrisp) gl.uniform1f(locs.u_amtCrisp, 0.0);
           const D = window.RisoAmt.DEFAULTS;
           const res = await window.RisoAmtGPU.runChannelsFromRGBA(src, W, H, chans, {
             coverageScale: _runOpts.coverageScale,
@@ -1939,6 +1953,9 @@ async function _runAmtPrepassImpl(){
           for (const r of res) {
             gl.activeTexture(gl.TEXTURE9 + r.chIdx);
             gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[r.chIdx]);
+            // Stipple bakes flip these textures to LINEAR — FS needs NEAREST.
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
             gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
             gl.pixelStorei(gl.UNPACK_ROW_LENGTH, r.strideW);
             gl.texImage2D(gl.TEXTURE_2D, 0, _mfG.internal, W, H, 0, _mfG.format, gl.UNSIGNED_BYTE, r.plane);
@@ -2015,6 +2032,7 @@ async function _runAmtPrepassImpl(){
   if(locs.u_amtTexel) gl.uniform2f(locs.u_amtTexel, 1.0 / W, 1.0 / H);
   if(locs.u_amtInkSpread) gl.uniform1f(locs.u_amtInkSpread, gpuSpread ? inkSpread : 0.0);
   if(locs.u_amtSuperSample) gl.uniform1f(locs.u_amtSuperSample, 1.5); // FS masters need the grain-touch footprint (stipple lowers it)
+  if(locs.u_amtCrisp) gl.uniform1f(locs.u_amtCrisp, 0.0);
 
   // (#3) BAND-PARALLEL FS: each channel splits into K horizontal bands that
   // dither concurrently across the pool, so all cores work even on a 1-2 color
@@ -2043,6 +2061,9 @@ async function _runAmtPrepassImpl(){
     // Allocate the full-size master now; bands fill it in as they finish.
     gl.activeTexture(gl.TEXTURE9 + chIdx);
     gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[chIdx]);
+    // Stipple bakes flip these textures to LINEAR — FS planes need NEAREST.
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1); // R8 rows aren't 4-byte aligned
     gl.texImage2D(gl.TEXTURE_2D, 0, _mf.internal, W, H, 0, _mf.format, gl.UNSIGNED_BYTE, null);
     const inputGray = inputGrays[chIdx];
@@ -2134,15 +2155,36 @@ async function _runStipplePrepassImpl(){
   let srcCanvas = (typeof srcImg !== 'undefined' && srcImg && srcImg.width) ? srcImg : window._lastSourceCanvas;
   if(!srcCanvas || !srcCanvas.width){ try { gl.uniform1f(locs.u_useAmt, 0.0); } catch(e) {} return; }
 
-  // Master resolution: long edge capped at 1600 — dot radii are tuned to it.
-  const capM = 1600;
-  const sM = Math.min(1, capM / Math.max(srcCanvas.width, srcCanvas.height));
+  // Master resolution: match the DISPLAY buffer, not the source. Dots are
+  // synthetic vector geometry — rasterizing them at display res lands every
+  // dot ~1:1 on screen pixels (no magnification → hard "actual dots", the
+  // same construction as the reference Pointillist app). A small source
+  // (e.g. 640px) only lowers the ANALYSIS detail, never the dot crispness.
+  // Size from the FULL-RES buffer target — viewfinder CSS × max(resScale,
+  // dpr), the same product _renderInner uses for dirty frames. Reading the
+  // LIVE drawing buffer here is a trap: the animation LOD shrinks it (and
+  // right after a reload it can still be the 300×150 default), and a bake
+  // landing in such a frame would produce a low-res (fuzzy again) master.
+  const _vfEl = document.getElementById('viewfinder');
+  const _cssEdge = _vfEl ? Math.max(_vfEl.clientWidth, _vfEl.clientHeight) : 0;
+  const _fullScale = Math.max((typeof resScale !== 'undefined' ? resScale : 2) || 2,
+                              window.devicePixelRatio || 1);
+  const bufEdge = Math.max(_cssEdge * _fullScale,
+                           gl.drawingBufferWidth || 0, gl.drawingBufferHeight || 0);
+  const capM = Math.max(1200, Math.min(2600, Math.round(bufEdge) || 1600));
+  window._stippleBakedCap = capM;   // resize guard in _renderInner compares against this
+  const sM = capM / Math.max(srcCanvas.width, srcCanvas.height); // upscale allowed
   const W = Math.max(2, Math.round(srcCanvas.width * sM));
   const H = Math.max(2, Math.round(srcCanvas.height * sM));
-  const rc = document.createElement('canvas'); rc.width = W; rc.height = H;
+  // Analysis raster: source capped to 1024 long edge (the sampler's design
+  // point) — brightness map only; geometry is generated at W×H from it.
+  const sA = Math.min(1, 1024 / Math.max(srcCanvas.width, srcCanvas.height));
+  const aw = Math.max(2, Math.round(srcCanvas.width * sA));
+  const ah = Math.max(2, Math.round(srcCanvas.height * sA));
+  const rc = document.createElement('canvas'); rc.width = aw; rc.height = ah;
   const rctx = rc.getContext('2d', { willReadFrequently: true });
-  rctx.drawImage(srcCanvas, 0, 0, W, H);
-  const src = rctx.getImageData(0, 0, W, H).data;
+  rctx.drawImage(srcCanvas, 0, 0, aw, ah);
+  const src = rctx.getImageData(0, 0, aw, ah).data;
 
   const layers = activeLayers();
   const activeChans = (typeof channels !== 'undefined') ? channels.map((c,i)=>c?i:-1).filter(i=>i>=0) : [0];
@@ -2152,24 +2194,32 @@ async function _runStipplePrepassImpl(){
   const inkRGB = cached.inkRGB || [[0,0,0],[0,0,0],[0,0,0],[0,0,0]];
 
   const size = STIPPLE_SIZES[(window._stippleSize|0) % STIPPLE_SIZES.length];
-  const scaleR = W / capM;                    // radii track master resolution
+  const scaleR = capM / 1600;                 // presets are tuned at 1600 reference
   const opts = {
-    rMin: Math.max(0.5, size.min * Math.max(scaleR, 0.4)),
-    rMax: size.max * Math.max(scaleR, 0.4),
-    whiteZone: 250, quality: 1,
+    rMin: Math.max(0.5, size.min * scaleR),
+    rMax: size.max * scaleR,
+    whiteZone: 250, quality: 0, // q0: ~4% fewer tail points, ~35% faster — invisible under inks/misreg
     seed: ((window._stampSeed || 17) * 2654435761) >>> 0,
   };
 
-  const draw = document.createElement('canvas'); draw.width = W; draw.height = H;
-  const dctx = draw.getContext('2d', { willReadFrequently: true });
+  // Direct typed-array disc rasterizer — canvas 2D arcs + canvas→texture
+  // copies measured ~270 ms/plate; writing exact per-pixel disc coverage
+  // (linear 1-px edge ramp = the AA the crisp threshold consumes) into one
+  // reused RGBA plane and uploading THAT is ~10× cheaper. Only the R byte is
+  // written (the shader samples .r; G/B/A stay 0).
+  const plane = new Uint8Array(W * H * 4);
+  const _tGen = [0, 0]; // [generate ms, raster+upload ms] telemetry
 
   for(let chIdx = 0; chIdx < 4; chIdx++){
     if(!activeChans.includes(chIdx)){
-      // inactive → 1×1 dummy so a stale plane can't composite (same as AMT)
+      // inactive → 1×1 dummy so a stale plane can't composite (same as AMT).
+      // NB: typed-array sources need the 9-arg overload (the 6-arg form only
+      // accepts canvas/image sources) — the 6-arg call threw and killed the
+      // whole bake for any state with an empty ink slot.
       gl.activeTexture(gl.TEXTURE9 + chIdx);
       gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[chIdx]);
       gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0,0,0,255]));
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0,0,0,255]));
       continue;
     }
     // Coverage projection onto the paper→ink axis (verbatim AMT semantics):
@@ -2179,7 +2229,7 @@ async function _runStipplePrepassImpl(){
     const IR = ink[0]*255, IG = ink[1]*255, IB = ink[2]*255;
     const dr = IR - PR, dg = IG - PG, db = IB - PB;
     const dLen2 = dr*dr + dg*dg + db*db;
-    const luma = new Uint8Array(W * H);
+    const luma = new Uint8Array(aw * ah);
     if(dLen2 < 0.5){ luma.fill(255); }
     else for(let i = 0, j = 0; i < src.length; i += 4, j++){
       const vr = src[i] - PR, vg = src[i+1] - PG, vb = src[i+2] - PB;
@@ -2187,33 +2237,65 @@ async function _runStipplePrepassImpl(){
       if(t < 0) t = 0; else if(t > 1) t = 1;
       luma[j] = (255 * (1 - t)) | 0;
     }
-    const res = await _stippleFromLuma(luma, W, H, W, H,
+    const _t0 = performance.now();
+    const res = await _stippleFromLuma(luma, aw, ah, W, H,
       Object.assign({}, opts, { seed: (opts.seed + chIdx * 977) >>> 0 }));
-    // Rasterize: white dots (= ink) on black, AA edges read as ink spread.
-    dctx.fillStyle = '#000'; dctx.fillRect(0, 0, W, H);
-    dctx.fillStyle = '#fff';
+    const _t1 = performance.now(); _tGen[0] += _t1 - _t0;
+    // Rasterize: white dots (= ink) on black. cov = clamp(r−d+0.5, 0, 1) is
+    // a linear 1-px edge ramp — same profile as canvas arc AA — max-blended
+    // where dots touch.
+    plane.fill(0);
     const d = res.data;
     for(let i = 0; i < res.count; i++){
       const b = d[i*4+3];
       if(b >= res.whiteZone) continue;          // ghosts: spacing only
-      dctx.beginPath();
-      dctx.arc(d[i*4], d[i*4+1], Math.max(0.65, d[i*4+2] * 0.62), 0, 6.2832);
-      dctx.fill();
+      const cx = d[i*4], cy = d[i*4+1];
+      // 0.80 of the exclusion radius: dense inky tone (~1.7× the ink area of
+      // the earlier 0.62) while same-plate dots stay separated (gap ≥ 20% of
+      // the pair spacing by construction).
+      const r = Math.max(0.65, d[i*4+2] * 0.80);
+      const x0 = Math.max(0, (cx - r - 1) | 0), x1 = Math.min(W - 1, Math.ceil(cx + r + 1));
+      const y0 = Math.max(0, (cy - r - 1) | 0), y1 = Math.min(H - 1, Math.ceil(cy + r + 1));
+      for(let y = y0; y <= y1; y++){
+        const dy = y + 0.5 - cy;
+        let o = (y * W + x0) * 4;
+        for(let x = x0; x <= x1; x++, o += 4){
+          const dx = x + 0.5 - cx;
+          let cov = r - Math.sqrt(dx*dx + dy*dy) + 0.5;
+          if(cov <= 0) continue;
+          if(cov > 1) cov = 1;
+          const v = (cov * 255) | 0;
+          if(v > plane[o]) plane[o] = v;
+        }
+      }
     }
     gl.activeTexture(gl.TEXTURE9 + chIdx);
     gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[chIdx]);
+    // LINEAR: hardware bilinear turns the AA'd discs into a smooth coverage
+    // field; the shader thresholds it (u_amtCrisp) — classic alpha-test →
+    // hard, round dot edges at any zoom, exports included. AMT prepasses
+    // reassert NEAREST (FS planes must stay binary texels).
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, draw);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, plane);
+    _tGen[1] += performance.now() - _t1;
   }
+  console.log(`[stipple] masters ${W}x${H}: generate ${_tGen[0].toFixed(0)} ms, raster+upload ${_tGen[1].toFixed(0)} ms, plates [${activeChans.join(',')}]`);
   gl.activeTexture(gl.TEXTURE0);
   if(locs.u_amtTexel) gl.uniform2f(locs.u_amtTexel, 1.0 / W, 1.0 / H);
-  // CRISP dots: the mode-3 sampler's stochastic supersampling exists to melt
-  // BINARY FS masters into grain-touch — on already-antialiased stipple dots
-  // it is just a box blur that also washes tone (averaging a dot against its
-  // black surround drops coverage below 1 → paler ink). Sample near-point;
-  // the AMT prepass reasserts its own footprint when it runs.
-  if(locs.u_amtSuperSample) gl.uniform1f(locs.u_amtSuperSample, 0.5);
+  // SOFT ROUND dots ("middle look, never pixelated"): masters are LINEAR
+  // (see upload above) and DISPLAY-res, so dots are round geometry at any
+  // zoom; the 8-tap jitter over ±1 master texel (supersample 2.0) melts the
+  // edge into the soft organic ramp of the original grain-touch build —
+  // dense, inky, gently soft, but with none of the source-res pixelation.
+  // Optional debug knob: window._stippleEdgeSoft > 0 switches to the
+  // alpha-test band (u_amtCrisp = half-width; 0.08 razor … 0.30 soft) with
+  // point sampling. The AMT prepass reasserts its own footprint when it runs.
+  const _edgeW = +(window._stippleEdgeSoft || 0);
+  if(locs.u_amtSuperSample) gl.uniform1f(locs.u_amtSuperSample, _edgeW > 0 ? 0.0 : 1.5);
   if(locs.u_amtInkSpread) gl.uniform1f(locs.u_amtInkSpread, 0.0);
+  if(locs.u_amtCrisp) gl.uniform1f(locs.u_amtCrisp, _edgeW);
   gl.uniform1f(locs.u_useAmt, 1.0);
   try { R.toast && R.toast('STIPPLE ready', 1200); } catch(e){}
 }
