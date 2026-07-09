@@ -681,11 +681,17 @@ vec3 adjustRGB(vec3 rgb, vec2 pix){
     rgb.g = texture2D(u_driverLUT, vec2(clamp(rgb.g, 0.0, 1.0), 0.5)).r;
     rgb.b = texture2D(u_driverLUT, vec2(clamp(rgb.b, 0.0, 1.0), 0.5)).r;
   }
-  // Anti-banding: triangular-PDF dither breaks 8-bit posterization
-  float d1 = hash(pix + 0.07);
-  float d2 = hash2(pix + 0.13);
-  float tpdf = (d1 + d2 - 1.0) * (3.0 / 255.0); // ±3 LSB noise
-  rgb += tpdf;
+  // Anti-banding: triangular-PDF dither breaks 8-bit posterization.
+  // NOT during the anchor-tone prepasses: those bake DECISION values
+  // (letter presence / dot-cell tone), and ±3 LSB under white pushes the
+  // driver LUT off its zero endpoint — random cells cleared the presence
+  // cull and blank/transparent areas grew sparse letters and dot specks.
+  if(u_asciiTonePass < 0.5){
+    float d1 = hash(pix + 0.07);
+    float d2 = hash2(pix + 0.13);
+    float tpdf = (d1 + d2 - 1.0) * (3.0 / 255.0); // ±3 LSB noise
+    rgb += tpdf;
+  }
   return clamp(rgb, 0.0, 1.0);
 }
 
@@ -2648,6 +2654,13 @@ float asciiCov(vec2 suv, vec2 srpx, int idx, vec2 boxHalf){
     ink = getChannel(cmyk, ch, u_layers, src);
   }
   ink *= dens * 0.01;
+  // Master burn floor (decision paths only — this function feeds the anchor
+  // and dot-cell tone bakes): the driver transfer LUT never returns an exact
+  // 0 for white, so blank/transparent areas carried a ~1% phantom tone that
+  // fired the lowest matrix thresholds as sparse dot specks. Sub-2% coverage
+  // doesn't burn a real master; a smooth knee (not a step) keeps gradients
+  // continuous while pinning paper-white to exactly zero.
+  ink = max(0.0, ink - 0.02) / 0.98;
   float ig = idx == 0 ? u_inkGamma0 : (idx == 1 ? u_inkGamma1 : (idx == 2 ? u_inkGamma2 : u_inkGamma3));
   ink = pow(clamp(ink, 0.0, 1.0), mix(ig, 1.0, 0.45));
   float tc = clamp(ink, 0.0, 1.0);
