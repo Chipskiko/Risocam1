@@ -569,6 +569,10 @@ function handleFile(e){
   const isVideo=f.type.startsWith('video/')||/\.(mov|mp4|m4v|webm|avi|mkv|ogv|ogg)$/i.test(f.name);
   const isGif=f.type==='image/gif'||f.name.toLowerCase().endsWith('.gif');
   const isPdf=f.type==='application/pdf'||f.name.toLowerCase().endsWith('.pdf');
+  // iPhone photos. Safari 17+ decodes HEIC natively in <img> (the normal
+  // image path just works); Chrome/Firefox have no decoder — surface an
+  // honest error instead of the silent nothing they'd get otherwise.
+  const isHeic=/image\/hei[cf]/i.test(f.type)||/\.(heic|heif)$/i.test(f.name);
   if(isPdf){
     stopVideo();
     if(camOn){if(camStream)camStream.getTracks().forEach(t=>t.stop());camOn=false;}
@@ -775,6 +779,15 @@ function handleFile(e){
     const r=new FileReader();
     r.onload=ev=>{
       const img=new Image();
+      // Without this, an undecodable image (HEIC on Chrome/Firefox, corrupt
+      // file) fails SILENTLY — onload never fires and nothing tells the user.
+      img.onerror=()=>{
+        const msg=isHeic
+          ? 'HEIC needs Safari 17+ — this browser has no decoder. Export as JPG/PNG and retry.'
+          : "Couldn't decode this image ("+(f.type||'unknown type')+').';
+        console.warn('[image] decode failed:', f.name, '| type:', f.type||'(none)');
+        try{ R.toast && R.toast(msg, 6000); }catch(e){}
+      };
       img.onload=()=>{
         const flat=flattenAlpha(img);
         srcImg=flat;
@@ -1079,7 +1092,7 @@ function initDragDrop(){
     const files=dt.files;
     if(files&&files.length){
       const f=files[0];
-      const ok=f.type.startsWith('image/')||f.type.startsWith('video/')||f.type==='application/pdf'||/\.(pdf|gif)$/i.test(f.name);
+      const ok=f.type.startsWith('image/')||f.type.startsWith('video/')||f.type==='application/pdf'||/\.(pdf|gif|heic|heif)$/i.test(f.name);
       if(!ok){R.toast('Unsupported file type');return;}
       handleFile(f);
       return;
