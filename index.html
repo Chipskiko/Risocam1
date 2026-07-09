@@ -2193,6 +2193,12 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
     return screenSampled(val, jitPix, u_screenCell, angle, float(idx));  // 4× supersampled (anti-moiré)
   }
   if(u_mode == 2){
+    // Master burn floor for LINES (same rationale as asciiCov's knee): the
+    // driver LUT's nonzero white endpoint plus the per-fragment anti-banding
+    // dither leave a ~1-2% phantom tone on blank/transparent areas, which
+    // the line engine renders as a super-fine hairline hatch on bare paper.
+    // Sub-2.5% coverage doesn't burn a master; smooth knee keeps gradients.
+    val = max(0.0, val - 0.025) / 0.975;
     float line = lineSampled(val, jitPix, u_screenCell, angle, idx);  // 8× supersampled (anti-moiré)
     // Ink mottle within strokes: continuous 2-octave value noise (sheet-fixed)
     // modulating ink DENSITY — reads as uneven riso ink laydown rather than
