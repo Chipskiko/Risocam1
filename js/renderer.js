@@ -2007,6 +2007,10 @@ async function _runAmtPrepassImpl(){
       const vr = src[i] - PR, vg = src[i+1] - PG, vb = src[i+2] - PB;
       let t = (vr*dr + vg*dg + vb*db) / dLen2;
       if(t < 0) t = 0; else if(t > 1) t = 1;
+      // Master burn floor (same knee as the GPU decision paths): sub-2%
+      // coverage doesn't burn — kills sensor-noise speckle on blank paper
+      // instead of FS-dithering it into stray dots across the sheet.
+      t = t < 0.02 ? 0 : (t - 0.02) / 0.98;
       inputGray[j] = Math.round(255 * (1 - t));
     }
     inputGrays[chIdx] = inputGray;

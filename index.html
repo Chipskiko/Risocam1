@@ -686,11 +686,17 @@ vec3 adjustRGB(vec3 rgb, vec2 pix){
   // (letter presence / dot-cell tone), and ±3 LSB under white pushes the
   // driver LUT off its zero endpoint — random cells cleared the presence
   // cull and blank/transparent areas grew sparse letters and dot specks.
+  // NOT near WHITE anywhere else either: banding needs a gradient, and at
+  // ≥98.5% there is only paper — but on pure-white paper the source has
+  // zero headroom, so ±3 LSB straddles the ink threshold and every
+  // per-fragment consumer (grain, screen, flat fallback) speckled blank
+  // sheets with phantom dots. Fade the dither out approaching white.
   if(u_asciiTonePass < 0.5){
     float d1 = hash(pix + 0.07);
     float d2 = hash2(pix + 0.13);
     float tpdf = (d1 + d2 - 1.0) * (3.0 / 255.0); // ±3 LSB noise
-    rgb += tpdf;
+    float whiteGate = 1.0 - smoothstep(0.965, 0.985, min(rgb.r, min(rgb.g, rgb.b)));
+    rgb += tpdf * whiteGate;
   }
   return clamp(rgb, 0.0, 1.0);
 }
@@ -3416,8 +3422,8 @@ void main(){
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/riso-amt-webgpu.js?v=5"></script>
-<script src="js/renderer.js?v=155"></script>
-<script src="js/source.js?v=54"></script>
+<script src="js/renderer.js?v=156"></script>
+<script src="js/source.js?v=56"></script>
 <script src="js/save.js?v=62"></script>
 <script src="js/ui-controls.js?v=68"></script>
 <script src="js/ui-paper.js?v=13"></script>

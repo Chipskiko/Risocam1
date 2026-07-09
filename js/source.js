@@ -4,6 +4,62 @@
 
 // ======================== SOURCE MANAGEMENT ========================
 // Composite image onto white background — transparent PNGs become opaque
+// AUTO PAPER-WHITE (scanner-driver behavior). A photographed/scanned sketch
+// reads its paper as 92-97% white with sensor noise and a lighting cast —
+// every mode then faithfully prints that 3-6% "gray" as speckle/dots/hatch
+// across what the user sees as blank paper. Detect the TIGHT near-white
+// background cluster in the histogram and set the white point there
+// (per-channel: also neutralizes the cast), remapped once on the canvas so
+// every mode, prepass, and export inherits. Guards keep it off for images
+// without a paper background (dark art, wide gradient skies).
+// Escape hatch: window._autoPaperWhite = false disables.
+function autoPaperWhite(c){
+  if(window._autoPaperWhite === false) return c;
+  const w=c.width, h=c.height;
+  const s=Math.min(1, 256/Math.max(w,h));
+  const aw=Math.max(1,Math.round(w*s)), ah=Math.max(1,Math.round(h*s));
+  const a=document.createElement('canvas'); a.width=aw; a.height=ah;
+  const actx=a.getContext('2d', {willReadFrequently:true});
+  actx.drawImage(c,0,0,aw,ah);
+  const d=actx.getImageData(0,0,aw,ah).data;
+  const N=aw*ah;
+  // Luma histogram → locate the bright end and the background cluster.
+  const hist=new Uint32Array(256);
+  for(let i=0;i<d.length;i+=4) hist[(d[i]*0.299+d[i+1]*0.587+d[i+2]*0.114)|0]++;
+  let acc=0, hi=255;
+  for(let v=255;v>=0;v--){ acc+=hist[v]; if(acc>=N*0.001){ hi=v; break; } } // P99.9
+  if(hi<225) return c;                       // no bright paper present
+  let inCluster=0, nearTail=0;
+  for(let v=Math.max(0,hi-14);v<=hi;v++) inCluster+=hist[v];
+  for(let v=Math.max(0,hi-30);v<=hi-15;v++) nearTail+=hist[v];
+  // Background must be BIG and TIGHT: a paper photo has ≥~22% of pixels in a
+  // narrow bright cluster with little mass just below it; sky/highlight
+  // gradients have a fat tail and are left alone.
+  if(inCluster < N*0.22 || nearTail > inCluster*0.5) return c;
+  // Per-channel white point = 2nd percentile of the cluster's pixels — the
+  // whole background (noise dips included) lands at or above paper white;
+  // real content sits far below the cluster and only gains ~5-8% contrast.
+  const cl=[[],[],[]];
+  for(let i=0;i<d.length;i+=4){
+    const l=(d[i]*0.299+d[i+1]*0.587+d[i+2]*0.114);
+    if(l>=hi-14){ cl[0].push(d[i]); cl[1].push(d[i+1]); cl[2].push(d[i+2]); }
+  }
+  const wp=cl.map(arr=>{ arr.sort((x,y)=>x-y); return Math.max(180, arr[(arr.length*0.02)|0]-2); });
+  if(wp[0]>=254&&wp[1]>=254&&wp[2]>=254) return c;   // already clean white
+  const ctx=c.getContext('2d');
+  const full=ctx.getImageData(0,0,w,h);
+  const f=full.data, k=[255/wp[0],255/wp[1],255/wp[2]];
+  for(let i=0;i<f.length;i+=4){
+    f[i]  =Math.min(255,f[i]  *k[0]);
+    f[i+1]=Math.min(255,f[i+1]*k[1]);
+    f[i+2]=Math.min(255,f[i+2]*k[2]);
+  }
+  ctx.putImageData(full,0,0);
+  try{ R.toast && R.toast('Paper white auto-cleaned', 2200); }catch(e){}
+  console.log('[source] auto paper-white: WP RGB('+wp.join(',')+')');
+  return c;
+}
+
 function flattenAlpha(img){
   let w=img.naturalWidth||img.width;
   let h=img.naturalHeight||img.height;
@@ -23,7 +79,10 @@ function flattenAlpha(img){
   ctx.fillStyle='#fff';
   ctx.fillRect(0,0,c.width,c.height);
   ctx.drawImage(img,0,0,c.width,c.height);
-  return autoTrimBlank(c);
+  // Trim first (its ≥248 near-white test targets true blank padding), THEN
+  // auto-clean the paper white — the other order would whiten a photo's
+  // background and get its borders cropped as a surprise.
+  return autoPaperWhite(autoTrimBlank(c));
 }
 
 // Auto-trim uniformly BLANK borders (transparent padding — white after the
