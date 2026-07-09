@@ -37,6 +37,18 @@ per-ink GAMMA (pow(w, mix(inkGamma,1,.45)); Black gamma=0.5, Blue=1.0)
 AFTER the solve, so printed coverage != solved weights, per ink; (2) the
 measured 'Black' curve is weak/warm (see old task 'Black too grey') making
 blue-stacks OKLab-closer in theory but not in the actual composite.
+MEASURED (validation case A): Black-only plate (dens [0,0,0,100]),
+solid gray-113 source, grain mode, Blank tex + Pure White paper, B=0:
+renders (170,170,170) — NEUTRAL but 57 luma too LIGHT. So black alone
+cannot reach mid-gray through the real chain; the 4-ink solve recruits
+Blue for the missing darkness => blue-cast grays. Forward model predicted
+~93-117 for the same weights: the JENSEN GAP is real — grain speckle
+composites as ~AREA MIXING ((1-c)*paper + c*ink_dark, further thinned by
+dotMin), NOT Beer-Lambert of the mean. Model fix: composite each ink as
+area mix over the grain distribution (+ dotMin factor + per-ink gamma on
+w), THEN the solver will naturally push single-ink coverage higher and
+grays back to black-dominant. Remaining protocol: case B blue-only,
+case C blue+black stack, same source/readback (patch mean at 0.5/0.35).
 => Phase 2 MUST start with FORWARD-MODEL VALIDATION: isolate one plate
 (other densities 0), force coverage via u_dbgFixedCov, render a patch,
 compare against forward() for that weight vector; repeat per ink + one
