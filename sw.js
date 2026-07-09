@@ -1,4 +1,4 @@
-const CACHE = 'risocam-v10';
+const CACHE = 'risocam-v11';
 // Paths are RELATIVE to sw.js's location so the cache is correct under any
 // mount point (localhost root, /risocam/ subpath, etc.). The old root-absolute
 // list ('/index.html', '/js/...') only worked when the app was served at the
@@ -24,6 +24,11 @@ const ASSETS = [
   './js/riso-amt-worker.js',
   './js/riso-amt-webgpu.js',
   './js/cal-lut-worker.js',
+  './js/stipple-core.js',
+  './js/stipple-worker.js',
+  './js/heic-decode.js',
+  // js/vendor/libheif-bundle.js deliberately NOT precached: 1.4 MB and
+  // lazy-loaded only when a HEIC hits a browser without native decode.
   './textures/kraft.jpg',
   './textures/riso_standard.jpg',
   './textures/smooth.jpg',
