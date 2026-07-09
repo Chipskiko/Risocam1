@@ -1638,6 +1638,93 @@ function _bakeCalLutSync(inks){
   return data;
 }
 
+// ── SEP-LUT: forward-model-inverting separation LUT (docs/SEP-LUT-PLAN.md) ──
+// Phase-1 wiring: bake orchestration + JS-side trilinear sampler. The bake
+// runs in js/sep-lut-worker.js (blob-loaded, CSP-safe) and, per RGB grid
+// point, inverts the calBlend mean-field forward model in OKLab — optimal
+// ink weights by construction. Consumers now: validation harness + CPU
+// separations via R.sepLutSample. Next phase: pack as a 2D texture and gate
+// a shader path behind u_useSepLut (see plan doc for the unit-8 caveat).
+let _sepLutWorker = null, _sepLutBaking = false;
+function _sepLutInkData(){
+  const layers = activeLayers();
+  const PAPER = [0.910, 0.912, 0.908];  // reference paper of the measured swatches
+  const inks = [];
+  for(let i = 0; i < Math.min(4, layers.length); i++){
+    const cal = (typeof RISO_CAL !== 'undefined') ? RISO_CAL[layers[i].color] : null;
+    if(cal && cal.lut){
+      inks.push({ P: cal.lut, transparent: !!cal.transparent });
+    } else {
+      // Custom/unknown ink: synthetic multiplicative curve from resolved RGB
+      const rgb = (cached.inkRGB && cached.inkRGB[i]) || [0.5, 0.5, 0.5];
+      const P = [0.10, 0.30, 0.50, 0.70, 1.00].map(c =>
+        [0, 1, 2].map(ch => Math.pow(Math.max(rgb[ch], 0.02), c) * PAPER[ch]));
+      inks.push({ P, transparent: true });
+    }
+  }
+  return inks;
+}
+// Bake (or return the cached) separation LUT. Resolves {N, k, weights,
+// errs, key}. Staleness: key covers ink names + paper + N; concurrent
+// callers await the same in-flight bake.
+R.bakeSepLut = async function(N){
+  N = (N|0) || 17;
+  const layers = activeLayers();
+  const key = JSON.stringify([layers.map(l => l.color), cached.paperColor, N]);
+  if(window._sepLut && window._sepLut.key === key) return window._sepLut;
+  if(_sepLutBaking) { // coalesce: wait for the running bake, then re-check
+    await _sepLutBaking;
+    if(window._sepLut && window._sepLut.key === key) return window._sepLut;
+  }
+  let resolveRun; _sepLutBaking = new Promise(r => resolveRun = r);
+  try {
+    if(!_sepLutWorker){
+      const blobUrl = await _buildWorkerBlobUrl('js/sep-lut-worker.js?v=1');
+      _sepLutWorker = new Worker(blobUrl);
+    }
+    const inks = _sepLutInkData();
+    const paper = (cached.paperColor || [1,1,1]).slice(0, 3);
+    const t0 = performance.now();
+    const res = await new Promise((res2, rej) => {
+      _sepLutWorker.onmessage = e => {
+        if(e.data.done) res2(e.data);
+        // progress messages ignored in v1
+      };
+      _sepLutWorker.onerror = e => rej(new Error(e.message || 'sep-lut worker error'));
+      _sepLutWorker.postMessage({ cmd: 'bake', N, paper, inks, opts: {} });
+    });
+    window._sepLut = {
+      N, k: inks.length, key,
+      weights: new Float32Array(res.weights),
+      errs: new Float32Array(res.errs),
+    };
+    console.log(`[SepLut] baked ${N}³ × ${inks.length} inks in ${(performance.now()-t0).toFixed(0)} ms`);
+    return window._sepLut;
+  } finally {
+    resolveRun(); _sepLutBaking = false;
+  }
+};
+// Trilinear sample: rgb (0..1 each) → Float32Array[4] ink weights.
+R.sepLutSample = function(r, g, b){
+  const L = window._sepLut;
+  if(!L) return null;
+  const N = L.N, W = L.weights, n1 = N - 1;
+  const fx = Math.min(Math.max(r, 0), 1) * n1, fy = Math.min(Math.max(g, 0), 1) * n1, fz = Math.min(Math.max(b, 0), 1) * n1;
+  const x0 = fx|0, y0 = fy|0, z0 = fz|0;
+  const x1 = Math.min(x0+1, n1), y1 = Math.min(y0+1, n1), z1 = Math.min(z0+1, n1);
+  const tx = fx-x0, ty = fy-y0, tz = fz-z0;
+  const at = (x,y,z,c) => W[((z*N + y)*N + x)*4 + c];
+  const out = new Float32Array(4);
+  for(let c = 0; c < 4; c++){
+    const c00 = at(x0,y0,z0,c)*(1-tx) + at(x1,y0,z0,c)*tx;
+    const c10 = at(x0,y1,z0,c)*(1-tx) + at(x1,y1,z0,c)*tx;
+    const c01 = at(x0,y0,z1,c)*(1-tx) + at(x1,y0,z1,c)*tx;
+    const c11 = at(x0,y1,z1,c)*(1-tx) + at(x1,y1,z1,c)*tx;
+    out[c] = (c00*(1-ty) + c10*ty)*(1-tz) + (c01*(1-ty) + c11*ty)*tz;
+  }
+  return out;
+};
+
 // ─── Web Worker for AMT FS — keeps main thread free for animations ─────────
 // Falls back to synchronous runAmt on the main thread if Worker fails.
 //
