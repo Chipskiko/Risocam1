@@ -779,13 +779,15 @@ function toggleLineSpin(){
   R.toast('Angle animation: ' + (window._lineSpin ? 'On' : 'Off'));
   markDirty();
 }
-// LIVE dots: stop-motion re-roll of the stipple layout, paced by the bake
-// itself. The timer polls fast (400 ms) but the _amtPrepassRunning guard
-// skips ticks while a bake is in flight, so the effective cadence is "as
-// fast as bakes complete" (~1-2 re-rolls/s; each ~0.5 s async, no UI
-// freeze). Ticks skip while paused, saving, hidden, mid-bake, or outside
-// stipple mode (toggle state survives a mode round-trip). Interval floor
-// tunable via window._stippleLiveMs.
+// LIVE dots: PRECOMPUTED loop playback. Toggle-on bakes a loop of N dot
+// layouts once (renderer builds it — projection shared, ~0.3 s per frame,
+// frames publish incrementally so playback starts while later frames still
+// bake); each tick after that is just a texture bind — effectively free, so
+// the frame rate is whatever we want (default 8 fps stop-motion, interval
+// via window._stippleLiveMs, floor 40 ms). Ticks skip while paused, saving,
+// hidden, or outside stipple mode (toggle survives a mode round-trip).
+// Toggle-off restores the full-res static master (live loop bakes at a
+// reduced cap for build speed).
 let _stippleLiveTimer = 0;
 function toggleStippleLive(){
   window._stippleLive = !window._stippleLive;
@@ -793,14 +795,17 @@ function toggleStippleLive(){
   const b = el('stippleLiveBtn'); if(b) b.classList.toggle('active', !!window._stippleLive);
   clearInterval(_stippleLiveTimer);
   if(window._stippleLive){
+    // Build (or rebuild) the loop; playback below cycles whatever exists.
+    if(window._mode === 'stipple' && window.R && R.runMasterPrepass) setTimeout(R.runMasterPrepass, 0);
     _stippleLiveTimer = setInterval(function(){
-      if(window._mode !== 'stipple' || window._paused || window._saving
-         || window._amtPrepassRunning || document.hidden) return;
-      window._stampSeed = Math.floor(Math.random() * 1021);
-      if(window.R && R.runMasterPrepass) R.runMasterPrepass();
-    }, +(window._stippleLiveMs) || 400);
+      if(window._mode !== 'stipple' || window._paused || window._saving || document.hidden) return;
+      const L = window._stippleLoop;
+      if(!L || L.frames.length < 2) return;    // still baking the first frames
+      L.idx = (L.idx + 1) % L.frames.length;
+      if(window.R && R._stippleBindFrame) R._stippleBindFrame(L.idx);
+    }, Math.max(40, +(window._stippleLiveMs) || 125));
   } else if(window._mode === 'stipple' && window.R && R.runMasterPrepass){
-    // LIVE bakes at a reduced master cap for cadence — restore full res.
+    // LIVE loop bakes at a reduced master cap — restore full res.
     setTimeout(R.runMasterPrepass, 0);
   }
   R.toast('LIVE dots: ' + (window._stippleLive ? 'On' : 'Off'));

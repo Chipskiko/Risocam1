@@ -2156,8 +2156,7 @@ async function _runStipplePrepassImpl(){
     try { gl.uniform1f(locs.u_useAmt, 0.0); } catch(e) {}
     return;
   }
-  // LIVE mode re-bakes every few seconds — a toast per tick would be noise.
-  try { if(!window._stippleLive) R.toast && R.toast('STIPPLE: placing dots…', 99999); } catch(e){}
+  try { R.toast && R.toast(window._stippleLive ? 'LIVE: baking loop…' : 'STIPPLE: placing dots…', 99999); } catch(e){}
   let srcCanvas = (typeof srcImg !== 'undefined' && srcImg && srcImg.width) ? srcImg : window._lastSourceCanvas;
   if(!srcCanvas || !srcCanvas.width){ try { gl.uniform1f(locs.u_useAmt, 0.0); } catch(e) {} return; }
 
@@ -2250,12 +2249,13 @@ async function _runStipplePrepassImpl(){
       byKey.get(key).push(chIdx);
     } }
 
-  for(const slots of inkGroups){
-    const chIdx = slots[0];
-    // Coverage projection onto the paper→ink axis (verbatim AMT semantics):
-    // inputGray 255 = paper (no ink) … 0 = full ink — which IS the stipple
-    // sampler's "brightness" convention (bright = sparse) with no remap.
-    const ink = inkRGB[chIdx];
+  // Coverage projection onto the paper→ink axis (verbatim AMT semantics):
+  // inputGray 255 = paper (no ink) … 0 = full ink — which IS the stipple
+  // sampler's "brightness" convention (bright = sparse) with no remap.
+  // Hoisted OUT of the bake: projection depends only on ink/paper/source,
+  // never the seed — so a LIVE loop projects once and generates N times.
+  const gLumas = inkGroups.map(slots => {
+    const ink = inkRGB[slots[0]];
     const IR = ink[0]*255, IG = ink[1]*255, IB = ink[2]*255;
     const dr = IR - PR, dg = IG - PG, db = IB - PB;
     const dLen2 = dr*dr + dg*dg + db*db;
@@ -2267,13 +2267,21 @@ async function _runStipplePrepassImpl(){
       if(t < 0) t = 0; else if(t > 1) t = 1;
       luma[j] = (255 * (1 - t)) | 0;
     }
+    return luma;
+  });
+
+  // Generate + rasterize one ink group into `plane` for a given seed base.
+  // Rasterize: white dots (= ink) on black. cov = clamp(r−d+0.5, 0, 1) is a
+  // linear 1-px edge ramp — same profile as canvas arc AA — max-blended
+  // where dots touch.
+  const bakeGroupPlane = async (gi, seedBase) => {
     const _t0 = performance.now();
-    const res = await _stippleFromLuma(luma, aw, ah, W, H,
-      Object.assign({}, opts, { seed: (opts.seed + chIdx * 977) >>> 0 }));
+    // slice(): the worker path TRANSFERS the buffer (zero-copy) — posting
+    // the hoisted projection itself would detach it and the next frame's
+    // bake would throw DataCloneError. Hand over a copy, keep the original.
+    const res = await _stippleFromLuma(gLumas[gi].slice(), aw, ah, W, H,
+      Object.assign({}, opts, { seed: (seedBase + inkGroups[gi][0] * 977) >>> 0 }));
     const _t1 = performance.now(); _tGen[0] += _t1 - _t0;
-    // Rasterize: white dots (= ink) on black. cov = clamp(r−d+0.5, 0, 1) is
-    // a linear 1-px edge ramp — same profile as canvas arc AA — max-blended
-    // where dots touch.
     plane.fill(0);
     const d = res.data;
     for(let i = 0; i < res.count; i++){
@@ -2285,7 +2293,15 @@ async function _runStipplePrepassImpl(){
       // area with tangent (never overlapping) dots. Needed since same-ink
       // slots became coincident: the old 0.80 was tuned when duplicate
       // slots accidentally double-printed their coverage.
-      const r = Math.max(0.65, d[i*4+2]);
+      // NEVER-CUT edges: cap the drawn radius by the distance to the artwork
+      // bounds so every dot is a COMPLETE circle — a dot that can't fit at
+      // least a 0.65px disc inside the frame is skipped (sub-pixel rim).
+      // Tone cost: a ≤rMax-wide border strip fades slightly, like a real
+      // print keeping its dots inside the sheet.
+      let r = Math.max(0.65, d[i*4+2]);
+      const rFit = Math.min(r, cx, cy, W - cx, H - cy);
+      if(rFit < 0.65) continue;
+      r = rFit;
       const x0 = Math.max(0, (cx - r - 1) | 0), x1 = Math.min(W - 1, Math.ceil(cx + r + 1));
       const y0 = Math.max(0, (cy - r - 1) | 0), y1 = Math.min(H - 1, Math.ceil(cy + r + 1));
       for(let y = y0; y <= y1; y++){
@@ -2301,23 +2317,73 @@ async function _runStipplePrepassImpl(){
         }
       }
     }
-    // Upload the SAME plane to every slot running this ink — identical
-    // masters + locked misreg = coincident dots (no same-ink intersections).
-    // LINEAR: hardware bilinear turns the AA'd discs into a smooth coverage
-    // field; the shader thresholds it (u_amtCrisp) — classic alpha-test →
-    // hard, round dot edges at any zoom, exports included. AMT prepasses
-    // reassert NEAREST (FS planes must stay binary texels).
-    for(const slot of slots){
-      gl.activeTexture(gl.TEXTURE9 + slot);
-      gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[slot]);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, plane);
+    return _t1;
+  };
+  // LINEAR: hardware bilinear turns the AA'd discs into a smooth coverage
+  // field; the shader thresholds it (u_amtCrisp) — classic alpha-test →
+  // hard, round dot edges at any zoom, exports included. AMT prepasses
+  // reassert NEAREST (FS planes must stay binary texels).
+  const uploadPlaneTo = (tex) => {
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, plane);
+  };
+
+  const seq0 = window._amtSeq || 0;
+  if(!window._stippleLive){
+    // ── STATIC: one layout per ink group into the shared master textures ──
+    window._stippleLoop = null;  // stale loop must not survive a state change
+    for(let gi = 0; gi < inkGroups.length; gi++){
+      const _t1 = await bakeGroupPlane(gi, opts.seed);
+      // Same plane to every slot running this ink — identical masters +
+      // locked misreg = coincident dots (no same-ink intersections).
+      for(const slot of inkGroups[gi]){
+        gl.activeTexture(gl.TEXTURE9 + slot);
+        uploadPlaneTo(window._amtMasterTex[slot]);
+      }
+      _tGen[1] += performance.now() - _t1;
     }
-    _tGen[1] += performance.now() - _t1;
+    console.log(`[stipple] masters ${W}x${H}: generate ${_tGen[0].toFixed(0)} ms, raster+upload ${_tGen[1].toFixed(0)} ms, plates [${activeChans.join(',')}], ${inkGroups.length} ink(s)`);
+  } else {
+    // ── LIVE: precompute a LOOP of layouts once, then playback is a free
+    // texture bind per tick (ui-controls advances frames) — no per-tick
+    // generation, any playback rate, and it cycles seamlessly. ──
+    const NF = Math.max(2, Math.min(16, (window._stippleLiveFrames|0) || 8));
+    const pool = window._stippleLoopTex || (window._stippleLoopTex = []);
+    const loop = { frames: [], idx: 0, W, H };
+    for(let f = 0; f < NF; f++){
+      if((window._amtSeq || 0) !== seq0) return;  // stale mid-build — wrapper refires
+      const frame = [null, null, null, null];
+      const fSeed = (((window._stampSeed || 17) + f * 131) * 2654435761) >>> 0;
+      for(let gi = 0; gi < inkGroups.length; gi++){
+        const _t1 = await bakeGroupPlane(gi, fSeed);
+        const pi = f * 8 + gi;                    // pool key: frame × group
+        const tex = pool[pi] || (pool[pi] = gl.createTexture());
+        gl.activeTexture(gl.TEXTURE9 + inkGroups[gi][0]);
+        uploadPlaneTo(tex);
+        for(const slot of inkGroups[gi]) frame[slot] = tex;
+        // Frame 0 doubles into the shared masters so exports/seps (which
+        // rebind _amtMasterTex) always see a CURRENT layout, and the units
+        // start bound to valid content before playback advances.
+        if(f === 0){
+          for(const slot of inkGroups[gi]){
+            gl.activeTexture(gl.TEXTURE9 + slot);
+            uploadPlaneTo(window._amtMasterTex[slot]);
+          }
+        }
+        _tGen[1] += performance.now() - _t1;
+      }
+      loop.frames.push(frame);
+      // Publish incrementally — playback starts looping over what exists
+      // while later frames still bake.
+      window._stippleLoop = loop;
+    }
+    console.log(`[stipple] LIVE loop: ${loop.frames.length} frames ${W}x${H}, generate ${_tGen[0].toFixed(0)} ms, raster+upload ${_tGen[1].toFixed(0)} ms, ${inkGroups.length} ink(s)`);
   }
-  console.log(`[stipple] masters ${W}x${H}: generate ${_tGen[0].toFixed(0)} ms, raster+upload ${_tGen[1].toFixed(0)} ms, plates [${activeChans.join(',')}], ${inkGroups.length} ink(s)`);
   gl.activeTexture(gl.TEXTURE0);
   if(locs.u_amtTexel) gl.uniform2f(locs.u_amtTexel, 1.0 / W, 1.0 / H);
   // SOFT ROUND dots ("middle look, never pixelated"): masters are LINEAR
@@ -2333,9 +2399,25 @@ async function _runStipplePrepassImpl(){
   if(locs.u_amtInkSpread) gl.uniform1f(locs.u_amtInkSpread, 0.0);
   if(locs.u_amtCrisp) gl.uniform1f(locs.u_amtCrisp, _edgeW);
   gl.uniform1f(locs.u_useAmt, 1.0);
-  try { if(!window._stippleLive) R.toast && R.toast('STIPPLE ready', 1200); } catch(e){}
+  try { R.toast && R.toast(window._stippleLive ? 'LIVE loop ready' : 'STIPPLE ready', 1200); } catch(e){}
 }
 R.runStipplePrepass = runStipplePrepass;
+// Playback: bind loop frame i's textures onto the master units (9+slot).
+// Binding is per-unit state — the pooled texture objects swap in for
+// _amtMasterTex without touching their contents, so a static rebake or an
+// export rebind restores the shared masters untouched.
+R._stippleBindFrame = function(i){
+  const L = window._stippleLoop;
+  if(!gl || !L || !L.frames.length) return;
+  const frame = L.frames[i % L.frames.length];
+  for(let slot = 0; slot < 4; slot++){
+    if(!frame[slot]) continue;                 // inactive slot keeps its dummy
+    gl.activeTexture(gl.TEXTURE9 + slot);
+    gl.bindTexture(gl.TEXTURE_2D, frame[slot]);
+  }
+  gl.activeTexture(gl.TEXTURE0);
+  try { markDirty(); } catch(e) {}
+};
 // Mode-aware master prepass dispatcher — trigger sites don't need to know
 // which engine builds the plates.
 R.runMasterPrepass = function(){
