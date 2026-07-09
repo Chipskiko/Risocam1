@@ -1858,9 +1858,13 @@ async function _runAmtPrepassImpl(){
   //   300 dpi → 4961 px max edge   (high-res scan; ~25s for 4-color)
   //   600 dpi → 9921 px max edge   (DEFAULT — matches real RISO native res; ~100s for 4-color)
   // Set via console:  R.setAmtScanDpi(300)
-  // Default raised to 600 so the preview matches the real printed output
-  // at the device's native resolution. Lower it for faster iteration.
-  const scanDpi = window._amtScanDpi || 150;
+  // The REAL driver masters at 600 dpi, where FS's diagonal limit-cycle
+  // 'ladders' at AA edge ramps are 0.04 mm — invisible. At 150 dpi-equivalent
+  // the same (authentic!) structure magnifies into visible sawtooth teeth
+  // along soft edges. 300 dpi puts the ladders at/below display-pixel scale
+  // (the grain-touch supersample melts the rest) at ~4× bake cost — still
+  // well under a second on the worker pool. Phones keep 150 (CPU + memory).
+  const scanDpi = window._amtScanDpi || ((window.R && R.isPhone && R.isPhone()) ? 150 : 300);
   const A3_LONG_INCHES = 16.54;
   const targetMaxEdge = Math.round(scanDpi * A3_LONG_INCHES);
   const sourceAspect = srcCanvas.width / srcCanvas.height;
@@ -1985,6 +1989,11 @@ async function _runAmtPrepassImpl(){
   const PR = paperRGB[0]*255, PG = paperRGB[1]*255, PB = paperRGB[2]*255;
   const inputGrays = [null, null, null, null];
   const channelMeta = [];
+  // Distinct-ink projection jobs: duplicate-ink slots (Classic runs blue and
+  // red twice each) share ONE buffer — their FS masters were already
+  // identical, we just stop paying to derive them twice.
+  const projByKey = new Map();
+  const projJobs = [];
   for(let chIdx = 0; chIdx < 4; chIdx++){
     if(!activeChans.includes(chIdx)){ channelMeta.push(null); continue; }
     const ink = inkRGB[chIdx];
@@ -2002,19 +2011,35 @@ async function _runAmtPrepassImpl(){
       channelMeta.push(null);
       continue;
     }
-    const inputGray = new Uint8Array(W * H);
-    for(let i = 0, j = 0; i < src.length; i += 4, j++){
-      const vr = src[i] - PR, vg = src[i+1] - PG, vb = src[i+2] - PB;
-      let t = (vr*dr + vg*dg + vb*db) / dLen2;
-      if(t < 0) t = 0; else if(t > 1) t = 1;
-      // Master burn floor (same knee as the GPU decision paths): sub-2%
-      // coverage doesn't burn — kills sensor-noise speckle on blank paper
-      // instead of FS-dithering it into stray dots across the sheet.
-      t = t < 0.02 ? 0 : (t - 0.02) / 0.98;
-      inputGray[j] = Math.round(255 * (1 - t));
+    const key = Math.round(IR) + ',' + Math.round(IG) + ',' + Math.round(IB);
+    let p = projByKey.get(key);
+    if(!p){
+      p = { buf: new Uint8Array(W * H), dr, dg, db, inv: 1 / dLen2 };
+      projByKey.set(key, p);
+      projJobs.push(p);
     }
-    inputGrays[chIdx] = inputGray;
+    inputGrays[chIdx] = p.buf;
     channelMeta.push({ink: ink});
+  }
+  // ONE fused pass over the source for ALL distinct inks. The old shape —
+  // a full 4-channel-RGBA sweep PER channel, serial on the main thread —
+  // cost ~920 ms at 300 dpi; fused (+deduped) it's one sweep with 1-4
+  // dot-products per pixel.
+  if(projJobs.length){
+    const N = W * H, nj = projJobs.length;
+    for(let i = 0, j = 0; j < N; i += 4, j++){
+      const vr = src[i] - PR, vg = src[i+1] - PG, vb = src[i+2] - PB;
+      for(let k = 0; k < nj; k++){
+        const p = projJobs[k];
+        let t = (vr*p.dr + vg*p.dg + vb*p.db) * p.inv;
+        if(t < 0) t = 0; else if(t > 1) t = 1;
+        // Master burn floor (same knee as the GPU decision paths): sub-2%
+        // coverage doesn't burn — kills sensor-noise speckle on blank paper
+        // instead of FS-dithering it into stray dots across the sheet.
+        t = t < 0.02 ? 0 : (t - 0.02) / 0.98;
+        p.buf[j] = (255 * (1 - t) + 0.5) | 0;
+      }
+    }
   }
 
   // ── PASS 2+3: Per-channel FS in worker pool (B: all channels concurrent) →
