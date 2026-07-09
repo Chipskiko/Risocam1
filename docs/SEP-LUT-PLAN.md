@@ -25,6 +25,25 @@ coverage; add dotMin factor `d *= mix(dotMin,1,c)` for grain/riso fidelity):
 Working space = shader space (sRGB-encoded, calBlend never linearizes).
 Metric linearizes forward output and target identically before OKLab.
 
+## FINDING (gray-goes-blue, sample template, CMYK profile + SPOT)
+Neutral grays render BLUE: source (113,113,113) -> rendered (105,149,192).
+The grayscale strip becomes a blue ramp; only near-white escapes (the
+user's "weird middle square" = the survivor flanked by wrongly-blue
+neighbors). NOT a shader ink-mapping bug: the LUT oracle (measured
+RISO_CAL curves through the forward model) ALSO solves gray-113 to
+[Blue .49, Red .22, Yellow .10, Black .13] — Black barely participates.
+Suspects, in order: (1) decompose-vs-render disconnect — asciiCov applies
+per-ink GAMMA (pow(w, mix(inkGamma,1,.45)); Black gamma=0.5, Blue=1.0)
+AFTER the solve, so printed coverage != solved weights, per ink; (2) the
+measured 'Black' curve is weak/warm (see old task 'Black too grey') making
+blue-stacks OKLab-closer in theory but not in the actual composite.
+=> Phase 2 MUST start with FORWARD-MODEL VALIDATION: isolate one plate
+(other densities 0), force coverage via u_dbgFixedCov, render a patch,
+compare against forward() for that weight vector; repeat per ink + one
+2-ink stack; fold the per-ink gamma into the worker's forward model (and
+into how weights are interpreted) until predictions match renders. Only
+then bake.
+
 ## Wiring plan (next session)
 1. **Bake orchestration** (renderer.js): `_sepLutBake()` — blob-load the
    worker (`_buildWorkerBlobUrl('js/sep-lut-worker.js?v=1')`, CSP), gather
