@@ -779,11 +779,13 @@ function toggleLineSpin(){
   R.toast('Angle animation: ' + (window._lineSpin ? 'On' : 'Off'));
   markDirty();
 }
-// LIVE dots: slow stop-motion re-roll of the stipple layout. Each tick bumps
-// the stamp seed and re-bakes the masters (~0.5 s, async) — far too heavy per
-// animation frame, just right every few seconds. Ticks skip while paused,
-// saving, hidden, mid-bake, or outside stipple mode (toggle state survives a
-// mode round-trip). Interval tunable via window._stippleLiveMs.
+// LIVE dots: stop-motion re-roll of the stipple layout, paced by the bake
+// itself. The timer polls fast (400 ms) but the _amtPrepassRunning guard
+// skips ticks while a bake is in flight, so the effective cadence is "as
+// fast as bakes complete" (~1-2 re-rolls/s; each ~0.5 s async, no UI
+// freeze). Ticks skip while paused, saving, hidden, mid-bake, or outside
+// stipple mode (toggle state survives a mode round-trip). Interval floor
+// tunable via window._stippleLiveMs.
 let _stippleLiveTimer = 0;
 function toggleStippleLive(){
   window._stippleLive = !window._stippleLive;
@@ -796,7 +798,10 @@ function toggleStippleLive(){
          || window._amtPrepassRunning || document.hidden) return;
       window._stampSeed = Math.floor(Math.random() * 1021);
       if(window.R && R.runMasterPrepass) R.runMasterPrepass();
-    }, +(window._stippleLiveMs) || 3000);
+    }, +(window._stippleLiveMs) || 400);
+  } else if(window._mode === 'stipple' && window.R && R.runMasterPrepass){
+    // LIVE bakes at a reduced master cap for cadence — restore full res.
+    setTimeout(R.runMasterPrepass, 0);
   }
   R.toast('LIVE dots: ' + (window._stippleLive ? 'On' : 'Off'));
 }

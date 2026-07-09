@@ -1275,7 +1275,12 @@ function _renderInner(){
   // go soft — rebake once at the real size. The prepass reads the (now
   // correctly sized) drawing buffer, and _stippleBakedCap updating stops
   // this from re-firing.
-  if(mode === 'stipple' && !animTick && !interacting && window._stippleBakedCap
+  // (_stippleLive intentionally excluded: LIVE bakes at a reduced cap on
+  // purpose, and every re-roll marks dirty — the guard would see 1600-baked
+  // masters under a full-res frame and fire an extra bake per frame, an
+  // unbounded bake loop. Toggle-off restores full res explicitly.)
+  if(mode === 'stipple' && !animTick && !interacting && !window._stippleLive
+     && window._stippleBakedCap
      && Math.min(2600, Math.max(dw, dh)) > window._stippleBakedCap * 1.3
      && !window._amtPrepassRunning && window.R && window.R.runMasterPrepass){
     setTimeout(window.R.runMasterPrepass, 0);
@@ -2172,7 +2177,12 @@ async function _runStipplePrepassImpl(){
                               window.devicePixelRatio || 1);
   const bufEdge = Math.max(_cssEdge * _fullScale,
                            gl.drawingBufferWidth || 0, gl.drawingBufferHeight || 0);
-  const capM = Math.max(1200, Math.min(2600, Math.round(bufEdge) || 1600));
+  // LIVE mode trades master res for cadence: 1600 bakes ~2× faster (the
+  // layout and relative dot sizes are identical — radii key off the same
+  // 1600 reference — just fewer texels while in motion, which motion
+  // hides). Toggling LIVE off fires one full-res rebake (ui-controls).
+  const capHi = window._stippleLive ? 1600 : 2600;
+  const capM = Math.max(1200, Math.min(capHi, Math.round(bufEdge) || 1600));
   window._stippleBakedCap = capM;   // resize guard in _renderInner compares against this
   const sM = capM / Math.max(srcCanvas.width, srcCanvas.height); // upscale allowed
   const W = Math.max(2, Math.round(srcCanvas.width * sM));
