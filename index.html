@@ -584,6 +584,7 @@ uniform float u_trappingPx;    // canvas-pixel trapping amount — contracts kno
 uniform float u_colorQuant;    // 0=off, else N levels per channel (8/16/32) — pre-NNLS posterize
 uniform float u_useLabResidual; // 0=RGB residual, 1=Lab residual in NNLS subset selection
 uniform float u_useCalChord;     // 0=naive delta (ink100-paper), 1=calibrated chord 2*(p50-paper)
+uniform float u_ynN;             // Yule-Nielsen exponent for SPOT NNLS space (1 = legacy linear RGB, ~2 = uncoated stock)
                                  //   Calibrated chord linearizes NNLS against measured 50% swatches,
                                  //   correcting Risocam's biggest separation error: ink response is
                                  //   concave near 100%, so linear-from-paper-to-ink100 overestimates
@@ -955,10 +956,18 @@ vec4 nnlsDecompose(int inkN, vec3 paper, vec3 target, vec3 ink0, vec3 ink1, vec3
   // Optional pre-quantize the target — coarsens input space, gives flatter
   // screen-printed look, and reduces NNLS state-space (cache-friendly).
   target = quantizeColor(target);
+  // YULE-NIELSEN space: halftone area coverage + in-paper light scatter make
+  // print mixing linear in c^(1/n), not in c itself (n≈2 for uncoated
+  // stock). Solving the NNLS in YN space fixes the systematic UNDER-INKING
+  // of dark targets the linear-RGB model showed (round-trip baseline: every
+  // worst-ΔE patch was a dark — additive deltas reach darkness far too
+  // cheaply). u_ynN = 1.0 reduces exactly to the legacy linear model.
+  float ynInv = 1.0 / max(u_ynN, 1.0);
+  vec3 pYN = pow(max(paper, vec3(0.0001)), vec3(ynInv));
   // b = target delta from paper (what the inks need to produce)
-  vec3 b = target - paper;
+  vec3 b = pow(max(target, vec3(0.0001)), vec3(ynInv)) - pYN;
 
-  // Ink deltas: how much each ink shifts the color from paper.
+  // Ink deltas: how much each ink shifts the color from paper (in YN space).
   // Naive: delta = ink100 - paper (assumes linear coverage→color response).
   // Calibrated (u_useCalChord): use the chord from paper to the measured 50%
   // swatch, doubled — that's the slope a linear model would need to hit the
@@ -968,15 +977,15 @@ vec4 nnlsDecompose(int inkN, vec3 paper, vec3 target, vec3 ink0, vec3 ink1, vec3
   // ink for the same target color → print matches target more closely.
   vec3 d0, d1, d2, d3;
   if (u_useCalChord > 0.5) {
-    d0 = 2.0 * (u_lutC0 - paper);
-    d1 = 2.0 * (u_lutC1 - paper);
-    d2 = 2.0 * (u_lutC2 - paper);
-    d3 = 2.0 * (u_lutC3 - paper);
+    d0 = 2.0 * (pow(max(u_lutC0, vec3(0.0001)), vec3(ynInv)) - pYN);
+    d1 = 2.0 * (pow(max(u_lutC1, vec3(0.0001)), vec3(ynInv)) - pYN);
+    d2 = 2.0 * (pow(max(u_lutC2, vec3(0.0001)), vec3(ynInv)) - pYN);
+    d3 = 2.0 * (pow(max(u_lutC3, vec3(0.0001)), vec3(ynInv)) - pYN);
   } else {
-    d0 = ink0 - paper;
-    d1 = ink1 - paper;
-    d2 = ink2 - paper;
-    d3 = ink3 - paper;
+    d0 = pow(max(ink0, vec3(0.0001)), vec3(ynInv)) - pYN;
+    d1 = pow(max(ink1, vec3(0.0001)), vec3(ynInv)) - pYN;
+    d2 = pow(max(ink2, vec3(0.0001)), vec3(ynInv)) - pYN;
+    d3 = pow(max(ink3, vec3(0.0001)), vec3(ynInv)) - pYN;
   }
 
   // ── 1 ink ──
@@ -3422,7 +3431,7 @@ void main(){
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/riso-amt-webgpu.js?v=5"></script>
-<script src="js/renderer.js?v=158"></script>
+<script src="js/renderer.js?v=160"></script>
 <script src="js/source.js?v=56"></script>
 <script src="js/save.js?v=62"></script>
 <script src="js/ui-controls.js?v=68"></script>
