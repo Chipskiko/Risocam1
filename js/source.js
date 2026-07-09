@@ -776,32 +776,44 @@ function handleFile(e){
     // webcam physically on (indicator light stays lit). Stop it here, matching the
     // video/gif/pdf branches.
     if(camOn){if(camStream)camStream.getTracks().forEach(t=>t.stop());camOn=false;}
+    // Shared tail for <img> AND decoded-canvas sources (HEIC fallback).
+    const applySource=(drawable,wPx,hPx)=>{
+      const flat=flattenAlpha(drawable);
+      srcImg=flat;
+      // Upload to both source textures (no previous frame for static images)
+      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,flat);
+      gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,flat);
+      window._lastSourceCanvas = flat;
+      notifySourceChanged();
+      camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();scheduleRender();
+      $status.textContent='◉ IMAGE';
+      $res.textContent=wPx+'×'+hPx;
+    };
     const r=new FileReader();
     r.onload=ev=>{
       const img=new Image();
       // Without this, an undecodable image (HEIC on Chrome/Firefox, corrupt
       // file) fails SILENTLY — onload never fires and nothing tells the user.
       img.onerror=()=>{
-        const msg=isHeic
-          ? 'HEIC needs Safari 17+ — this browser has no decoder. Export as JPG/PNG and retry.'
-          : "Couldn't decode this image ("+(f.type||'unknown type')+').';
+        if(isHeic && R.decodeHeic){
+          // Safari decodes HEIC in <img> natively (never reaches here);
+          // Chrome/Firefox land in the vendored libheif WASM fallback.
+          try{ R.toast && R.toast('Decoding HEIC…', 99999); }catch(e){}
+          R.decodeHeic(f).then(c=>{
+            applySource(c, c.width, c.height);
+            try{ R.toast && R.toast('HEIC loaded', 1200); }catch(e){}
+          }).catch(err=>{
+            console.warn('[heic] decode failed:', f.name, err);
+            try{ R.toast && R.toast("Couldn't decode this HEIC — export as JPG/PNG and retry.", 6000); }catch(e){}
+          });
+          return;
+        }
         console.warn('[image] decode failed:', f.name, '| type:', f.type||'(none)');
-        try{ R.toast && R.toast(msg, 6000); }catch(e){}
+        try{ R.toast && R.toast("Couldn't decode this image ("+(f.type||'unknown type')+').', 6000); }catch(e){}
       };
-      img.onload=()=>{
-        const flat=flattenAlpha(img);
-        srcImg=flat;
-        // Upload to both source textures (no previous frame for static images)
-        gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
-        gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,flat);
-        gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
-        gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,flat);
-        window._lastSourceCanvas = flat;
-        notifySourceChanged();
-        camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();scheduleRender();
-        $status.textContent='◉ IMAGE';
-        $res.textContent=img.width+'×'+img.height;
-      };
+      img.onload=()=>applySource(img, img.width, img.height);
       img.src=ev.target.result;
     };
     r.readAsDataURL(f);
