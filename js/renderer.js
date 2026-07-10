@@ -809,7 +809,7 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   gl.uniform1f(locs.u_lineCount, window._lineCount ?? 1.0);
   gl.uniform1f(locs.u_colorQuant, window._colorQuant ?? 0.0);
   if(locs.u_useSepLut) gl.uniform1f(locs.u_useSepLut, (window.R && R._sepLutFrameGate) ? R._sepLutFrameGate() : 0.0);
-  if(locs.u_sepLutN) gl.uniform1f(locs.u_sepLutN, (window._sepLut && window._sepLut.N) || 17);
+  if(locs.u_sepLutN) gl.uniform1f(locs.u_sepLutN, (window._sepLut && window._sepLut.N) || 13);
   if(locs.u_ynN) gl.uniform1f(locs.u_ynN, +(window._spotYN ?? 1.0)); // Yule-Nielsen n for spot NNLS solve-space (1 = linear; measured best with naive deltas)
   // Lab-residual default ON (T1-A): in SPOT mode, comparing candidate ink
   // subsets in perceptual Lab space picks better hue matches than RGB delta.
@@ -1724,7 +1724,10 @@ function _sepLutOpts(){
 // errs, key}. Staleness: key covers ink names + paper + N; concurrent
 // callers await the same in-flight bake.
 R.bakeSepLut = async function(N){
-  N = (N|0) || 17;
+  // N=13 default: Deshpande 2015 (Balasubramanian, Johnson) — LUT accuracy
+  // plateaus by grid ~8; measured flat 8-17 here, so 13 (odd, center node at
+  // 50% gray for neutrals) halves the solves vs 17 at identical accuracy.
+  N = (N|0) || 13;
   const kk = _sepLutKeys(N);
   const inksForKey = kk.inks;
   const opts = kk.opts;
@@ -1819,7 +1822,7 @@ function _sepLutUploadTexture(L){
 // paper/slider key drifts — NNLS keeps rendering until the new LUT lands.
 R._sepLutFrameGate = function(){
   if(!(cached.sepType === 1) || mode === 'flat' || mode === 'stipple') return 0;
-  const N = (window._sepLut && window._sepLut.N) || 17;
+  const N = (window._sepLut && window._sepLut.N) || 13;
   let kk;
   try { kk = _sepLutKeys(N); }
   catch(e){ return 0; }
