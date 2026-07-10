@@ -84,6 +84,30 @@ achievable-error map 9.6 dE (includes out-of-gamut corners). NEXT: the
 shader consumes none of this yet — user-visible fix lands with step 2/3
 below (LUT texture + u_useSepLut path), then CPU consumers (step 4).
 
+## SHADER INTEGRATION — LIVE (this session)
+Steps 2+3 landed: the N=17 weight grid packs into a 2D atlas (x = z*N+xr,
+y = yg, RGBA8) riding u_amtMaster1's SAMPLER + unit 10 (a 17th sampler
+exceeds MAX_TEXTURE_IMAGE_UNITS=16; flat/stipple — the only master-1
+users — never take the LUT path, and R._sepLutFrameGate rebinds unit 10
+per spot frame, so sampler and unit time-share cleanly). nnlsDecompose
+returns sepLutSample(target) when u_useSepLut=1 (fresh key + sepType SPOT
++ not flat/stipple); stale/missing LUT kicks an async re-bake and NNLS
+covers the gap. Bake emits ALL 4 slots (dens-0 dummies for inactive) so
+weight indices align with plates. Solver gained an ink-parsimony prior
+(reg 4e-4): without it the optimizer parked weights below the area knees
+("free" per the model) and reality leaked pink onto light neutrals.
+
+HARNESS: mean dE 21.6 (original NNLS+chord) -> 14.75 (naive deltas) ->
+11.95 (LUT, no prior) -> 8.95 (LUT + prior) = 59% total. Template: gray
+strip neutral, cyan gamut hole renders as smooth green->blue (no gray
+block, no subset cliffs). Worst remaining: #e0e0e0 27 (very light gray
+sits below the earliest printable knee — device quantization, could
+refine sub-knee window tails), purple/sky ~15 (gamut).
+
+REMAINING (step 4+): CPU consumers — flat/RISO projJobs + stipple luma
+via R.sepLutSample for true multi-ink masters; hue-preserving objective
+option; sub-knee window tails; more measured inks (protocol in v3 notes).
+
 ## Wiring plan (next session)
 1. **Bake orchestration** (renderer.js): `_sepLutBake()` — blob-load the
    worker (`_buildWorkerBlobUrl('js/sep-lut-worker.js?v=1')`, CSP), gather

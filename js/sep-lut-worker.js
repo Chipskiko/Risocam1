@@ -146,11 +146,18 @@ function dE2(rgbA, rgbB) {
 // + fine final step as insurance against residual folds).
 function solve(target, inks, paper, opts) {
   const k = inks.length;
+  // Ink-parsimony prior: the optimizer otherwise parks weights BELOW the
+  // per-ink area knees where the model says they print nothing — but the
+  // real renderer leaks a faint tint there (fitted windows are ~0, not 0),
+  // so light neutrals collected parasitic pink. Any weight costs a little;
+  // do-nothing weights get zeroed. 4e-4 in dE^2 units ~= 2 dE at w=1.
+  const REG = opts.reg ?? 4e-4;
+  const cost = w => { let sum = 0; for (let i = 0; i < k; i++) sum += w[i]; return dE2(forward(w, inks, paper, opts), target) + REG * sum; };
   const starts = [new Array(k).fill(0)];
   let bg = null, bgE = Infinity;
   for (let i = 0; i < k; i++) for (let c = 0.25; c <= 1.001; c += 0.25) {
     const w = new Array(k).fill(0); w[i] = c;
-    const e = dE2(forward(w, inks, paper, opts), target);
+    const e = cost(w);
     if (e < bgE) { bgE = e; bg = w; }
   }
   if (bg) starts.push(bg);
@@ -160,7 +167,7 @@ function solve(target, inks, paper, opts) {
   let best = null, bestE = Infinity;
   for (const s0 of starts) {
     const w = s0.slice();
-    let e = dE2(forward(w, inks, paper, opts), target);
+    let e = cost(w);
     let step = 0.25;
     while (step > 0.002) {
       let improved = false;
@@ -169,7 +176,7 @@ function solve(target, inks, paper, opts) {
           const nv = Math.min(1, Math.max(0, w[i] + dir * step));
           if (nv === w[i]) continue;
           const old = w[i]; w[i] = nv;
-          const ne = dE2(forward(w, inks, paper, opts), target);
+          const ne = cost(w);
           if (ne < e - 1e-9) { e = ne; improved = true; }
           else w[i] = old;
         }

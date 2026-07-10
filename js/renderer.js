@@ -70,7 +70,7 @@ function initGL(){
    'u_off0','u_off1','u_off2','u_off3',
    'u_angle0','u_angle1','u_angle2','u_angle3','u_screenCell',
    'u_chan0','u_chan1','u_chan2','u_chan3',
-   'u_stampSeed','u_asciiTonePass','u_aMin','u_aDims','u_aPitch','u_wordLen','u_edgeSoft','u_mtxTexel','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineWave','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineGrain','u_inkDissolve','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_useLabResidual','u_useCalChord','u_ynN','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
+   'u_stampSeed','u_asciiTonePass','u_aMin','u_aDims','u_aPitch','u_wordLen','u_edgeSoft','u_mtxTexel','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineWave','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineGrain','u_inkDissolve','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_useLabResidual','u_useCalChord','u_ynN','u_useSepLut','u_sepLutN','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
    'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_paperShift','u_paperPbrShift','u_paperPbrMul','u_crop','u_paper',
    'u_paperPBR','u_usePaperPBR',
    'u_lutA0','u_lutA1','u_lutA2','u_lutA3',
@@ -808,6 +808,8 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   gl.uniform1f(locs.u_lineEdgeThickness, window._lineEdgeThickness ?? 0.0);
   gl.uniform1f(locs.u_lineCount, window._lineCount ?? 1.0);
   gl.uniform1f(locs.u_colorQuant, window._colorQuant ?? 0.0);
+  if(locs.u_useSepLut) gl.uniform1f(locs.u_useSepLut, (window.R && R._sepLutFrameGate) ? R._sepLutFrameGate() : 0.0);
+  if(locs.u_sepLutN) gl.uniform1f(locs.u_sepLutN, (window._sepLut && window._sepLut.N) || 17);
   if(locs.u_ynN) gl.uniform1f(locs.u_ynN, +(window._spotYN ?? 1.0)); // Yule-Nielsen n for spot NNLS solve-space (1 = linear; measured best with naive deltas)
   // Lab-residual default ON (T1-A): in SPOT mode, comparing candidate ink
   // subsets in perceptual Lab space picks better hue matches than RGB delta.
@@ -1664,7 +1666,13 @@ function _sepLutInkData(){
   const inks = [];
   for(let slot = 0; slot < 4; slot++){
     const name = (typeof channels !== 'undefined') ? channels[slot] : null;
-    if(!name) continue;
+    if(!name){
+      // Inactive slot: keep the POSITION with a zero-density dummy so LUT
+      // weight indices always align with plate slots (shader w.xyzw).
+      inks.push({ P: [[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1]], transparent: true,
+                  gamma: 1.0, dens: 0, slot });
+      continue;
+    }
     const dens = (cached.layerDens && typeof cached.layerDens[slot] === 'number') ? cached.layerDens[slot] : 100;
     const cal = (typeof RISO_CAL !== 'undefined') ? RISO_CAL[name] : null;
     if(cal && cal.lut){
@@ -1693,6 +1701,7 @@ function _sepLutOpts(){
     dotGain:     cached.dotGain ?? 0,
     layerDeplete:(cached.layerDeplete ?? 0) * 0.01,
     simNoise:    1,
+    solverV:     2,   // bumps the bake key when the solver objective changes
     kA: +(window._sepLutKA ?? 1.0),
     kD: +(window._sepLutKD ?? 1.0),
   };
@@ -1714,7 +1723,7 @@ R.bakeSepLut = async function(N){
   let resolveRun; _sepLutBaking = new Promise(r => resolveRun = r);
   try {
     if(!_sepLutWorker){
-      const blobUrl = await _buildWorkerBlobUrl('js/sep-lut-worker.js?v=4');
+      const blobUrl = await _buildWorkerBlobUrl('js/sep-lut-worker.js?v=5');
       _sepLutWorker = new Worker(blobUrl);
     }
     const inks = inksForKey;
@@ -1733,6 +1742,7 @@ R.bakeSepLut = async function(N){
       weights: new Float32Array(res.weights),
       errs: new Float32Array(res.errs),
     };
+    _sepLutUploadTexture(window._sepLut);
     console.log(`[SepLut] baked ${N}³ × ${inks.length} inks in ${(performance.now()-t0).toFixed(0)} ms`);
     return window._sepLut;
   } finally {
@@ -1758,6 +1768,57 @@ R.sepLutSample = function(r, g, b){
     out[c] = (c00*(1-ty) + c10*ty)*(1-tz) + (c01*(1-ty) + c11*ty)*tz;
   }
   return out;
+};
+
+// Pack the N^3 weight grid into a 2D atlas (x = z*N + xr, y = yg; RGBA8 =
+// up to 4 slot weights) and upload to TEXTURE UNIT 10. Unit 10 belongs to
+// u_amtMaster1 — used ONLY by flat/stipple, which never run the in-shader
+// NNLS; their prepasses rebind masters on every bake, and we rebind the LUT
+// per frame in spot modes, so the time-share never collides.
+function _sepLutUploadTexture(L){
+  if(!gl) return;
+  const N = L.N;
+  const px = new Uint8Array(N * N * N * 4);
+  for(let z = 0; z < N; z++) for(let y = 0; y < N; y++) for(let x = 0; x < N; x++){
+    const src = ((z * N + y) * N + x) * 4;            // weights[(z*N+y)*N+x]
+    const dst = (y * (N * N) + z * N + x) * 4;        // atlas row y, col z*N+x
+    for(let c = 0; c < 4; c++) px[dst + c] = Math.round(Math.min(1, Math.max(0, L.weights[src + c])) * 255);
+  }
+  if(!window._sepLutTex) window._sepLutTex = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE10);
+  gl.bindTexture(gl.TEXTURE_2D, window._sepLutTex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, N * N, N, 0, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  gl.activeTexture(gl.TEXTURE0);
+  window._sepLutTexKey = L.key;
+  try { markDirty(); } catch(e) {}
+  console.log('[SepLut] atlas uploaded ' + (N*N) + 'x' + N + ' (unit 10)');
+}
+// Per-frame gate: returns 1 when the shader should use the LUT this frame,
+// keeping the unit-10 binding fresh (flat/stipple prepasses rebind masters
+// over it; we rebind on the way back). Kicks an async re-bake when the ink/
+// paper/slider key drifts — NNLS keeps rendering until the new LUT lands.
+R._sepLutFrameGate = function(){
+  if(!(cached.sepType === 1) || mode === 'flat' || mode === 'stipple') return 0;
+  const N = (window._sepLut && window._sepLut.N) || 17;
+  let key;
+  try { key = JSON.stringify([_sepLutInkData().map(i => [i.slot, i.dens, i.gamma, i.transparent, i.P[4]]),
+                              cached.paperColor, _sepLutOpts(), N]); }
+  catch(e){ return 0; }
+  if(!window._sepLut || window._sepLut.key !== key){
+    // Missing or stale: kick an async (re)bake — coalesced + key-cached
+    // inside bakeSepLut. NNLS keeps rendering until the new LUT lands.
+    if(R.bakeSepLut) R.bakeSepLut(N).catch(()=>{});
+  }
+  if(!window._sepLutTex || window._sepLutTexKey !== key) return 0;
+  gl.activeTexture(gl.TEXTURE10);
+  gl.bindTexture(gl.TEXTURE_2D, window._sepLutTex);
+  gl.activeTexture(gl.TEXTURE0);
+  return 1;
 };
 
 // ─── Web Worker for AMT FS — keeps main thread free for animations ─────────
