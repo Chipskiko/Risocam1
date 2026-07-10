@@ -1822,6 +1822,17 @@ function _sepLutUploadTexture(L){
 // paper/slider key drifts — NNLS keeps rendering until the new LUT lands.
 R._sepLutFrameGate = function(){
   if(!(cached.sepType === 1) || mode === 'flat' || mode === 'stipple') return 0;
+  // 3+ distinct inks only (user request): the baked separation earns its
+  // keep when the decomposition is underdetermined — where gray-goes-blue
+  // lived. With 1-2 distinct inks the system is well-determined and the
+  // original NNLS is already accurate, so those regress to it (and skip the
+  // bake + any flash entirely). window._sepLutMinInk overrides the threshold.
+  const _seen = {}; let _nInk = 0;
+  for(let s = 0; s < 4; s++){
+    const c = (typeof channels !== 'undefined') ? channels[s] : null;
+    if(c && !_seen[c]){ _seen[c] = 1; _nInk++; }
+  }
+  if(_nInk < (window._sepLutMinInk ?? 3)) return 0;
   const N = (window._sepLut && window._sepLut.N) || 13;
   let kk;
   try { kk = _sepLutKeys(N); }
