@@ -56,6 +56,34 @@ compare against forward() for that weight vector; repeat per ink + one
 into how weights are interpreted) until predictions match renders. Only
 then bake.
 
+## v3 MODEL — CALIBRATED (this session)
+forward() v3 in js/sep-lut-worker.js now replicates the real chain:
+covOf(w) = soften(scurve(pow(w*dens/100, mix(gamma,1,.45)))) with positional
+dot gain (inkAbsorb = mix(.9,1.2,slot/3)) and cross-layer depletion — LAYER
+SLOT + ORDER + COUNT are inputs; plates composite in slot order; the opaque
+crossfade lives INSIDE the covered fraction driven by d1; lutBlend is the
+exact Fritsch-Carlson monotone cubic; bake opts carry the LIVE sliders
+(dotMin .15 / inkOpacity .88 / opacityCap .45 defaults) and sit in the key.
+
+MEASURED per-ink grain AREA windows (a = smoothstep(t0,t1,cov)); fitted on
+Pure White + Blank, default sliders, 9 single/stacked plate renders:
+  Blue [0.24, 1.11] rmse 0.4 | Black [0.50, 0.70] rmse 5.6
+  Bright Red [0.49, 0.81] rmse 7.0 | Yellow [0.39, 0.92] rmse 0.7
+  kD = 1.0; Blue+Black stack cross-check: predicted (136,146,157) vs
+  measured (137,146,157). Dataset (cov -> render, Pure White):
+  Black .637->165, .847->85 | Blue .583->(209,224,243)
+  Red .459->paper, .516->paper, .819->(249,123,95)
+  Yellow .494->paper, .939->(248,236,83) | stack (.583,.637)->(137,146,157)
+  (cov read via u_dbgShowCov patch means; renders at 0.5/0.35 patch.)
+Table lives in renderer.js SEP_LUT_AREA; unmeasured inks default [.35,1.0]
+— measuring more inks = rerun the same protocol.
+
+RESULT: gray-113 now solves BLACK-dominant [B .51, R .34, Y .47, K .71]
+(was K .13 blue-veiled); navy -> Blue 1.0 + K .89; white -> 0; 9-cube mean
+achievable-error map 9.6 dE (includes out-of-gamut corners). NEXT: the
+shader consumes none of this yet — user-visible fix lands with step 2/3
+below (LUT texture + u_useSepLut path), then CPU consumers (step 4).
+
 ## Wiring plan (next session)
 1. **Bake orchestration** (renderer.js): `_sepLutBake()` — blob-load the
    worker (`_buildWorkerBlobUrl('js/sep-lut-worker.js?v=1')`, CSP), gather

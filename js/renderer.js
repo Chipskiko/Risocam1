@@ -1646,31 +1646,66 @@ function _bakeCalLutSync(inks){
 // separations via R.sepLutSample. Next phase: pack as a 2D texture and gate
 // a shader path behind u_useSepLut (see plan doc for the unit-8 caveat).
 let _sepLutWorker = null, _sepLutBaking = false;
+// Measured per-ink grain AREA windows (smoothstep t0..t1 over coverage) —
+// fitted against live single-plate renders (Pure White, Blank, default
+// sliders); see docs/SEP-LUT-PLAN.md. Unmeasured inks fall back to the
+// worker default [0.35, 1.0].
+const SEP_LUT_AREA = {
+  'Blue':       [0.24, 1.11],
+  'Black':      [0.50, 0.70],
+  'Bright Red': [0.49, 0.81],
+  'Yellow':     [0.39, 0.92],
+};
 function _sepLutInkData(){
-  const layers = activeLayers();
+  // SLOT-ordered (0..3): the shader composites plates in slot order, and the
+  // positional physics (inkAbsorb dot gain, cross-layer depletion) key off
+  // the slot index — so slot, per-slot density, and order all ride along.
   const PAPER = [0.910, 0.912, 0.908];  // reference paper of the measured swatches
   const inks = [];
-  for(let i = 0; i < Math.min(4, layers.length); i++){
-    const cal = (typeof RISO_CAL !== 'undefined') ? RISO_CAL[layers[i].color] : null;
+  for(let slot = 0; slot < 4; slot++){
+    const name = (typeof channels !== 'undefined') ? channels[slot] : null;
+    if(!name) continue;
+    const dens = (cached.layerDens && typeof cached.layerDens[slot] === 'number') ? cached.layerDens[slot] : 100;
+    const cal = (typeof RISO_CAL !== 'undefined') ? RISO_CAL[name] : null;
     if(cal && cal.lut){
-      inks.push({ P: cal.lut, transparent: !!cal.transparent });
+      const aw = SEP_LUT_AREA[name];
+      inks.push({ P: cal.lut, transparent: !!cal.transparent,
+                  gamma: (typeof cal.gamma === 'number') ? cal.gamma : 1.0, dens, slot,
+                  aT0: aw ? aw[0] : undefined, aT1: aw ? aw[1] : undefined });
     } else {
       // Custom/unknown ink: synthetic multiplicative curve from resolved RGB
-      const rgb = (cached.inkRGB && cached.inkRGB[i]) || [0.5, 0.5, 0.5];
+      const rgb = (cached.inkRGB && cached.inkRGB[slot]) || [0.5, 0.5, 0.5];
       const P = [0.10, 0.30, 0.50, 0.70, 1.00].map(c =>
         [0, 1, 2].map(ch => Math.pow(Math.max(rgb[ch], 0.02), c) * PAPER[ch]));
-      inks.push({ P, transparent: true });
+      inks.push({ P, transparent: true, gamma: 1.0, dens, slot });
     }
   }
   return inks;
+}
+// Live compositing constants the forward model must share with the shader
+// (sliders, x0.01 where the uniforms scale them). Part of the bake key: a
+// slider change means a different device to invert.
+function _sepLutOpts(){
+  return {
+    dotMin:      (cached.dotMin ?? 15) * 0.01,
+    inkOpacity:  (cached.inkOpacity ?? 88) * 0.01,
+    opacityCap:  (cached.opacityCap ?? 45) * 0.01,
+    dotGain:     cached.dotGain ?? 0,
+    layerDeplete:(cached.layerDeplete ?? 0) * 0.01,
+    simNoise:    1,
+    kA: +(window._sepLutKA ?? 1.0),
+    kD: +(window._sepLutKD ?? 1.0),
+  };
 }
 // Bake (or return the cached) separation LUT. Resolves {N, k, weights,
 // errs, key}. Staleness: key covers ink names + paper + N; concurrent
 // callers await the same in-flight bake.
 R.bakeSepLut = async function(N){
   N = (N|0) || 17;
-  const layers = activeLayers();
-  const key = JSON.stringify([layers.map(l => l.color), cached.paperColor, N]);
+  const inksForKey = _sepLutInkData();
+  const opts = _sepLutOpts();
+  const key = JSON.stringify([inksForKey.map(i => [i.slot, i.dens, i.gamma, i.transparent, i.P[4]]),
+                              cached.paperColor, opts, N]);
   if(window._sepLut && window._sepLut.key === key) return window._sepLut;
   if(_sepLutBaking) { // coalesce: wait for the running bake, then re-check
     await _sepLutBaking;
@@ -1679,10 +1714,10 @@ R.bakeSepLut = async function(N){
   let resolveRun; _sepLutBaking = new Promise(r => resolveRun = r);
   try {
     if(!_sepLutWorker){
-      const blobUrl = await _buildWorkerBlobUrl('js/sep-lut-worker.js?v=1');
+      const blobUrl = await _buildWorkerBlobUrl('js/sep-lut-worker.js?v=4');
       _sepLutWorker = new Worker(blobUrl);
     }
-    const inks = _sepLutInkData();
+    const inks = inksForKey;
     const paper = (cached.paperColor || [1,1,1]).slice(0, 3);
     const t0 = performance.now();
     const res = await new Promise((res2, rej) => {
@@ -1691,7 +1726,7 @@ R.bakeSepLut = async function(N){
         // progress messages ignored in v1
       };
       _sepLutWorker.onerror = e => rej(new Error(e.message || 'sep-lut worker error'));
-      _sepLutWorker.postMessage({ cmd: 'bake', N, paper, inks, opts: {} });
+      _sepLutWorker.postMessage({ cmd: 'bake', N, paper, inks, opts });
     });
     window._sepLut = {
       N, k: inks.length, key,
