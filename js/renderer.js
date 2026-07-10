@@ -1690,6 +1690,18 @@ function _sepLutInkData(){
   }
   return inks;
 }
+// Split staleness keys: STRUCT = ink identities/curves/slots — a stale LUT
+// with a different structure would render WRONG colors, so those changes
+// fall back to NNLS until the new bake lands. PARAM = densities/sliders/
+// paper — a stale LUT is a near-identical approximation there, so we keep
+// serving it during the re-bake instead of flashing the legacy NNLS look.
+function _sepLutKeys(N){
+  const inks = _sepLutInkData();
+  const opts = _sepLutOpts();
+  const struct = JSON.stringify([inks.map(i => [i.slot, i.transparent, i.gamma, i.P]), N]);
+  const full = JSON.stringify([inks.map(i => [i.slot, i.dens]), cached.paperColor, opts, struct]);
+  return { struct, full, inks, opts };
+}
 // Live compositing constants the forward model must share with the shader
 // (sliders, x0.01 where the uniforms scale them). Part of the bake key: a
 // slider change means a different device to invert.
@@ -1711,10 +1723,10 @@ function _sepLutOpts(){
 // callers await the same in-flight bake.
 R.bakeSepLut = async function(N){
   N = (N|0) || 17;
-  const inksForKey = _sepLutInkData();
-  const opts = _sepLutOpts();
-  const key = JSON.stringify([inksForKey.map(i => [i.slot, i.dens, i.gamma, i.transparent, i.P[4]]),
-                              cached.paperColor, opts, N]);
+  const kk = _sepLutKeys(N);
+  const inksForKey = kk.inks;
+  const opts = kk.opts;
+  const key = kk.full;
   if(window._sepLut && window._sepLut.key === key) return window._sepLut;
   if(_sepLutBaking) { // coalesce: wait for the running bake, then re-check
     await _sepLutBaking;
@@ -1738,7 +1750,7 @@ R.bakeSepLut = async function(N){
       _sepLutWorker.postMessage({ cmd: 'bake', N, paper, inks, opts });
     });
     window._sepLut = {
-      N, k: inks.length, key,
+      N, k: inks.length, key, structKey: kk.struct,
       weights: new Float32Array(res.weights),
       errs: new Float32Array(res.errs),
     };
@@ -1795,6 +1807,7 @@ function _sepLutUploadTexture(L){
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, N * N, N, 0, gl.RGBA, gl.UNSIGNED_BYTE, px);
   gl.activeTexture(gl.TEXTURE0);
   window._sepLutTexKey = L.key;
+  window._sepLutTexStructKey = L.structKey;
   try { markDirty(); } catch(e) {}
   console.log('[SepLut] atlas uploaded ' + (N*N) + 'x' + N + ' (unit 10)');
 }
@@ -1805,16 +1818,21 @@ function _sepLutUploadTexture(L){
 R._sepLutFrameGate = function(){
   if(!(cached.sepType === 1) || mode === 'flat' || mode === 'stipple') return 0;
   const N = (window._sepLut && window._sepLut.N) || 17;
-  let key;
-  try { key = JSON.stringify([_sepLutInkData().map(i => [i.slot, i.dens, i.gamma, i.transparent, i.P[4]]),
-                              cached.paperColor, _sepLutOpts(), N]); }
+  let kk;
+  try { kk = _sepLutKeys(N); }
   catch(e){ return 0; }
-  if(!window._sepLut || window._sepLut.key !== key){
+  if(!window._sepLut || window._sepLut.key !== kk.full){
     // Missing or stale: kick an async (re)bake — coalesced + key-cached
-    // inside bakeSepLut. NNLS keeps rendering until the new LUT lands.
+    // inside bakeSepLut.
     if(R.bakeSepLut) R.bakeSepLut(N).catch(()=>{});
   }
-  if(!window._sepLutTex || window._sepLutTexKey !== key) return 0;
+  if(!window._sepLutTex) return 0;
+  // Same ink STRUCTURE: keep serving the (possibly param-stale) LUT while
+  // the re-bake runs — a slightly-old density/paper separation is nearly
+  // identical, whereas flashing the legacy NNLS look is a visible glitch.
+  // Different structure (profile/ink swap): weights would map to the wrong
+  // inks — fall back to NNLS until fresh.
+  if(window._sepLutTexStructKey !== kk.struct) return 0;
   gl.activeTexture(gl.TEXTURE10);
   gl.bindTexture(gl.TEXTURE_2D, window._sepLutTex);
   gl.activeTexture(gl.TEXTURE0);
