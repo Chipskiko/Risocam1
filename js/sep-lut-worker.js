@@ -81,7 +81,45 @@ function covOf(w, ink, opts) {
 // ── forward composite: paper → plates in SLOT order ──
 // inks: [{P:[p10..p100], transparent, gamma, dens, slot}] — array already in
 // slot order (the shader's layer loop). Number of entries = active plates.
+// ── Yule-Nielsen Neugebauer forward (thesis 2.2.1.2–2.2.1.9) ──
+// Halftone = random tiling; colour = Demichel-weighted sum of the 2^k
+// overprint primaries, Yule-Nielsen corrected (n≈2). Primaries predicted
+// subtractively from the measured solids. Areas from the same covOf tone
+// chain. Opaque inks break the additive assumption → caller routes those
+// to the sequential path.
+function forwardYNSN(w, inks, paper, opts) {
+  const k = inks.length;
+  const n = opts.ynN ?? 2.0, invn = 1 / n;
+  // effective areas
+  const a = new Array(k);
+  for (let i = 0; i < k; i++) a[i] = opts.covDirect ? Math.min(1, Math.max(0, w[i])) : covOf(w[i], inks[i], opts);
+  // subtractive primary for a subset bitmask
+  const primary = mask => {
+    const out = [paper[0], paper[1], paper[2]];
+    for (let i = 0; i < k; i++) if (mask & (1 << i)) {
+      const sol = inks[i].P[4];
+      for (let c = 0; c < 3; c++) out[c] *= Math.max(sol[c], 0.02) / Math.max(paper[c], 0.02);
+    }
+    return out;
+  };
+  const acc = [0, 0, 0];
+  for (let mask = 0; mask < (1 << k); mask++) {
+    let wgt = 1;
+    for (let i = 0; i < k; i++) wgt *= (mask & (1 << i)) ? a[i] : (1 - a[i]);
+    if (wgt < 1e-6) continue;
+    const p = primary(mask);
+    for (let c = 0; c < 3; c++) acc[c] += wgt * Math.pow(Math.min(1, Math.max(0.001, p[c])), invn);
+  }
+  return [Math.pow(acc[0], n), Math.pow(acc[1], n), Math.pow(acc[2], n)];
+}
+
 function forward(w, inks, paper, opts) {
+  // YNSN handles all normal subtractive riso inks; only genuinely metallic/
+  // opaque inks (cal.metallic) break the additive Neugebauer assumption and
+  // fall through to the sequential path.
+  if (opts.model === 'ynsn' && !inks.some(k => k.metallic)) {
+    return forwardYNSN(w, inks, paper, opts);
+  }
   const dotMin = opts.dotMin ?? 0.15, inkOp = opts.inkOpacity ?? 0.88, opCap = opts.opacityCap ?? 0.45;
   const kA = opts.kA ?? 1.0;      // area-fraction calibration
   const kD = opts.kD ?? 1.0;      // per-dot density calibration

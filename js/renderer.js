@@ -1716,6 +1716,8 @@ function _sepLutOpts(){
     solverV:     2,   // bumps the bake key when the solver objective changes
     kA: +(window._sepLutKA ?? 1.0),
     kD: +(window._sepLutKD ?? 1.0),
+    reg: 4e-4,
+    model: window._sepLutModel || undefined,
   };
 }
 // Bake (or return the cached) separation LUT. Resolves {N, k, weights,

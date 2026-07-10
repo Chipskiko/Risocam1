@@ -183,3 +183,21 @@ recipe, Fig 2.7):
   dot gain, the principled version of our area windows.
 DECISION RULE: A/B YNSN vs v3-calibrated on the 9-case + 24-patch harness;
 keep whichever is more accurate (favour YNSN on ties for robustness).
+
+## YNSN A/B RESULT — v3 kept (data-driven)
+Implemented forwardYNSN (Demichel-weighted Neugebauer, YN n=2, subtractive
+primaries) and A/B'd vs the calibrated sequential v3.
+- Self-consistency (solve+forward same model): YNSN 3.27 vs v3 5.03 — YNSN
+  inverts more cleanly IN-MODEL.
+- REAL RENDER (weights rendered by the actual shader): v3 8.56–8.97 vs
+  YNSN 20.33. YNSN LOSES badly.
+Why: the SHADER composites sequentially (calBlend). v3 mirrors+calibrates to
+it, so v3-weights render correctly; YNSN-weights assume a Neugebauer device
+the shader isn't, so they mis-composite (textbook forward/inverse model
+mismatch). YNSN would only pay off if the GLSL calBlend were ALSO rewritten
+to Demichel-Neugebauer — a large change, and unprovable-better without
+physical riso prints (the app's own shader is the ground truth here).
+DECISION: keep v3 as the live model. forwardYNSN retained in the worker
+(opts.model==='ynsn', default off) for the day the shader compositing is
+rebuilt. Real remaining wins from the thesis: N=17→11/9 (faster bakes, same
+accuracy) and gamut-hole hue-preserving mapping.
