@@ -142,3 +142,44 @@ option; sub-knee window tails; more measured inks (protocol in v3 notes).
   NNLS when any active ink is opaque-metallic, or model it later.
 - Screen mode uses d=c and p100 ink exactly (no dotMin/lutMix) — the LUT is
   still an upgrade (its forward ≈ that at mean field).
+
+## THEORY GROUNDING (Deshpande 2015 PhD, "N-colour separation for spot colours")
+User-provided. Confirms the architecture and names the one real upgrade.
+
+VALIDATED (we independently arrived at textbook methods):
+- Our grain "area mixing" out = paper·(1−a) + covered·a IS the Murray-Davies
+  model (thesis eq 2.5–2.8). The empirical win over Beer-Lambert-of-the-mean
+  was correct.
+- LUT + trilinear inversion is the standard inverse method (Boll 1994,
+  Ostromoukhov, Balasubramanian). Our forward-model-invert-by-descent is the
+  "constrained optimisation" inverse (eq 2.34: arg min ‖forward(c) − target‖²).
+- N=17 grid is if anything GENEROUS: thesis (Balasubramanian 2003, Johnson
+  1995, Fig 2.11) — accuracy plateaus by lattice size 8, ">16 no noticeable
+  gain". => can drop to N=11 or 9 for ~3–4× faster bakes, negligible loss.
+- The block-edge CLIFFS at the cyan gamut hole = the "discontinuities on
+  partition boundaries" the thesis warns about for subset/sector methods;
+  our single smooth trilinear LUT already avoids them within a 4-ink set.
+- Gamut hole itself is fundamental: BRYK can't reach cyan. Thesis expands
+  gamut by ADDING inks (Kueppers OGV, Boll RGB) — no math conjures pigment.
+  For a fixed profile the only lever is hue-preserving gamut mapping.
+
+THE UPGRADE — forward model should be Yule-Nielsen Neugebauer (YNSN),
+tristimulus form (thesis 2.2.1.2–2.2.1.9; this is Deshpande's own KM+YNSN
+recipe, Fig 2.7):
+  Our forward composites inks SEQUENTIALLY (ink over ink). A halftone/grain
+  is really a random tiling: at each point you get paper, or one ink, or an
+  overprint — with probabilities given by DEMICHEL (eq 2.12): for coverage
+  a_i, weight of subset S = ∏_{i∈S} a_i · ∏_{i∉S} (1−a_i). Colour =
+  Σ_S weight_S · primary_S, Yule-Nielsen corrected (n≈2):
+     channel = ( Σ_S w_S · primary_S^(1/n) )^n.
+  Primaries (2^k overprint solids) we don't measure → predict subtractively
+  from the solids: primary_S[c] = paper[c]·∏_{i∈S}(solid_i[c]/paper[c]).
+  Wins: correct multi-ink statistics (fixes sequential over-counting of
+  overprints); removes the hand-fitted per-ink area windows (Demichel does
+  it); generalises to any ink set without re-measuring windows. n is the
+  single optical-dot-gain knob. Opaque/metallic inks break Neugebauer —
+  keep the v3 sequential path for those.
+  Refinement for later: EYNSN ink-spreading (Hersch 2005) = per-superposition
+  dot gain, the principled version of our area windows.
+DECISION RULE: A/B YNSN vs v3-calibrated on the 9-case + 24-patch harness;
+keep whichever is more accurate (favour YNSN on ties for robustness).
