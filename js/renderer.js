@@ -1274,25 +1274,37 @@ function _renderInner(){
 
   if((camOn||videoOn) && risoFps > 0){
     const interval=1000/risoFps;
-    if(now - lastRisoFrame < interval && !needsRedraw){
+    const vidDue = now - lastRisoFrame >= interval;
+    if(!vidDue && !needsRedraw){
       fpsFrames++;
       // Sleep until next frame is due instead of spinning RAF
       if(!_rafId) _rafId=setTimeout(()=>{_rafId=0;scheduleRender();}, Math.max(1, interval-(now-lastRisoFrame)));
       return;
     }
-    lastRisoFrame=now;
-    if(cached.grainStatic > 0){
-      frame += Math.floor(Math.random()*40)+15;
-      frameSeed = Math.random(); window._stampSeed = ((window._stampSeed || 17) + 1.0) % 1021.0;
-      if(!R.isMono()){
-        const m=cached.misreg/500;
-        for(let i=0;i<4;i++){
-          misreg[i]=[(Math.random()-.5)*m*2,(Math.random()-.5)*m*2];
+    if(vidDue){
+      // Drift-compensated deadline: advance by the IDEAL interval (catching
+      // up at most one interval when we fell behind) instead of stamping
+      // `now`. Stamping `now` folds setTimeout lateness + rAF vsync
+      // quantization into every subsequent deadline, so the cadence wanders
+      // — the animation visibly sprints, then slows, then sprints. And the
+      // seed rolls ONLY when the fps clock says so: a dirty render between
+      // ticks (slider, async bake landing) repaints the CURRENT sheet
+      // instead of re-rolling it early.
+      lastRisoFrame += interval;
+      if(now - lastRisoFrame >= interval) lastRisoFrame = now; // >1 interval behind (throttled tab): restart cleanly, no catch-up burst
+      if(cached.grainStatic > 0){
+        frame += Math.floor(Math.random()*40)+15;
+        frameSeed = Math.random(); window._stampSeed = ((window._stampSeed || 17) + 1.0) % 1021.0;
+        if(!R.isMono()){
+          const m=cached.misreg/500;
+          for(let i=0;i<4;i++){
+            misreg[i]=[(Math.random()-.5)*m*2,(Math.random()-.5)*m*2];
+          }
         }
+      } else {
+        frame++;
+        frameSeed = Math.random(); window._stampSeed = ((window._stampSeed || 17) + 1.0) % 1021.0;
       }
-    } else {
-      frame++;
-      frameSeed = Math.random(); window._stampSeed = ((window._stampSeed || 17) + 1.0) % 1021.0;
     }
   } else {
     const animating = cached.grainStatic > 0 || videoOn;
@@ -1304,15 +1316,25 @@ function _renderInner(){
       const staticFps = Math.max(2, cached.grainStatic);
       const staticInterval = 1000 / staticFps;
       if(!window._lastStaticFrame) window._lastStaticFrame = 0;
-      if(now - window._lastStaticFrame < staticInterval && !needsRedraw) {
+      const tickDue = now - window._lastStaticFrame >= staticInterval;
+      if(!tickDue && !needsRedraw) {
         fpsFrames++;
         if(!_rafId) _rafId=setTimeout(()=>{_rafId=0;scheduleRender();}, Math.max(1, staticInterval-(now-window._lastStaticFrame)));
         return;
       }
-      window._lastStaticFrame = now;
-      frame++;
-      frameSeed = Math.random(); window._stampSeed = ((window._stampSeed || 17) + 1.0) % 1021.0;
-      R.newMisreg();
+      if(tickDue){
+        // Drift-compensated + clock-exclusive seeding — see the cam/video
+        // branch above for the full rationale. Fixes the shimmer "sprints,
+        // slows, sprints" cadence: lateness no longer accumulates into the
+        // deadline, and dirty renders between ticks (bake landings, stipple
+        // LIVE binds, sliders) repaint the CURRENT sheet instead of rolling
+        // a new one off-clock.
+        window._lastStaticFrame += staticInterval;
+        if(now - window._lastStaticFrame >= staticInterval) window._lastStaticFrame = now; // >1 interval behind: restart cleanly, no catch-up burst
+        frame++;
+        frameSeed = Math.random(); window._stampSeed = ((window._stampSeed || 17) + 1.0) % 1021.0;
+        R.newMisreg();
+      }
     } else {
       frame++;
       frameSeed = Math.random(); window._stampSeed = ((window._stampSeed || 17) + 1.0) % 1021.0;
