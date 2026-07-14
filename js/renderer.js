@@ -87,7 +87,7 @@ function initGL(){
    'u_angle0','u_angle1','u_angle2','u_angle3','u_screenCell',
    'u_chan0','u_chan1','u_chan2','u_chan3',
    'u_stampSeed','u_asciiTonePass','u_aMin','u_aDims','u_aPitch','u_wordLen','u_edgeSoft','u_mtxTexel','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineWave','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineGrain','u_inkDissolve','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_useLabResidual','u_useCalChord','u_ynN','u_useSepLut','u_sepLutN','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
-   'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_paperShift','u_paperPbrShift','u_paperPbrMul','u_crop','u_paper',
+   'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_paperShift','u_paperPbrShift','u_paperPbrMul','u_paperOrient','u_scanSwap','u_crop','u_paper',
    'u_paperPBR','u_usePaperPBR',
    'u_lutA0','u_lutA1','u_lutA2','u_lutA3',
    'u_lutB0','u_lutB1','u_lutB2','u_lutB3',
@@ -1009,8 +1009,9 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   // Paper shifts per frame — only in animate mode (simulating different sheet feeds)
   var isAnimating = cached.grainStatic > 0 || camOn || videoOn;
   if(isAnimating){
-    var psx = ((Math.sin(frameSeed * 127.1) * 43758.5453) % 1) * 400.0;
-    var psy = ((Math.sin(frameSeed * 269.5) * 43758.5453) % 1) * 400.0;
+    var fsh = function(k){ return ((Math.sin(frameSeed * k) * 43758.5453) % 1); };
+    var psx = fsh(127.1) * 400.0;
+    var psy = fsh(269.5) * 400.0;
     gl.uniform2f(locs.u_paperShift, psx, psy);
     cached._lastPaperShiftX = psx;
     cached._lastPaperShiftY = psy;
@@ -1019,15 +1020,30 @@ function setRenderUniforms(dw, dh, scale, isPhone){
     // ±0.07 of the sheet per axis, within the ±8% margin left by PAPER_ZOOM so
     // it never reaches the clamped edge.
     if(locs.u_paperPbrShift){
-      var ppx = (Math.abs((Math.sin(frameSeed * 311.7) * 43758.5453) % 1) - 0.5) * 0.14; // ±0.07
-      var ppy = (Math.abs((Math.sin(frameSeed * 521.3) * 43758.5453) % 1) - 0.5) * 0.14;
+      var ppx = (Math.abs(fsh(311.7)) - 0.5) * 0.14; // ±0.07
+      var ppy = (Math.abs(fsh(521.3)) - 0.5) * 0.14;
       gl.uniform2f(locs.u_paperPbrShift, ppx, ppy);
     }
+    // Per-frame sheet ORIENTATION: shifts alone read as ONE sheet being
+    // dragged around (the scan tiles every 256 px so shifts alias onto the
+    // same fibers; the PBR sheet only has ±7% of travel). Mirroring the
+    // pattern per frame — plus a 90° tile swap for the scan — kills the
+    // feature tracking, so every frame reads as a different sheet feed.
+    var sfx = fsh(431.1) < 0 ? -1 : 1, sfy = fsh(613.9) < 0 ? -1 : 1;
+    if(locs.u_paperOrient) gl.uniform4f(locs.u_paperOrient,
+      fsh(73.7) < 0 ? -1 : 1, fsh(157.3) < 0 ? -1 : 1, sfx, sfy);
+    if(locs.u_scanSwap) gl.uniform1f(locs.u_scanSwap, fsh(883.3) < 0 ? 1.0 : 0.0);
+    cached._lastPaperFlipX = sfx;
+    cached._lastPaperFlipY = sfy;
   } else {
     gl.uniform2f(locs.u_paperShift, 0.0, 0.0);
     cached._lastPaperShiftX = 0;
     cached._lastPaperShiftY = 0;
     if(locs.u_paperPbrShift) gl.uniform2f(locs.u_paperPbrShift, 0.0, 0.0);
+    if(locs.u_paperOrient) gl.uniform4f(locs.u_paperOrient, 1.0, 1.0, 1.0, 1.0);
+    if(locs.u_scanSwap) gl.uniform1f(locs.u_scanSwap, 0.0);
+    cached._lastPaperFlipX = 1;
+    cached._lastPaperFlipY = 1;
   }
   gl.uniform1f(locs.u_static,cached.grainStatic);
   gl.uniform1f(locs.u_bright,cached.imgBright);
@@ -1407,8 +1423,11 @@ function _renderInner(){
     var pctX = (cached._lastPaperShiftX / 256.0 * 100) % 100;
     var pctY = (cached._lastPaperShiftY / 256.0 * 100) % 100;
     var pos = pctX+'% '+pctY+'%';
-    if(ov) ov.style.backgroundPosition=pos;
-    if(phOv) phOv.style.backgroundPosition=pos;
+    // Mirror the overlay too (same flip as the shader's scan field) so the
+    // CSS paper background can't be tracked frame-to-frame either.
+    var flip = 'scale(' + (cached._lastPaperFlipX || 1) + ',' + (cached._lastPaperFlipY || 1) + ')';
+    if(ov){ ov.style.backgroundPosition=pos; ov.style.transform=flip; }
+    if(phOv){ phOv.style.backgroundPosition=pos; phOv.style.transform=flip; }
   }
 
   // FPS counter — DOM write once per second

@@ -572,6 +572,14 @@ uniform sampler2D u_paperPBR;
 uniform float u_usePaperPBR;
 uniform vec2 u_paperShift;    // per-frame paper position offset (simulates different sheet feeds)
 uniform vec2 u_paperPbrShift; // per-frame PBR-sheet UV jitter (normalized, ~±0.03; 0 when static)
+// Per-frame sheet ORIENTATION — mirror signs (±1): xy for the PBR sheet,
+// zw for the scan/procedural field. A position shift alone reads as ONE
+// sheet being dragged around (the scan tiles every 256 px, so shifts alias
+// onto the same fibers; the PBR sheet only has ±7% of travel) — mirroring
+// the pattern per frame kills the feature tracking, so each animation frame
+// reads as a genuinely different sheet. All 1.0 when static.
+uniform vec4 u_paperOrient;
+uniform float u_scanSwap;     // 1 = swap scan tile axes this frame (90° rotation)
 uniform vec2 u_paperPbrMul;   // paper-type character: x = tooth-strength mul, y = sheen mul
 uniform vec4 u_crop;         // UV crop region: x, y, w, h (default 0,0,1,1)
 uniform sampler2D u_toneCurve; // 256×1 tone curve LUT texture
@@ -2045,7 +2053,10 @@ vec2 paperPbrUV(vec2 uv){
   vec2 vis = (boxAR > PAPER_AR) ? vec2(1.0, PAPER_AR / boxAR)
                                 : vec2(boxAR / PAPER_AR, 1.0);
   const float PAPER_ZOOM = 0.84; // ~8% margin per side for sheet-feed jitter
-  return (uv - 0.5) * vis * PAPER_ZOOM + 0.5 + u_paperPbrShift;
+  // u_paperOrient.xy mirrors the sheet around its center — same margins, so
+  // the clamped edge is never reached, but the fiber layout can't be tracked
+  // from frame to frame.
+  return (uv - 0.5) * vis * PAPER_ZOOM * u_paperOrient.xy + 0.5 + u_paperPbrShift;
 }
 
 // 'Dissolve' ink compositing v2 — fiber-height thresholding: where ink
@@ -2569,8 +2580,8 @@ float valueNoise(vec2 p){
 // Multi-scale fiber texture centered at 1.0
 // Influences ink absorption, dot gain, and reflectance
 float paperFieldProcedural(vec2 pix){
-  // Shift paper position per frame (each print is a different sheet)
-  vec2 sp = pix + u_paperShift;
+  // Shift + mirror paper position per frame (each print is a different sheet)
+  vec2 sp = pix * u_paperOrient.zw + u_paperShift;
   // Large fiber structure: directional (fibers run ~horizontal)
   float fiber = valueNoise(vec2(sp.x * 0.05, sp.y * 0.15)) * 0.4
               + valueNoise(vec2(sp.x * 0.08, sp.y * 0.25)) * 0.35
@@ -2588,8 +2599,11 @@ float paperFieldProcedural(vec2 pix){
 
 float paperField(vec2 pix){
   if (u_usePaperScan < 0.5) return paperFieldProcedural(pix);
-  // Shift paper position per frame (each scan is a different sheet)
-  vec2 sp = pix + u_paperShift;
+  // Shift + mirror paper position per frame (each scan is a different sheet);
+  // u_scanSwap rotates the tiling 90° for extra decorrelation (REPEAT wrap
+  // makes both transforms safe).
+  vec2 sp = pix * u_paperOrient.zw + u_paperShift;
+  if (u_scanSwap > 0.5) sp = sp.yx;
   // Sample scanned paper texture — tiles at 256px intervals in reference space
   vec2 texUV = sp / 256.0;
   float scan = texture2D(u_paperScan, texUV).r; // grayscale, 0-1, mean≈0.5
@@ -3461,7 +3475,7 @@ void main(){
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/riso-amt-webgpu.js?v=5"></script>
-<script src="js/renderer.js?v=172"></script>
+<script src="js/renderer.js?v=173"></script>
 <script src="js/source.js?v=57"></script>
 <script src="js/save.js?v=63"></script>
 <script src="js/ui-controls.js?v=68"></script>
