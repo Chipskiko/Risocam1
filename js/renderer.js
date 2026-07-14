@@ -13,16 +13,32 @@ function initGL(){
   // Try WebGL2 first — enables AMT-GPU to share the context (Metaxas wavefront
   // FS gets ~100× speedup when not running on a second context due to Safari's
   // context-switch overhead). WebGL1 fallback preserved for old browsers.
-  gl=c.getContext('webgl2',{preserveDrawingBuffer:true,antialias:false});
+  // powerPreference: dual-GPU Windows laptops (iGPU + discrete) default to the
+  // power-saving iGPU — slower AND the flakier driver. Ask for the real GPU.
+  gl=c.getContext('webgl2',{preserveDrawingBuffer:true,antialias:false,powerPreference:'high-performance'});
   const isWebGL2 = !!gl;
   // Persist for code outside initGL (e.g. AMT master textures use R8 single-
   // channel storage on WebGL2 — 4× less memory/upload than RGBA — and fall
   // back to RGBA on WebGL1).
   window._isWebGL2 = isWebGL2;
   if(!gl){
-    gl=c.getContext('webgl',{preserveDrawingBuffer:true,antialias:false});
+    gl=c.getContext('webgl',{preserveDrawingBuffer:true,antialias:false,powerPreference:'high-performance'});
   }
   if(!gl){R.toast('WebGL not supported — cannot render');return;}
+  // Windows Chrome frequently ships with "Use graphics acceleration" toggled
+  // off — WebGL then silently runs on SwiftShader (CPU rasterizer) at
+  // seconds-per-frame. Detect once and tell the user instead of crawling.
+  if(!window._swRendererChecked){
+    window._swRendererChecked = true;
+    try {
+      const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+      const rend = String(gl.getParameter(dbg ? dbg.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || '');
+      if(/swiftshader|llvmpipe|software/i.test(rend)){
+        console.warn('[gl] software renderer detected:', rend);
+        setTimeout(function(){ R.toast('GPU acceleration is OFF — rendering will be very slow. Chrome: Settings → System → "Use graphics acceleration"'); }, 1200);
+      }
+    } catch(e){}
+  }
   // Spin up the RISO FS Web Worker — runs off main thread so animations
   // (drum noise, video frames, paper drift) keep playing during prepass.
   try { _initAmtWorker(); } catch(e){}
@@ -31,7 +47,7 @@ function initGL(){
   if(!_ctxLossHooked){
     _ctxLossHooked = true;
     c.addEventListener('webglcontextlost',e=>{e.preventDefault();_rafId=0;R.toast('GPU context lost — will recover');});
-    c.addEventListener('webglcontextrestored',()=>{R.toast('GPU restored');initGL();scheduleRender();});
+    c.addEventListener('webglcontextrestored',()=>{R.toast('GPU restored — rebuilding');_recoverGLState();});
   }
 
   function mkShader(type,src){
@@ -99,6 +115,29 @@ function initGL(){
    // T3-F: pre-baked per-ink coverage→color LUT texture
    'u_calLutTex','u_useCalLutTex'
   ].forEach(n=>{locs[n]=gl.getUniformLocation(prog,n);});
+
+  // Rebuild the cached uniform-location ARRAYS (state.js globals, originally
+  // populated once in phone.js init). Locations are program-specific: after a
+  // context-loss rebuild the old entries point into the dead program and every
+  // uniform write through them becomes a silent no-op — inks, densities,
+  // angles, the works. Repopulating here keeps them fresh on every program
+  // (re)build; the phone.js boot population is then a harmless duplicate.
+  if(typeof inkLocs !== 'undefined'){
+    inkLocs[0]=locs.u_ink0;inkLocs[1]=locs.u_ink1;inkLocs[2]=locs.u_ink2;inkLocs[3]=locs.u_ink3;
+    offLocs[0]=locs.u_off0;offLocs[1]=locs.u_off1;offLocs[2]=locs.u_off2;offLocs[3]=locs.u_off3;
+    angLocs[0]=locs.u_angle0;angLocs[1]=locs.u_angle1;angLocs[2]=locs.u_angle2;angLocs[3]=locs.u_angle3;
+    chanLocs[0]=locs.u_chan0;chanLocs[1]=locs.u_chan1;chanLocs[2]=locs.u_chan2;chanLocs[3]=locs.u_chan3;
+    densLocs[0]=locs.u_dens0;densLocs[1]=locs.u_dens1;densLocs[2]=locs.u_dens2;densLocs[3]=locs.u_dens3;
+    lutALocs=[locs.u_lutA0,locs.u_lutA1,locs.u_lutA2,locs.u_lutA3];
+    lutBLocs=[locs.u_lutB0,locs.u_lutB1,locs.u_lutB2,locs.u_lutB3];
+    lutCLocs=[locs.u_lutC0,locs.u_lutC1,locs.u_lutC2,locs.u_lutC3];
+    lutDLocs=[locs.u_lutD0,locs.u_lutD1,locs.u_lutD2,locs.u_lutD3];
+    grainMulLocs=[locs.u_grainMul0,locs.u_grainMul1,locs.u_grainMul2,locs.u_grainMul3];
+    inkGammaLocs=[locs.u_inkGamma0,locs.u_inkGamma1,locs.u_inkGamma2,locs.u_inkGamma3];
+    hasCalLocs=[locs.u_hasCal0,locs.u_hasCal1,locs.u_hasCal2,locs.u_hasCal3];
+    opaqueLocs=[locs.u_opaque0,locs.u_opaque1,locs.u_opaque2,locs.u_opaque3];
+    skewLocs=[locs.u_skew0,locs.u_skew1,locs.u_skew2,locs.u_skew3];
+  }
 
   // Blue noise texture (tex unit 1)
   const nTex=gl.createTexture();
@@ -486,6 +525,64 @@ function initGL(){
   gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
   gl.uniform1i(locs.u_src,0);
   gl.uniform1i(locs.u_prevSrc,3);
+}
+
+// ── WebGL context-loss recovery ─────────────────────────────────────────────
+// Windows loses GL contexts as a matter of course (2 s TDR watchdog, sleep/
+// wake, driver updates, iGPU⇄dGPU switches) where macOS almost never does.
+// initGL() rebuilds the program and every texture it owns, but content that
+// OTHER code uploaded (source image, paper scan, bakes) and GL objects lazily
+// created outside initGL are dead handles after a restore — and their JS-side
+// staleness keys still claim "fresh". Null the caches, re-apply retained
+// CPU-side state, and rebake what has no CPU copy.
+function _recoverGLState(){
+  // initGL() resets the paper scan to 'procedural' — capture the current key
+  // first, and drop data.js's cached GL handle so loadPaperTexture re-creates.
+  const paperKey = (typeof activePaperTex !== 'undefined') ? activePaperTex : 'procedural';
+  if(typeof paperScanGlTex !== 'undefined') paperScanGlTex = null;
+
+  initGL();   // program, loc arrays, placeholders, static tables, matrix re-fetch
+
+  // Lazily-created GL objects living OUTSIDE initGL: null them so their
+  // create-if-missing sites run again instead of binding dead handles.
+  window._glyphAtlasTex = null;                                // rebuilds at next bind
+  window._stippleLoop = null; window._stippleLoopTex = null;   // LIVE loop pool
+  window._asciiToneFbo = null; window._asciiToneTex = null; window._asciiToneDims = [0,0];
+  window._sepLutTex = null; window._sepLutTexKey = null; window._sepLutTexStructKey = null;
+
+  // Re-apply one-shot GPU state from retained CPU copies.
+  if(window._sepLut) try { _sepLutUploadTexture(window._sepLut); } catch(e){}  // instant — no rebake
+  if(window._toneCurveLUT) try { uploadToneCurve(window._toneCurveLUT); } catch(e){}
+  if(window._driverLUTLevel) try { setDriverLUT(window._driverLUTLevel); } catch(e){}
+  try { if(typeof loadPaperTexture === 'function') loadPaperTexture(paperKey); } catch(e){}
+
+  // Masters (AMT / stipple) were baked into now-dead textures; initGL made
+  // fresh 1×1 seeds. Bump the seq FIRST (any in-flight prepass bails on it,
+  // and u_useAmt drops so nothing samples a seed as a master)...
+  R.invalidateAmt();
+  // ...then re-apply the dither mode: setDitherMode re-arms u_useAmt for the
+  // GPU-only Grain Touch path (mode 7, no prepass); for master-backed modes
+  // the prepass completion re-arms it instead.
+  if(window._ditherModeVal != null) try { setDitherMode(window._ditherModeVal); } catch(e){}
+  if(window._mode === 'flat' || window._mode === 'stipple'){
+    // AFTER the first post-restore frame, not setTimeout(0): the stipple bake
+    // derives its display-res luma via a GPU tone pass, and setTimeout(0)
+    // fires BEFORE the first rAF render — the pass would sample a program
+    // whose per-frame uniforms were never applied → washed-out masters.
+    // (RISO/AMT is immune — its projection is CPU-side — but gets the same
+    // ordering for free.)
+    requestAnimationFrame(function(){
+      setTimeout(function(){ try { R.runMasterPrepass(); } catch(e){} }, 0);
+    });
+  }
+
+  // Content owned by source.js: still image / PDF page (+ text mask and
+  // original-source planes) / paused GIF frame. Camera and video heal
+  // themselves — every rendered frame re-uploads $vid.
+  try { if(window._reuploadCurrentSource) window._reuploadCurrentSource(); } catch(e){}
+
+  try { markDirty(); } catch(e){}
+  scheduleRender();
 }
 
 function genBlueNoise(sz){
@@ -1398,6 +1495,7 @@ var DRIVER_LUTS = {
 };
 function setDriverLUT(level){
   if(!gl||!window._driverLUTTex) return;
+  window._driverLUTLevel = level;   // retained for context-loss recovery
   if(level === 0 || !DRIVER_LUTS[level]){
     // OFF — reset to identity
     var id=new Uint8Array(256*4);
@@ -1459,6 +1557,7 @@ R.setFixedCov = setFixedCov;
 
 function setDitherMode(mode){
   if(!gl||!locs['u_ditherMode']) return;
+  window._ditherModeVal = mode;     // retained for context-loss recovery
   gl.uniform1i(locs['u_ditherMode'], mode);
   document.querySelectorAll('.dmBtn').forEach(b=>{
     const bm = parseInt(b.dataset.dm);
@@ -1587,6 +1686,10 @@ function _uploadCalLut(data){
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 4, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
   // Restore TEXTURE0 binding so subsequent makeSrcTex calls don't pollute unit 14.
   gl.activeTexture(gl.TEXTURE0);
+  // The bake is async (worker) — without a repaint the frame rendered against
+  // the white-seeded LUT stays on screen (washed-out inks) until the next user
+  // interaction. Bit us after context-loss recovery; also covers boot races.
+  try { markDirty(); } catch(e){}
 }
 
 function _bakeCalLutSync(inks){

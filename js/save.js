@@ -39,6 +39,27 @@ function sizeExportCanvas(w, h){
 // past the GPU's silent-allocation limit in the first place.
 function exportPxPerCell(){ return (mode === 'lines') ? 6 : 12; }
 
+// Windows TDR safety: ONE full-resolution drawArrays at 16-260 MP through the
+// megashader can exceed the D3D11 2-second GPU watchdog on slower GPUs — the
+// OS then resets the device and the WebGL context is lost mid-export. Render
+// in horizontal scissor bands (~2 MP each) with a flush between: every band is
+// its own command submission, so the watchdog clock resets and the driver can
+// preempt. Output is bit-identical — the fragment shader depends only on
+// gl_FragCoord + uniforms, never on band boundaries. Small canvases (≤ one
+// band) take the plain single-draw path.
+function drawFullscreenTiled(w, h){
+  const BAND_PX = 1 << 21;                                   // ~2.1 MP per band
+  const bandH = Math.max(64, Math.floor(BAND_PX / Math.max(1, w)) & ~1);
+  if(bandH >= h){ gl.drawArrays(gl.TRIANGLE_STRIP,0,4); return; }
+  gl.enable(gl.SCISSOR_TEST);
+  for(let y = 0; y < h; y += bandH){
+    gl.scissor(0, y, w, Math.min(bandH, h - y));
+    gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+    gl.flush();
+  }
+  gl.disable(gl.SCISSOR_TEST);
+}
+
 // Format options:
 //   'png'  → lossless PNG at full export resolution, preserves alpha (archival)
 //   'jpg'  → JPEG q=0.95 capped at 2400px wide (sharing-optimized, small file)
@@ -91,7 +112,7 @@ async function saveHiRes(format){
   // + circle soft edges) so the export matches the preview instead of reading
   // a stale preview-sized tone texture.
   if(R._runTonePrepass) R._runTonePrepass(saveW,saveH);
-  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  drawFullscreenTiled(saveW,saveH);
   const filename='risocam_'+(names||'empty')+'_'+saveW+'x'+saveH+'_'+Date.now()+'.'+ext;
   let blob;
   if(isJpg){
@@ -777,7 +798,7 @@ async function saveGif(){
     const matchScale = Math.max(1, (gw / previewW) * resScale);
     R.setRenderUniforms(gw,gh,matchScale,false);
     if(R._runTonePrepass) R._runTonePrepass(gw,gh); // export parity (ASCII/circle tone)
-    gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+    drawFullscreenTiled(gw,gh);
     tmpCtx.drawImage($gl,0,0,gw,gh);
     enc.addFrame(tmpCtx);
     R.toast('Recording GIF ('+((i+1))+'/'+totalFrames+')…');
@@ -1048,7 +1069,7 @@ async function exportSeparations(){
       gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[L.ch]);
       gl.activeTexture(gl.TEXTURE0);
     }
-    gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+    drawFullscreenTiled(dw,dh);
 
     // Snapshot this layer's plate to an opaque temp canvas (white bg, no alpha).
     const tmpC=document.createElement('canvas');
@@ -1260,7 +1281,7 @@ async function savePdf(){
       const effectiveScale=Math.min(rasterW,rasterH)/(baseSize/3);
       R.setRenderUniforms(rasterW,rasterH,effectiveScale,false);
       if(R._runTonePrepass) R._runTonePrepass(rasterW,rasterH); // export parity (ASCII/circle tone)
-      gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+      drawFullscreenTiled(rasterW,rasterH);
       // Encode JPEG. Try OffscreenCanvas.convertToBlob (non-blocking, can
       // run on browser worker thread) first; fall back to toDataURL.
       let dataUrl;

@@ -337,6 +337,44 @@ function applyPdfSourceForMode(){
 }
 R.applyPdfSourceForMode = applyPdfSourceForMode;
 
+// ── WebGL context-loss recovery hook (called from renderer's _recoverGLState)
+// Re-push the CURRENT source into the freshly re-created GPU textures after a
+// context restore. Camera/video heal themselves (each rendered frame uploads
+// $vid), and a PLAYING GIF re-uploads on its next frame tick — so this only
+// needs to cover the static cases: still image, PDF page, paused GIF.
+window._reuploadCurrentSource = function(){
+  try {
+    if(camOn || videoOn) return;
+    if(window._pdfDoc && window._pdfMeta){
+      const idx = window._pdfActiveIdx || 0;
+      const m = window._pdfMeta[idx];
+      applyPdfSourceForMode();          // src A/B (original vs inpainted, from page cache)
+      if(m){
+        const targetW = Math.min(2400, m.nativeW * 3);
+        if(R.uploadOriginalSource && srcImg) R.uploadOriginalSource(srcImg);
+        if(R.uploadTextMask) R.uploadTextMask(pdfPageMask(window._pdfDoc, idx + 1, targetW));
+      }
+      return;
+    }
+    if(typeof gifFrames !== 'undefined' && gifFrames && gifFrames.length &&
+       typeof gifCanvas !== 'undefined' && gifCanvas){
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, window._srcTexA);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifCanvas);
+      gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, window._srcTexB);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifCanvas);
+      gl.activeTexture(gl.TEXTURE0);
+      return;
+    }
+    if(srcImg){
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, window._srcTexA);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,srcImg);
+      gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, window._srcTexB);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,srcImg);
+      gl.activeTexture(gl.TEXTURE0);
+    }
+  } catch(e){ console.warn('[recover] source re-upload failed:', e); }
+};
+
 // Build a grayscale text mask for a PDF page. White (255) = text glyph,
 // black (0) = non-text. Uses getTextContent() to find rect bounds, then
 // refines within each rect by comparing source pixels against the rect's
