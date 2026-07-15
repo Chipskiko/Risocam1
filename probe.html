@@ -1,0 +1,128 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>risocam shader compile probe</title>
+<body style="font:14px/1.5 monospace;padding:1.5em;background:#f5f0e8;max-width:52em">
+<h2 style="margin:0 0 .4em">Shader compile probe</h2>
+<p id="gpu">GPU: …</p>
+<p>Compiles stripped variants of the app's fragment shader, smallest first,
+and times each link. Leave this page open until it says <b>DONE</b>
+(can take several minutes on machines where the full shader struggles).
+Results also stream to the diag server when served over the LAN.</p>
+<pre id="out" style="background:#fff;padding:1em;border:1px solid #ccc;white-space:pre-wrap"></pre>
+<script>
+(async () => {
+  const out = document.getElementById('out');
+  const say = (line) => {
+    out.textContent += line + '\n';
+    try { navigator.sendBeacon('diag', 'PROBE ' + line); } catch(e){}
+    console.log('[probe]', line);
+  };
+
+  // ── fetch the real shader sources from the app page ──
+  let html;
+  try {
+    const r = await fetch('index.html', {cache: 'no-store'});
+    html = await r.text();
+  } catch(e){ say('FATAL: cannot fetch index.html: ' + e); return; }
+  const grab = id => {
+    const m = html.match(new RegExp('<script id="' + id + '"[^>]*>([\\s\\S]*?)<\\/script>'));
+    return m && m[1];
+  };
+  const vsSrc = grab('vs'), fsSrc = grab('fs');
+  if(!vsSrc || !fsSrc){ say('FATAL: shader tags not found'); return; }
+  say('fs source: ' + (fsSrc.length / 1024).toFixed(0) + ' KB');
+
+  // ── stub a function body: TYPE NAME(...){ ... } → { return TYPE(0.0); } ──
+  function stubFn(src, name){
+    const re = new RegExp('(^|\\n)(float|vec2|vec3|vec4)\\s+' + name + '\\s*\\(', 'g');
+    const m = re.exec(src);
+    if(!m){ return src; }
+    const type = m[2];
+    let i = src.indexOf('{', re.lastIndex);
+    if(i < 0) return src;
+    let depth = 0, j = i;
+    for(; j < src.length; j++){
+      if(src[j] === '{') depth++;
+      else if(src[j] === '}'){ depth--; if(depth === 0) break; }
+    }
+    return src.slice(0, i) + '{ return ' + type + '(0.0); }' + src.slice(j + 1);
+  }
+  const stubAll = (src, names) => names.reduce(stubFn, src);
+
+  const NNLS    = ['nnls1','nnls2','nnls3','nnlsDecompose'];
+  const LETTERS = ['asciiCov','asciiStamp'];
+  const LINES   = ['lineDither','lineSampled','lineRoughness','lineWobble'];
+  const SCREEN  = ['screenDither','screenMatrix','screenSampled','screenEngine','cellTone'];
+  const RISOMTX = ['risoMatrixDither','gpuGrainTouch'];
+  const GRAINTX = ['getGrainTexture','getCoverage','getCoverageApprox'];
+
+  const VARIANTS = [
+    ['minimal',      [].concat(NNLS, LETTERS, LINES, SCREEN, RISOMTX, GRAINTX)],
+    ['noHeavy4',     [].concat(NNLS, LETTERS, LINES, SCREEN)],
+    ['noNNLS',       NNLS],
+    ['noLetters',    LETTERS],
+    ['noLines',      LINES],
+    ['noScreen',     SCREEN],
+    ['full',         []],
+  ];
+
+  // ── GL setup ──
+  const canvas = document.createElement('canvas');
+  const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+  if(!gl){ say('FATAL: no WebGL'); return; }
+  try {
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    const rend = String(gl.getParameter(dbg ? dbg.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || '');
+    document.getElementById('gpu').textContent = 'GPU: ' + rend;
+    say('gpu: ' + rend);
+  } catch(e){}
+  const par = gl.getExtension('KHR_parallel_shader_compile');
+  say('parallel compile ext: ' + (par ? 'yes' : 'NO (sync — page may block per variant)'));
+
+  const TIMEOUT_MS = 90000;
+
+  function compileVariant(name, fs){
+    return new Promise(resolve => {
+      const t0 = performance.now();
+      const v = gl.createShader(gl.VERTEX_SHADER);
+      gl.shaderSource(v, vsSrc); gl.compileShader(v);
+      const f = gl.createShader(gl.FRAGMENT_SHADER);
+      gl.shaderSource(f, fs); gl.compileShader(f);
+      const p = gl.createProgram();
+      gl.attachShader(p, v); gl.attachShader(p, f); gl.linkProgram(p);
+      const finish = () => {
+        const ms = Math.round(performance.now() - t0);
+        const ok = gl.getProgramParameter(p, gl.LINK_STATUS);
+        let msg = name + ': ' + (ok ? 'link OK' : 'LINK FAILED') + ' +' + ms + 'ms';
+        if(!ok){
+          const log = (gl.getProgramInfoLog(p) || '') + ' | fs: ' + (gl.getShaderInfoLog(f) || '');
+          msg += ' — ' + log.slice(0, 220);
+        }
+        gl.deleteProgram(p); gl.deleteShader(v); gl.deleteShader(f);
+        resolve({ok, ms, msg, timedOut: false});
+      };
+      if(!par){ finish(); return; }
+      const poll = () => {
+        if(performance.now() - t0 > TIMEOUT_MS){
+          resolve({ok: false, ms: TIMEOUT_MS, msg: name + ': TIMEOUT >' + (TIMEOUT_MS/1000) + 's (compiler still running)', timedOut: true});
+          return;
+        }
+        if(gl.getProgramParameter(p, par.COMPLETION_STATUS_KHR)) finish();
+        else setTimeout(poll, 250);
+      };
+      poll();
+    });
+  }
+
+  for(const [name, stubs] of VARIANTS){
+    say('compiling ' + name + ' (' + stubs.length + ' fns stubbed)…');
+    const res = await compileVariant(name, stubAll(fsSrc, stubs));
+    say(res.msg);
+    if(res.timedOut){
+      say('STOP: a hung compile poisons later variants. Partial results above.');
+      break;
+    }
+  }
+  say('DONE');
+})();
+</script>
