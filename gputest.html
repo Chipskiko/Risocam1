@@ -18,9 +18,6 @@ document.write('<scr' + 'ipt src="' + (window.RC_CDN
   : 'js/vendor/twgsl.js') + '"><\/scr' + 'ipt>');
 </script>
 <script type="module">
-const glslangInit = (await import(window.RC_CDN
-  ? 'https://cdn.jsdelivr.net/npm/@webgpu/glslang@0.0.15/dist/web-devel/glslang.js'
-  : './js/vendor/glslang.js')).default;
 (async () => {
   const out = document.getElementById('out');
   const say = l => { out.textContent += l + '\n';
@@ -39,6 +36,9 @@ const glslangInit = (await import(window.RC_CDN
     console.warn = function(){ captured.push([].map.call(arguments, String).join(' ')); _warn.apply(null, arguments); };
     console.log  = function(){ const s = [].map.call(arguments, String).join(' '); if(s.indexOf('[gputest]') < 0) captured.push(s); _log.apply(null, arguments); };
     let t0 = t();
+    const glslangInit = (await import(window.RC_CDN
+      ? 'https://cdn.jsdelivr.net/npm/@webgpu/glslang@0.0.15/dist/web-devel/glslang.js'
+      : './js/vendor/glslang.js')).default;
     const gm = await glslangInit();
     say('glslang ready +' + Math.round(t() - t0) + 'ms (api: ' + (gm && typeof gm.compileGLSL) + ')');
     t0 = t();
