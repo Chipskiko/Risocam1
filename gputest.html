@@ -9,9 +9,18 @@ render pipeline, and draws one frame. On Windows the pipeline build times the
 D3D12/DXC compiler — the number that decides the whole port.</p>
 <pre id="out" style="background:#fff;padding:1em;border:1px solid #ccc;white-space:pre-wrap"></pre>
 <canvas id="cv" width="256" height="256" style="border:1px solid #999"></canvas>
-<script src="js/vendor/twgsl.js"></script>
+<script>
+// Neocities rejects .wasm uploads, so the LIVE (https) page pulls both
+// compilers from CDN (CORS-enabled); localhost/LAN uses the vendored copies.
+window.RC_CDN = location.protocol === 'https:';
+document.write('<scr' + 'ipt src="' + (window.RC_CDN
+  ? 'https://cdn.babylonjs.com/twgsl/twgsl.js'
+  : 'js/vendor/twgsl.js') + '"><\/scr' + 'ipt>');
+</script>
 <script type="module">
-import glslangInit from './js/vendor/glslang.js';
+const glslangInit = (await import(window.RC_CDN
+  ? 'https://cdn.jsdelivr.net/npm/@webgpu/glslang@0.0.15/dist/web-devel/glslang.js'
+  : './js/vendor/glslang.js')).default;
 (async () => {
   const out = document.getElementById('out');
   const say = l => { out.textContent += l + '\n';
@@ -33,7 +42,9 @@ import glslangInit from './js/vendor/glslang.js';
     const gm = await glslangInit();
     say('glslang ready +' + Math.round(t() - t0) + 'ms (api: ' + (gm && typeof gm.compileGLSL) + ')');
     t0 = t();
-    const tw = await (typeof twgsl === 'function' ? twgsl('js/vendor/twgsl.wasm') : Promise.reject('twgsl global missing'));
+    const tw = await (typeof twgsl === 'function'
+      ? twgsl(window.RC_CDN ? 'https://cdn.babylonjs.com/twgsl/twgsl.wasm' : 'js/vendor/twgsl.wasm')
+      : Promise.reject('twgsl global missing'));
     say('twgsl ready +' + Math.round(t() - t0) + 'ms (api: ' + (tw && typeof tw.convertSpirV2WGSL) + ')');
 
     // ── fetch real shader sources ──
