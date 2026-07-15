@@ -14,11 +14,20 @@
 // died and we log it — with ?diag in the URL we alert() it so a frozen-GPU
 // machine can still read it. Each entry: "<ms since load> <step>".
 R.diag = function(step){
+  const line = Math.round(performance.now()) + 'ms ' + step;
+  try { console.log('[diag]', line); } catch(e){}
   try {
     const log = JSON.parse(localStorage.getItem('risocam_diag') || '[]');
-    log.push(Math.round(performance.now()) + 'ms ' + step);
+    log.push(line);
     if(log.length > 80) log.shift();
     localStorage.setItem('risocam_diag', JSON.stringify(log));
+  } catch(e){}   // Edge Tracking Prevention can block localStorage — console + beacon still work
+  // ?remote: stream each breadcrumb to the serving host (lan-diag-server.py
+  // POST /diag). sendBeacon is fire-and-forget and keeps delivering right up
+  // to a hard freeze — the receiving log shows exactly where boot died.
+  try {
+    if(window._flags && window._flags.remote && navigator.sendBeacon)
+      navigator.sendBeacon('diag', line);
   } catch(e){}
 };
 (function(){
@@ -30,6 +39,9 @@ R.diag = function(step){
       console[crashed ? 'warn' : 'log']('[diag] previous session ' + (crashed ? 'DIED — trail:' : 'trail:'), JSON.parse(prev));
       if(crashed && /[?&]diag\b/.test(location.search)){
         setTimeout(function(){ alert('Previous session crashed. Trail:\n\n' + JSON.parse(prev).join('\n')); }, 500);
+      }
+      if(/[?&]remote\b/.test(location.search) && navigator.sendBeacon){
+        setTimeout(function(){ try { navigator.sendBeacon('diag', 'PREV-TRAIL' + (crashed ? ' (CRASHED)' : '') + ': ' + prev); } catch(e){} }, 800);
       }
     }
     localStorage.setItem('risocam_diag', '[]');
@@ -51,7 +63,7 @@ R.diag = function(step){
   try {
     const q = new URLSearchParams(location.search);
     const f = window._flags = {};
-    ['safe','noshimmer','noworkers','noamt','nopbr','nowebgpu','minimal','diag'].forEach(k => { f[k] = q.has(k); });
+    ['safe','noshimmer','noworkers','noamt','nopbr','nowebgpu','minimal','diag','remote'].forEach(k => { f[k] = q.has(k); });
     if(f.minimal){ f.safe = f.noshimmer = f.noworkers = f.noamt = f.nopbr = f.nowebgpu = true; }
     if(f.safe){ window._gpuSlow = true; }
     if(f.nopbr){ window._usePaperPBR = false; }
