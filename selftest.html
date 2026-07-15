@@ -1,0 +1,179 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>risocam self-test</title>
+<body style="font:13px/1.5 monospace;padding:1.2em;background:#f5f0e8;max-width:60em">
+<h2 style="margin:0 0 .3em">risocam self-test</h2>
+<p>Drives the real app through every feature and checks the GPU the browser
+hands out. Leave open until <b>SUITE DONE</b> — on machines that compile
+per-mode shaders (Windows/D3D) the full run can take a few minutes; each
+mode's first compile is cached by the browser afterwards.</p>
+<pre id="out" style="background:#fff;padding:1em;border:1px solid #ccc;white-space:pre-wrap"></pre>
+<iframe id="app" style="width:1100px;height:760px;border:2px solid #999;background:#fff"></iframe>
+<script>
+(async () => {
+  const out = document.getElementById('out');
+  let pass = 0, fail = 0, skip = 0;
+  const say = line => {
+    out.textContent += line + '\n';
+    try { navigator.sendBeacon('diag', 'SELFTEST ' + line); } catch(e){}
+    console.log('[selftest]', line);
+  };
+  const verdict = (name, ok, detail, optional) => {
+    if(ok){ pass++; say('PASS  ' + name + (detail ? ' — ' + detail : '')); }
+    else if(optional){ skip++; say('SKIP  ' + name + (detail ? ' — ' + detail : '')); }
+    else { fail++; say('FAIL  ' + name + (detail ? ' — ' + detail : '')); }
+  };
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const until = async (fn, ms, step) => {
+    const t0 = performance.now();
+    for(;;){
+      let v; try { v = fn(); } catch(e){ v = false; }
+      if(v) return performance.now() - t0;
+      if(performance.now() - t0 > ms) return -1;
+      await sleep(step || 300);
+    }
+  };
+
+  // ── Part 1: GPU selection ────────────────────────────────────────────────
+  say('── GPU selection ──');
+  const gpuOf = pref => {
+    try {
+      const c = document.createElement('canvas');
+      const g = c.getContext('webgl2', {powerPreference: pref})
+             || c.getContext('webgl',  {powerPreference: pref});
+      if(!g) return null;
+      const d = g.getExtension('WEBGL_debug_renderer_info');
+      const r = String(g.getParameter(d ? d.UNMASKED_RENDERER_WEBGL : g.RENDERER) || '');
+      const lose = g.getExtension('WEBGL_lose_context'); if(lose) lose.loseContext();
+      return r;
+    } catch(e){ return null; }
+  };
+  const lo = gpuOf('low-power');
+  const hi = gpuOf('high-performance');
+  say('low-power        : ' + lo);
+  say('high-performance : ' + hi);
+  const discrete = /nvidia|geforce|rtx|gtx|quadro|radeon\s*rx|radeon\s*pro|arc\s*a/i.test(hi || '');
+  if(lo && hi && lo !== hi){
+    verdict('dual-GPU selection', true, 'two adapters visible; the app requests high-performance and gets: ' + hi);
+  } else {
+    verdict('GPU adapters', !!hi, discrete
+      ? 'one adapter visible, and it IS a discrete GPU: ' + hi
+      : 'one adapter visible: ' + hi + ' (single-GPU machine, or the OS/browser pins one adapter)');
+  }
+  if(discrete) say('note: discrete GPU detected — full-quality render path expected');
+  try {
+    if(navigator.gpu){
+      const ad = await navigator.gpu.requestAdapter({powerPreference: 'high-performance'});
+      const info = ad && (ad.info || {});
+      say('webgpu high-perf : ' + [info.vendor, info.architecture, info.device, info.description].filter(Boolean).join(' / '));
+    } else say('webgpu           : unavailable (insecure origin or unsupported)');
+  } catch(e){ say('webgpu           : ' + e); }
+
+  // ── Part 2: app suite in the iframe ──────────────────────────────────────
+  say('── app suite ──');
+  const iframe = document.getElementById('app');
+  iframe.src = './' + (location.search || '');   // pass ?remote etc. through
+  await new Promise(r => iframe.onload = r);
+  const cw = iframe.contentWindow;
+
+  // Bridge: let/const globals (gl, prog, locs, cached, mode) are invisible
+  // across windows — inject a script INTO the app realm to expose accessors.
+  const bs = cw.document.createElement('script');
+  bs.textContent = `window.__st = {
+    ready: () => !!window._glReady && !window._variantBuilding,
+    mode: () => window._mode,
+    variant: () => window._shaderVariant,
+    render: () => { try { markDirty(); R.render(); return 1; } catch(e){ return 0; } },
+    mean: () => { const W = gl.drawingBufferWidth, H = gl.drawingBufferHeight;
+      const p = new Uint8Array(256 * 64 * 4);
+      gl.readPixels((W/2 - 128) | 0, (H/2 - 32) | 0, 256, 64, gl.RGBA, gl.UNSIGNED_BYTE, p);
+      let r = 0, n = 256 * 64;
+      for(let i = 0; i < p.length; i += 4) r += (p[i] + p[i+1] + p[i+2]) / 3;
+      return Math.round(r / n); },
+    glErr: () => gl.getError(),
+    gpu: () => { try { const d = gl.getExtension('WEBGL_debug_renderer_info');
+      return String(gl.getParameter(d ? d.UNMASKED_RENDERER_WEBGL : gl.RENDERER)); } catch(e){ return '?'; } },
+    loseRestore: () => { const e = gl.getExtension('WEBGL_lose_context');
+      e.loseContext(); setTimeout(() => e.restoreContext(), 400); return 1; },
+    clickMode: (label) => { const b = [...document.querySelectorAll('button')]
+      .find(x => x.textContent.trim() === label); if(b) b.click(); return !!b; },
+    applyCMYK: () => { const p = R.PROFILES.find(p => /cmyk/i.test(p.name || ''));
+      if(p){ R.applyProf(p); return 1; } return 0; },
+    spot: (on) => { const b = [...document.querySelectorAll('button')]
+      .find(x => x.textContent.trim() === (on ? 'SPOT' : 'CMYK')); if(b) b.click(); return !!b; },
+    spotState: () => ({ sepType: cached.sepType, baked: !!window._sepLut,
+      gate: R._sepLutFrameGate ? R._sepLutFrameGate() : -1 }),
+    paper: (k) => { R.loadPaperTexture(k); return 1; },
+    usePaperScan: () => { try { return gl.getUniform(prog, locs.u_usePaperScan); } catch(e){ return -1; } },
+    isD3D: () => !!window._isD3D,
+    diagTail: (n) => { try { return JSON.parse(localStorage.getItem('risocam_diag') || '[]').slice(-n); } catch(e){ return []; } },
+  };`;
+  cw.document.head.appendChild(bs);
+  const st = () => cw.__st;
+
+  // boot
+  let t = await until(() => st() && st().ready(), 240000, 500);
+  verdict('boot + first shader link', t >= 0, t >= 0 ? Math.round(t/1000) + 's — app GPU: ' + st().gpu() : 'timed out after 240s');
+  if(t < 0){ say('SUITE ABORTED'); return; }
+  say('app shader path: ' + (st().isD3D() ? 'D3D slim variants' : 'full shader') + ', boot variant: ' + st().variant());
+  await sleep(1500);
+
+  // all six modes
+  for(const m of ['GRAIN','RISO','SCREEN','LINES','LETTERS','STIPPLE']){
+    const clicked = st().clickMode(m);
+    if(!clicked){ verdict('mode ' + m, false, 'tab button not found'); continue; }
+    t = await until(() => st().ready(), 150000, 400);       // slim rebuild can compile
+    if(t < 0){ verdict('mode ' + m, false, 'shader/variant not ready after 150s'); continue; }
+    await sleep(1200);                                       // let prepasses land
+    st().render(); st().render();
+    const mean = st().mean();
+    const ok = mean > 25 && mean < 250;                      // not black, not blank
+    verdict('mode ' + m, ok, 'variant ' + st().variant() + ', mid-strip luma ' + mean + (t > 900 ? ', rebuild ' + Math.round(t/1000) + 's' : ''));
+  }
+
+  // spot separation (LUT on D3D, NNLS elsewhere; CMYK profile = 4 inks)
+  st().clickMode('GRAIN');
+  await until(() => st().ready(), 150000, 400);
+  st().applyCMYK(); st().spot(true); st().render();
+  t = await until(() => { const s = st().spotState(); return s.sepType === 1 && (s.baked || !st().isD3D()); }, 30000, 500);
+  st().render();
+  const sp = st().spotState();
+  verdict('spot separation (4-ink)', t >= 0 && sp.sepType === 1,
+    'baked=' + sp.baked + ' gate=' + sp.gate + (st().isD3D() ? ' (LUT path)' : ' (NNLS path)'));
+  st().spot(false);
+
+  // paper scan texture
+  st().paper('kraft');
+  t = await until(() => st().usePaperScan() === 1, 15000, 400);
+  verdict('paper scan (kraft)', t >= 0, t >= 0 ? 'u_usePaperScan=1' : 'texture never engaged');
+  st().paper('procedural');
+
+  // PNG export (blob swallowed — no file saved)
+  let blobSize = 0;
+  const origCreate = cw.URL.createObjectURL;
+  cw.URL.createObjectURL = b => { blobSize = (b && b.size) || 0; return 'blob:selftest-swallowed'; };
+  const pngBtn = [...cw.document.querySelectorAll('button')].find(x => x.textContent.trim() === 'PNG');
+  if(pngBtn){
+    pngBtn.click();
+    t = await until(() => blobSize > 0, 120000, 1000);
+    verdict('PNG export (tiled draw)', t >= 0, t >= 0 ? (blobSize/1048576).toFixed(1) + ' MB in ' + Math.round(t/1000) + 's' : 'no blob after 120s');
+  } else verdict('PNG export', false, 'button not found');
+  cw.URL.createObjectURL = origCreate;
+
+  // context-loss recovery
+  st().loseRestore();
+  t = await until(() => st().ready() && st().diagTail(6).some(l => l.indexOf('recover:done') >= 0), 200000, 600);
+  st().render(); st().render();
+  const rmean = t >= 0 ? st().mean() : -1;
+  verdict('context-loss recovery', t >= 0 && rmean > 25 && rmean < 250,
+    t >= 0 ? 'recover:done in ' + Math.round(t/1000) + 's, post-recovery luma ' + rmean : 'never recovered');
+
+  // GL error flag after everything
+  st().render();
+  const finalErr = st().glErr();
+  verdict('GL error state clean', finalErr === 0, 'gl.getError()=' + finalErr);
+
+  say('──────────');
+  say('SUITE DONE: ' + pass + ' passed, ' + fail + ' failed, ' + skip + ' skipped');
+})();
+</script>
