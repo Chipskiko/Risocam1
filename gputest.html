@@ -9,13 +9,16 @@ render pipeline, and draws one frame. On Windows the pipeline build times the
 D3D12/DXC compiler — the number that decides the whole port.</p>
 <pre id="out" style="background:#fff;padding:1em;border:1px solid #ccc;white-space:pre-wrap"></pre>
 <canvas id="cv" width="256" height="256" style="border:1px solid #999"></canvas>
+<!-- Both compiler wasms ride as base64 inside .js files: Neocities rejects
+     .wasm uploads AND sends a site-wide CSP header (connect-src 'self' data:
+     blob:) that blocks cross-origin fetch — but blob: URLs are allowed, so
+     the binaries decode to blobs at runtime. One code path everywhere. -->
+<script src="js/vendor/twgsl.js"></script>
+<script src="js/vendor/glslang-wasm-b64.js"></script>
+<script src="js/vendor/twgsl-wasm-b64.js"></script>
 <script>
-// Neocities rejects .wasm uploads, so the LIVE (https) page pulls both
-// compilers from CDN (CORS-enabled); localhost/LAN uses the vendored copies.
-window.RC_CDN = location.protocol === 'https:';
-document.write('<scr' + 'ipt src="' + (window.RC_CDN
-  ? 'https://cdn.babylonjs.com/twgsl/twgsl.js'
-  : 'js/vendor/twgsl.js') + '"><\/scr' + 'ipt>');
+window.RC_BLOB = b64 => URL.createObjectURL(new Blob(
+  [Uint8Array.from(atob(b64), c => c.charCodeAt(0))], {type: 'application/wasm'}));
 </script>
 <script type="module">
 (async () => {
@@ -36,14 +39,13 @@ document.write('<scr' + 'ipt src="' + (window.RC_CDN
     console.warn = function(){ captured.push([].map.call(arguments, String).join(' ')); _warn.apply(null, arguments); };
     console.log  = function(){ const s = [].map.call(arguments, String).join(' '); if(s.indexOf('[gputest]') < 0) captured.push(s); _log.apply(null, arguments); };
     let t0 = t();
-    const glslangInit = (await import(window.RC_CDN
-      ? 'https://cdn.jsdelivr.net/npm/@webgpu/glslang@0.0.15/dist/web-devel/glslang.js'
-      : './js/vendor/glslang.js')).default;
+    window.RC_GLSLANG_WASM_URL = window.RC_BLOB(window.RC_GLSLANG_WASM_B64);
+    const glslangInit = (await import('./js/vendor/glslang.js')).default;
     const gm = await glslangInit();
     say('glslang ready +' + Math.round(t() - t0) + 'ms (api: ' + (gm && typeof gm.compileGLSL) + ')');
     t0 = t();
     const tw = await (typeof twgsl === 'function'
-      ? twgsl(window.RC_CDN ? 'https://cdn.babylonjs.com/twgsl/twgsl.wasm' : 'js/vendor/twgsl.wasm')
+      ? twgsl(window.RC_BLOB(window.RC_TWGSL_WASM_B64))
       : Promise.reject('twgsl global missing'));
     say('twgsl ready +' + Math.round(t() - t0) + 'ms (api: ' + (tw && typeof tw.convertSpirV2WGSL) + ')');
 

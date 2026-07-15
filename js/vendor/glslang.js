@@ -55,6 +55,7 @@ if (typeof exports === 'object' && typeof module === 'object')
         return new Promise(resolve => {
             Module({
                 locateFile() {
+                    if (window.RC_GLSLANG_WASM_URL) return window.RC_GLSLANG_WASM_URL;
                     const i = import.meta.url.lastIndexOf('/')
                     return import.meta.url.substring(0, i) + '/glslang.wasm';
                 },
