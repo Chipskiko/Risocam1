@@ -63,7 +63,7 @@ R.diag = function(step){
   try {
     const q = new URLSearchParams(location.search);
     const f = window._flags = {};
-    ['safe','noshimmer','noworkers','noamt','nopbr','nowebgpu','minimal','diag','remote'].forEach(k => { f[k] = q.has(k); });
+    ['safe','noshimmer','noworkers','noamt','nopbr','nowebgpu','minimal','diag','remote','slim'].forEach(k => { f[k] = q.has(k); });
     if(f.minimal){ f.safe = f.noshimmer = f.noworkers = f.noamt = f.nopbr = f.nowebgpu = true; }
     if(f.safe){ window._gpuSlow = true; }
     if(f.nopbr){ window._usePaperPBR = false; }
@@ -71,6 +71,57 @@ R.diag = function(step){
     if(on.length){ console.warn('[flags]', on.join(' ')); R.diag('flags:' + on.join('+')); }
   } catch(e){}
 })();
+
+// ── D3D slim shader variants ────────────────────────────────────────────────
+// Windows ANGLE feeds the fragment shader to Microsoft's D3D compiler, which
+// cannot digest the full megashader (probe data on Intel UHD: minimal 4 s,
+// grain+riso 15 s, everything-but-NNLS >90 s, full shader = never links).
+// On D3D we compile ONLY the active mode's engines and stub every other heavy
+// function with a neutral return; switching modes rebuilds the program (a few
+// seconds, then Edge's per-site shader disk cache makes it instant next time).
+// The per-pixel NNLS solver is ALWAYS replaced on D3D by the baked SEP-LUT
+// (forced on for any ink count via _sepLutMinInk = 1), with a luma fallback
+// for the frames while a bake is still in flight. Safety property: a stubbed
+// function still exists with the same signature — a mistaken call from a kept
+// path renders neutral values instead of failing the compile.
+const _SLIM_GROUPS = {
+  NNLS:    ['nnls1','nnls2','nnls3'],
+  LETTERS: ['asciiCov','asciiStamp'],
+  LINES:   ['lineDither','lineSampled','lineRoughness','lineWobble'],
+  SCREEN:  ['screenDither','screenMatrix','screenSampled','screenEngine','cellTone'],
+  RISOMTX: ['risoMatrixDither','gpuGrainTouch'],
+};
+const _SLIM_NNLS_BODY = '{ target = quantizeColor(target); if (u_useSepLut > 0.5) { return sepLutSample(target); } float k = clamp(1.0 - dot(target, vec3(0.299, 0.587, 0.114)), 0.0, 1.0); return vec4(k); }';
+function _slimStubsForMode(m){
+  switch(m){
+    case 'flat':    return ['LETTERS','LINES','SCREEN'];            // keeps riso matrix + dithers
+    case 'screen':  return ['LETTERS','LINES','RISOMTX'];
+    case 'lines':   return ['LETTERS','SCREEN','RISOMTX'];
+    case 'letters': return ['LINES','RISOMTX'];                     // letters shares cellTone with the screen engine — keep SCREEN
+    case 'stipple': return ['LETTERS','LINES','SCREEN','RISOMTX'];  // masters sampled via the core path
+    default:        return ['LETTERS','LINES','SCREEN','RISOMTX'];  // grain
+  }
+}
+function _slimGroupForMode(m){ return 'slim(' + _slimStubsForMode(m).join('+') + ')'; }
+function _stubFnBody(src, name, body){
+  const re = new RegExp('(^|\\n)(float|vec2|vec3|vec4)\\s+' + name + '\\s*\\(', 'g');
+  const m = re.exec(src);
+  if(!m) return src;
+  let i = src.indexOf('{', re.lastIndex);
+  if(i < 0) return src;
+  let depth = 0, j = i;
+  for(; j < src.length; j++){
+    if(src[j] === '{') depth++;
+    else if(src[j] === '}'){ depth--; if(depth === 0) break; }
+  }
+  return src.slice(0, i) + (body || ('{ return ' + m[2] + '(0.0); }')) + src.slice(j + 1);
+}
+function _slimFs(src, m){
+  for(const g of _slimStubsForMode(m)) for(const fn of _SLIM_GROUPS[g]) src = _stubFnBody(src, fn);
+  for(const fn of _SLIM_GROUPS.NNLS) src = _stubFnBody(src, fn);   // solver always out on D3D
+  src = _stubFnBody(src, 'nnlsDecompose', _SLIM_NNLS_BODY);
+  return src;
+}
 
 let _ctxLossHooked = false;
 function initGL(onReady){
@@ -102,6 +153,11 @@ function initGL(onReady){
       const dbg = gl.getExtension('WEBGL_debug_renderer_info');
       const rend = String(gl.getParameter(dbg ? dbg.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || '');
       R.diag('gpu:' + rend.slice(0, 90));
+      // Direct3D backend (Windows ANGLE) → per-mode slim shaders, and the
+      // LUT separation replaces the in-shader solver for EVERY ink count.
+      // ?slim forces this path for testing on other platforms.
+      window._isD3D = /Direct3D/i.test(rend) || !!(window._flags && window._flags.slim);
+      if(window._isD3D){ window._sepLutMinInk = 1; R.diag('d3d:slim-shaders on'); }
       if(/swiftshader|llvmpipe|software/i.test(rend)){
         console.warn('[gl] software renderer detected:', rend);
         // Skip the timing probe entirely (a gl.finish probe on SwiftShader
@@ -142,7 +198,16 @@ function initGL(onReady){
     return s;   // status checked at link completion (_finishInit)
   }
   const vs=mkShader(gl.VERTEX_SHADER,el('vs').textContent);
-  const fs=mkShader(gl.FRAGMENT_SHADER,el('fs').textContent);
+  let _fsText = el('fs').textContent;
+  if(window._isD3D){
+    const _m0 = window._mode || (typeof mode !== 'undefined' ? mode : 'grain') || 'grain';
+    _fsText = _slimFs(_fsText, _m0);
+    window._shaderVariant = _slimGroupForMode(_m0);
+    R.diag('variant:' + _m0 + ' ' + window._shaderVariant);
+  } else {
+    window._shaderVariant = 'full';
+  }
+  const fs=mkShader(gl.FRAGMENT_SHADER,_fsText);
   prog=gl.createProgram();
   gl.attachShader(prog,vs);gl.attachShader(prog,fs);gl.linkProgram(prog);
   R.diag('link:submitted');
@@ -619,6 +684,7 @@ function initGL(onReady){
   gl.uniform1i(locs.u_prevSrc,3);
 
   window._glReady = true;
+  window._variantBuilding = false;
   R.diag('initGL:done');
   // Anything uploaded while the program was still compiling (sample image,
   // a user drop) landed on placeholder handles — re-push the current source.
@@ -630,10 +696,15 @@ function initGL(onReady){
 
   const _par = gl.getExtension('KHR_parallel_shader_compile');
   if(_par){
+    let _slowToastShown = false;
     (function _poll(){
       if(gl.isContextLost()){ R.diag('link:ctx-lost'); return; }
-      if(gl.getProgramParameter(prog, _par.COMPLETION_STATUS_KHR)) _finishInit();
-      else setTimeout(_poll, 60);   // setTimeout, not rAF: keeps polling in occluded tabs
+      if(gl.getProgramParameter(prog, _par.COMPLETION_STATUS_KHR)){ _finishInit(); return; }
+      if(!_slowToastShown && performance.now() - _linkT0 > 2500){
+        _slowToastShown = true;
+        try { R.toast('Building the print engine for this GPU — one-time, up to ~20 s…'); } catch(e){}
+      }
+      setTimeout(_poll, 60);   // setTimeout, not rAF: keeps polling in occluded tabs
     })();
   } else {
     _finishInit();
@@ -1382,6 +1453,19 @@ function _renderInner(){
   // Program still compiling (KHR_parallel_shader_compile poll in initGL) —
   // drop the frame; _finishInit re-kicks rendering the moment it's linked.
   if(!window._glReady) return;
+  // D3D slim shaders: the current program only contains ONE mode's engines.
+  // On mode change, rebuild for the new mode (a few seconds the first time;
+  // instant once Edge's per-site shader disk cache has seen that variant).
+  if(window._isD3D && !window._variantBuilding){
+    const _want = _slimGroupForMode(window._mode || mode);
+    if(_want !== window._shaderVariant){
+      window._variantBuilding = true;
+      try { R.toast('Preparing ' + (window._mode || mode) + ' engine…'); } catch(e){}
+      R.diag('variant-switch:' + (window._mode || mode));
+      _recoverGLState();
+      return;
+    }
+  }
   const isPhoneNow=phoneActive;
 
   // Aspect ratio — canvas shape
