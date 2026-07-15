@@ -1,0 +1,209 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>risocam WebGPU toolchain test</title>
+<body style="font:13px/1.5 monospace;padding:1.2em;background:#f5f0e8;max-width:62em">
+<h2 style="margin:0 0 .3em">WebGPU transpile toolchain test</h2>
+<p>Takes the app's REAL GLSL megashader (single source of truth), mechanically
+transforms it, compiles GLSL→SPIR-V (glslang) → WGSL (tint), builds a WebGPU
+render pipeline, and draws one frame. On Windows the pipeline build times the
+D3D12/DXC compiler — the number that decides the whole port.</p>
+<pre id="out" style="background:#fff;padding:1em;border:1px solid #ccc;white-space:pre-wrap"></pre>
+<canvas id="cv" width="256" height="256" style="border:1px solid #999"></canvas>
+<script src="js/vendor/twgsl.js"></script>
+<script type="module">
+import glslangInit from './js/vendor/glslang.js';
+(async () => {
+  const out = document.getElementById('out');
+  const say = l => { out.textContent += l + '\n';
+    try { navigator.sendBeacon('diag', 'GPUTEST ' + l); } catch(e){}
+    console.log('[gputest]', l); };
+  const t = () => performance.now();
+
+  try {
+    if(!navigator.gpu){ say('FATAL: navigator.gpu unavailable (needs https or localhost)'); return; }
+
+    // ── load compilers ──
+    // emscripten binds console.warn/log at module INIT — hook them first so
+    // glslang's GLSL error text is capturable later.
+    const captured = [];
+    const _warn = console.warn.bind(console), _log = console.log.bind(console);
+    console.warn = function(){ captured.push([].map.call(arguments, String).join(' ')); _warn.apply(null, arguments); };
+    console.log  = function(){ const s = [].map.call(arguments, String).join(' '); if(s.indexOf('[gputest]') < 0) captured.push(s); _log.apply(null, arguments); };
+    let t0 = t();
+    const gm = await glslangInit();
+    say('glslang ready +' + Math.round(t() - t0) + 'ms (api: ' + (gm && typeof gm.compileGLSL) + ')');
+    t0 = t();
+    const tw = await (typeof twgsl === 'function' ? twgsl('js/vendor/twgsl.wasm') : Promise.reject('twgsl global missing'));
+    say('twgsl ready +' + Math.round(t() - t0) + 'ms (api: ' + (tw && typeof tw.convertSpirV2WGSL) + ')');
+
+    // ── fetch real shader sources ──
+    const html = await (await fetch('index.html', {cache: 'no-store'})).text();
+    const grab = id => (html.match(new RegExp('<script id="' + id + '"[^>]*>([\\s\\S]*?)<\\/script>')) || [])[1];
+    let vs = grab('vs'), fs = grab('fs');
+    if(!vs || !fs){ say('FATAL: shader tags not found'); return; }
+    say('fs source ' + (fs.length/1024).toFixed(0) + ' KB');
+
+    // ── mechanical GLSL ES 1.00 → Vulkan-flavoured ES 3.10 transforms ──
+    // Fragment: gather every non-sampler uniform into ONE std140 block
+    // (anonymous → member names stay valid unprefixed), give samplers
+    // explicit bindings, modernise builtins, flip gl_FragCoord to GL origin.
+    // Identifiers that ES 1.00 allowed but GLSL 3.10 or WGSL reserve — rename
+    // FIRST, before any injected code (which legitimately uses e.g. `binding`).
+    for(const w of ['active', 'ref', 'target', 'type', 'override', 'enable', 'macro',
+                    'module', 'operator', 'private', 'public', 'static', 'filter',
+                    'common', 'handle', 'yield', 'unless', 'require', 'mutable',
+                    'using', 'where', 'snorm', 'unorm', 'regardless', 'premerge'])
+      fs = fs.replace(new RegExp('\\b' + w + '\\b', 'g'), 'rc_' + w);
+
+    const uniObjs = [];
+    let nBlock = 0;
+    // Handles both single and comma-separated declarations:
+    //   uniform vec3 u_ink0, u_ink1, u_ink2, u_ink3; // comment
+    fs = fs.replace(/^\s*uniform\s+(float|int|vec2|vec3|vec4)\s+([A-Za-z0-9_\s,]+);.*$/gm,
+      (m, ty, names) => {
+        const list = names.split(',').map(s => s.trim()).filter(Boolean);
+        for(const n of list){ uniObjs.push([ty, n]); nBlock++; }
+        return '// moved to UBO: ' + list.join(', ');
+      });
+    // WGSL has no combined image-samplers (tint rejects them) — split each
+    // sampler2D into texture2D + sampler and recombine via #define at use
+    // sites (verified: no shader function takes a sampler parameter).
+    let sIdx = 0; const samplers = [];
+    fs = fs.replace(/^uniform\s+sampler2D\s+([A-Za-z0-9_]+)\s*;.*$/gm,
+      (m, name) => {
+        samplers.push(name);
+        const bT = 1 + 2 * sIdx, bS = 2 + 2 * sIdx; sIdx++;
+        return 'layout(set=0, binding=' + bT + ') uniform highp texture2D ' + name + '_T;\n' +
+               'layout(set=0, binding=' + bS + ') uniform highp sampler ' + name + '_S;\n' +
+               '#define ' + name + ' ' + name + '_T, ' + name + '_S';
+      });
+    say('transform: ' + nBlock + ' uniforms → UBO, ' + samplers.length + ' samplers bound (expect 135/16)');
+    const block = 'layout(std140, set=0, binding=0) uniform Uniforms {\n' +
+      uniObjs.map(([ty, name]) => '  ' + ty + ' ' + name + ';').join('\n') + '\n};\n';
+    fs = fs.replace(/gl_FragCoord/g, '(vec4(gl_FragCoord_.x, u_res.y - gl_FragCoord_.y, gl_FragCoord_.z, gl_FragCoord_.w))');
+    fs = fs.replace(/gl_FragCoord_/g, 'gl_FragCoord');
+    // WGSL forbids implicit-derivative sampling in non-uniform control flow
+    // (this shader branches before sampling constantly). No texture here has
+    // mipmaps, so explicit-LOD sampling is bit-identical — route every call
+    // through rcTex (glslang inlines it; tint emits textureSampleLevel).
+    fs = fs.replace(/\btexture2D\s*\(/g, 'rcTex(');
+    let vloc = 0;   // SPIR-V requires explicit locations on user in/out
+    fs = fs.replace(/\bvarying\b/g, () => 'layout(location=' + (vloc++) + ') in');
+    fs = fs.replace(/\bgl_FragColor\b/g, 'rc_fragColor');
+    fs = '#version 310 es\nprecision highp float;\nprecision highp int;\n' +
+         'layout(location=0) out vec4 rc_fragColor;\n' +
+         'vec4 rcTex(highp texture2D t, highp sampler s, vec2 uv){ return textureLod(sampler2D(t, s), uv, 0.0); }\n' +
+         block + fs;
+
+    let aloc = 0, ovloc = 0;
+    vs = vs.replace(/\battribute\b/g, () => 'layout(location=' + (aloc++) + ') in')
+           .replace(/\bvarying\b/g, () => 'layout(location=' + (ovloc++) + ') out');
+    vs = '#version 310 es\nprecision highp float;\n' + vs;
+
+    // ── GLSL → SPIR-V ──
+    const compile = (src, kind) => {
+      captured.length = 0;
+      try { return gm.compileGLSL(src, kind, false); }
+      catch(e){
+        say('glslang ' + kind + ' errors (' + captured.length + ' captured lines):');
+        captured.filter(l => l.trim()).slice(0, 8).forEach(l => say('  ' + l.slice(0, 220)));
+        const mline = captured.join('\n').match(/ERROR:\s*\d*:(\d+):/);
+        if(mline){
+          const ln = +mline[1];
+          const lines = src.split('\n');
+          for(let i = Math.max(0, ln - 3); i < Math.min(lines.length, ln + 2); i++)
+            say('  src ' + (i + 1) + ': ' + lines[i].slice(0, 160));
+        }
+        throw e;
+      }
+    };
+    t0 = t();
+    const spvFS = compile(fs, 'fragment');
+    console.warn = _warn;
+    say('glslang fs → SPIR-V ok, ' + spvFS.length + ' words, +' + Math.round(t() - t0) + 'ms');
+    t0 = t();
+    const spvVS = compile(vs, 'vertex');
+    say('glslang vs → SPIR-V ok, +' + Math.round(t() - t0) + 'ms');
+
+    // ── SPIR-V → WGSL ──
+    t0 = t();
+    captured.length = 0;
+    const wgslFS = tw.convertSpirV2WGSL(spvFS);
+    const wgslVS = tw.convertSpirV2WGSL(spvVS);
+    window.__dbg = {fs, spvFS, wgslFS, wgslVS, tintLog: captured.slice()};
+    say('tint → WGSL ok, fs ' + (wgslFS.length/1024).toFixed(0) + ' KB, +' + Math.round(t() - t0) + 'ms');
+    if(captured.some(l => /error|fail|unhandled|unsupported/i.test(l)))
+      captured.filter(l => /error|fail|unhandled|unsupported/i.test(l)).slice(0, 6).forEach(l => say('tint: ' + l.slice(0, 220)));
+    const fsFns = (wgslFS.match(/fn\s+\w+/g) || []);
+    say('fs WGSL entry fns: ' + fsFns.slice(-3).join(', ') + ' (total ' + fsFns.length + ' fns)');
+
+    // ── reflect bindings from the WGSL text ──
+    const binds = [];
+    wgslFS.replace(/@group\((\d+)\)\s*@binding\((\d+)\)\s*var(?:<([^>]*)>)?\s+([A-Za-z0-9_]+)\s*:\s*([^;]+);/g,
+      (m, g, b, addr, name, type) => { binds.push({g: +g, b: +b, name, type: type.trim(), addr: addr || ''}); return m; });
+    binds.sort((a, b) => a.b - b.b);
+    say('bindings: ' + binds.map(x => x.b + ':' + x.name + ':' + x.type.replace(/<.*/, '')).join(' | '));
+
+    // ── device + pipeline (THE DXC timing on Windows) ──
+    const adapter = await navigator.gpu.requestAdapter({powerPreference: 'high-performance'});
+    if(!adapter){ say('FATAL: no adapter'); return; }
+    const info = adapter.info || {};
+    say('adapter: ' + [info.vendor, info.architecture, info.description].filter(Boolean).join(' / '));
+    const device = await adapter.requestDevice();
+    device.addEventListener && device.addEventListener('uncapturederror', e => say('GPU ERROR: ' + (e.error && e.error.message || e)));
+
+    device.pushErrorScope('validation');
+    const modFS = device.createShaderModule({code: wgslFS});
+    const modVS = device.createShaderModule({code: wgslVS});
+    const modErr = await device.popErrorScope();
+    if(modErr){ say('MODULE VALIDATION: ' + modErr.message.slice(0, 400)); }
+    const ciFS = await modFS.getCompilationInfo();
+    for(const m of ciFS.messages.slice(0, 5)) if(m.type === 'error') say('fs compile error: L' + m.lineNum + ': ' + m.message.slice(0, 200));
+
+    t0 = t();
+    device.pushErrorScope('validation');
+    const pipeline = await device.createRenderPipelineAsync({
+      layout: 'auto',
+      vertex: {module: modVS, entryPoint: 'main', buffers: [{arrayStride: 8, attributes: [{shaderLocation: 0, offset: 0, format: 'float32x2'}]}]},
+      fragment: {module: modFS, entryPoint: 'main', targets: [{format: navigator.gpu.getPreferredCanvasFormat()}]},
+      primitive: {topology: 'triangle-strip'},
+    });
+    const pipeErr = await device.popErrorScope();
+    const pipeMs = Math.round(t() - t0);
+    if(pipeErr){ say('PIPELINE VALIDATION: ' + pipeErr.message.slice(0, 400)); return; }
+    say('PIPELINE BUILT +' + pipeMs + 'ms  ← the backend-compiler number');
+
+    // ── one real frame with dummy resources ──
+    const ubo = device.createBuffer({size: 16384, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST});
+    device.queue.writeBuffer(ubo, 0, new Float32Array(4096));   // zeros; u_res etc default 0
+    const dummyTex = device.createTexture({size: [1, 1], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST});
+    device.queue.writeTexture({texture: dummyTex}, new Uint8Array([200, 190, 180, 255]), {}, [1, 1]);
+    const dummySamp = device.createSampler({magFilter: 'linear', minFilter: 'linear'});
+    const entries = binds.map(x => ({
+      binding: x.b,
+      resource: /texture_2d/.test(x.type) ? dummyTex.createView()
+              : /sampler/.test(x.type)    ? dummySamp
+              : {buffer: ubo},
+    }));
+    device.pushErrorScope('validation');
+    const bg = device.createBindGroup({layout: pipeline.getBindGroupLayout(0), entries});
+    const bgErr = await device.popErrorScope();
+    if(bgErr){ say('BINDGROUP VALIDATION: ' + bgErr.message.slice(0, 300)); return; }
+
+    const quad = device.createBuffer({size: 32, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST});
+    device.queue.writeBuffer(quad, 0, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]));
+    const ctx = document.getElementById('cv').getContext('webgpu');
+    ctx.configure({device, format: navigator.gpu.getPreferredCanvasFormat(), alphaMode: 'opaque'});
+    const enc = device.createCommandEncoder();
+    const pass = enc.beginRenderPass({colorAttachments: [{view: ctx.getCurrentTexture().createView(), loadOp: 'clear', storeOp: 'store', clearValue: {r: 1, g: 0, b: 1, a: 1}}]});
+    pass.setPipeline(pipeline); pass.setBindGroup(0, bg); pass.setVertexBuffer(0, quad); pass.draw(4); pass.end();
+    device.queue.submit([enc.finish()]);
+    await device.queue.onSubmittedWorkDone();
+    say('FRAME DRAWN — megashader executed end-to-end on WebGPU');
+    say('DONE');
+  } catch(e){
+    say('FAIL: ' + (e && (e.message || e)) );
+    console.error(e);
+  }
+})();
+</script>
