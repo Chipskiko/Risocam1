@@ -7,9 +7,64 @@
 // handler re-runs initGL, so registering inside initGL without a guard
 // doubles the listeners on every restore (and each extra initGL run
 // allocates a full duplicate texture set on the live context).
+// ── Crash-surviving diagnostics ─────────────────────────────────────────────
+// The Windows freeze reports kill the tab before DevTools can help, so boot
+// breadcrumbs go to localStorage (survives the crash). Next load: the previous
+// trail is kept in risocam_diag_prev; if it lacks 'clean-exit' the session
+// died and we log it — with ?diag in the URL we alert() it so a frozen-GPU
+// machine can still read it. Each entry: "<ms since load> <step>".
+R.diag = function(step){
+  try {
+    const log = JSON.parse(localStorage.getItem('risocam_diag') || '[]');
+    log.push(Math.round(performance.now()) + 'ms ' + step);
+    if(log.length > 80) log.shift();
+    localStorage.setItem('risocam_diag', JSON.stringify(log));
+  } catch(e){}
+};
+(function(){
+  try {
+    const prev = localStorage.getItem('risocam_diag');
+    if(prev){
+      localStorage.setItem('risocam_diag_prev', prev);
+      const crashed = prev.indexOf('clean-exit') < 0;
+      console[crashed ? 'warn' : 'log']('[diag] previous session ' + (crashed ? 'DIED — trail:' : 'trail:'), JSON.parse(prev));
+      if(crashed && /[?&]diag\b/.test(location.search)){
+        setTimeout(function(){ alert('Previous session crashed. Trail:\n\n' + JSON.parse(prev).join('\n')); }, 500);
+      }
+    }
+    localStorage.setItem('risocam_diag', '[]');
+    addEventListener('pagehide', function(){ R.diag('clean-exit'); });
+  } catch(e){}
+})();
+
+// ── Diagnostic kill-switches ────────────────────────────────────────────────
+// URL flags to bisect what a struggling machine can't handle:
+//   ?safe      force GPU safe mode (2× cap, 150dpi masters) from frame one
+//   ?noshimmer no grain animation clock
+//   ?noworkers no AMT / cal-LUT worker pools (sync fallbacks)
+//   ?noamt     skip master prepasses entirely (RISO/stipple bake)
+//   ?nopbr     no PBR paper substrate texture
+//   ?nowebgpu  never touch the WebGPU path
+//   ?minimal   all of the above
+//   ?diag      alert() the previous session's crash trail on load
+(function(){
+  try {
+    const q = new URLSearchParams(location.search);
+    const f = window._flags = {};
+    ['safe','noshimmer','noworkers','noamt','nopbr','nowebgpu','minimal','diag'].forEach(k => { f[k] = q.has(k); });
+    if(f.minimal){ f.safe = f.noshimmer = f.noworkers = f.noamt = f.nopbr = f.nowebgpu = true; }
+    if(f.safe){ window._gpuSlow = true; }
+    if(f.nopbr){ window._usePaperPBR = false; }
+    const on = Object.keys(f).filter(k => f[k]);
+    if(on.length){ console.warn('[flags]', on.join(' ')); R.diag('flags:' + on.join('+')); }
+  } catch(e){}
+})();
+
 let _ctxLossHooked = false;
-function initGL(){
+function initGL(onReady){
   const c=el('gl');
+  window._glReady = false;
+  R.diag('initGL:start');
   // Try WebGL2 first — enables AMT-GPU to share the context (Metaxas wavefront
   // FS gets ~100× speedup when not running on a second context due to Safari's
   // context-switch overhead). WebGL1 fallback preserved for old browsers.
@@ -24,7 +79,8 @@ function initGL(){
   if(!gl){
     gl=c.getContext('webgl',{preserveDrawingBuffer:true,antialias:false,powerPreference:'high-performance'});
   }
-  if(!gl){R.toast('WebGL not supported — cannot render');return;}
+  if(!gl){R.toast('WebGL not supported — cannot render');R.diag('ctx:FAILED');return;}
+  R.diag('ctx:' + (isWebGL2 ? 'webgl2' : 'webgl1'));
   // Windows Chrome frequently ships with "Use graphics acceleration" toggled
   // off — WebGL then silently runs on SwiftShader (CPU rasterizer) at
   // seconds-per-frame. Detect once and tell the user instead of crawling.
@@ -33,6 +89,7 @@ function initGL(){
     try {
       const dbg = gl.getExtension('WEBGL_debug_renderer_info');
       const rend = String(gl.getParameter(dbg ? dbg.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || '');
+      R.diag('gpu:' + rend.slice(0, 90));
       if(/swiftshader|llvmpipe|software/i.test(rend)){
         console.warn('[gl] software renderer detected:', rend);
         // Skip the timing probe entirely (a gl.finish probe on SwiftShader
@@ -53,30 +110,46 @@ function initGL(){
     _ctxLossHooked = true;
     c.addEventListener('webglcontextlost',e=>{e.preventDefault();_rafId=0;
       (window._ctxLossLog = (window._ctxLossLog||[]).filter(t=>performance.now()-t<60000)).push(performance.now());
+      R.diag('ctx:LOST (' + window._ctxLossLog.length + ' in 60s)');
       R.toast('GPU context lost — will recover');});
     c.addEventListener('webglcontextrestored',()=>{R.toast('GPU restored — rebuilding');_recoverGLState();});
   }
 
+  // Compile + link WITHOUT any status query — getShaderParameter /
+  // getProgramParameter(LINK_STATUS) force a synchronous wait, and on
+  // Windows ANGLE translates this megashader to HLSL and runs it through
+  // the D3D compiler INSIDE the shared GPU process: a pathological compile
+  // freezes every Edge/Chrome window for its whole duration (the reported
+  // whole-browser freeze). With KHR_parallel_shader_compile we poll
+  // COMPLETION_STATUS_KHR instead, so the browser stays alive while the
+  // driver compiles on background threads. No extension (Safari) = the
+  // synchronous behavior we always had.
   function mkShader(type,src){
     const s=gl.createShader(type);
     gl.shaderSource(s,src);gl.compileShader(s);
-    if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){
-      console.error('Shader compile error:',gl.getShaderInfoLog(s));
-      R.toast('Shader compile error — see console');
-      return null;
-    }
-    return s;
+    return s;   // status checked at link completion (_finishInit)
   }
   const vs=mkShader(gl.VERTEX_SHADER,el('vs').textContent);
   const fs=mkShader(gl.FRAGMENT_SHADER,el('fs').textContent);
-  if(!vs||!fs)return; // abort if shaders failed
   prog=gl.createProgram();
   gl.attachShader(prog,vs);gl.attachShader(prog,fs);gl.linkProgram(prog);
+  R.diag('link:submitted');
+  const _linkT0 = performance.now();
+  // Everything from here to the end of initGL needs the LINKED program
+  // (getUniformLocation blocks on an unlinked one) — it runs in _finishInit,
+  // immediately when no parallel-compile extension exists, or after the
+  // completion poll when it does. Body kept at original indentation to keep
+  // the diff reviewable.
+  const _finishInit = function(){
   if(!gl.getProgramParameter(prog,gl.LINK_STATUS)){
     console.error('Program link error:',gl.getProgramInfoLog(prog));
+    console.error('VS log:',gl.getShaderInfoLog(vs));
+    console.error('FS log:',gl.getShaderInfoLog(fs));
+    R.diag('link:FAILED');
     R.toast('Shader link error — see console');
     return;
   }
+  R.diag('link:ok +' + Math.round(performance.now() - _linkT0) + 'ms');
   gl.useProgram(prog);
 
   // Quad
@@ -532,6 +605,27 @@ function initGL(){
   gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
   gl.uniform1i(locs.u_src,0);
   gl.uniform1i(locs.u_prevSrc,3);
+
+  window._glReady = true;
+  R.diag('initGL:done');
+  // Anything uploaded while the program was still compiling (sample image,
+  // a user drop) landed on placeholder handles — re-push the current source.
+  try { if(window._reuploadCurrentSource) window._reuploadCurrentSource(); } catch(e){}
+  if(onReady) try { onReady(); } catch(e){ console.error('[initGL] onReady:', e); }
+  try { markDirty(); } catch(e){}
+  try { scheduleRender(); } catch(e){}
+  };  // end _finishInit
+
+  const _par = gl.getExtension('KHR_parallel_shader_compile');
+  if(_par){
+    (function _poll(){
+      if(gl.isContextLost()){ R.diag('link:ctx-lost'); return; }
+      if(gl.getProgramParameter(prog, _par.COMPLETION_STATUS_KHR)) _finishInit();
+      else setTimeout(_poll, 60);   // setTimeout, not rAF: keeps polling in occluded tabs
+    })();
+  } else {
+    _finishInit();
+  }
 }
 
 // ── WebGL context-loss recovery ─────────────────────────────────────────────
@@ -543,6 +637,7 @@ function initGL(){
 // staleness keys still claim "fresh". Null the caches, re-apply retained
 // CPU-side state, and rebake what has no CPU copy.
 function _recoverGLState(){
+  R.diag('recover:start');
   // TDR loop breaker: repeated losses within a minute mean the GPU cannot
   // survive our load — each recovery would re-trigger the same reset and
   // freeze the whole browser (all windows share one GPU process). Clamp
@@ -563,7 +658,10 @@ function _recoverGLState(){
   const paperKey = (typeof activePaperTex !== 'undefined') ? activePaperTex : 'procedural';
   if(typeof paperScanGlTex !== 'undefined') paperScanGlTex = null;
 
-  initGL();   // program, loc arrays, placeholders, static tables, matrix re-fetch
+  // Program relink may complete asynchronously (KHR_parallel_shader_compile)
+  // — the rest of the recovery needs the linked program, so it runs as
+  // initGL's onReady continuation.
+  initGL(function(){
 
   // Lazily-created GL objects living OUTSIDE initGL: null them so their
   // create-if-missing sites run again instead of binding dead handles.
@@ -605,6 +703,8 @@ function _recoverGLState(){
 
   try { markDirty(); } catch(e){}
   scheduleRender();
+  R.diag('recover:done');
+  });   // end initGL onReady continuation
 }
 
 // Windows TDR safety — shared by the LIVE view and save.js exports: one giant
@@ -1267,6 +1367,9 @@ R.togglePause=function(){
   return window._paused;
 };
 function _renderInner(){
+  // Program still compiling (KHR_parallel_shader_compile poll in initGL) —
+  // drop the frame; _finishInit re-kicks rendering the moment it's linked.
+  if(!window._glReady) return;
   const isPhoneNow=phoneActive;
 
   // Aspect ratio — canvas shape
@@ -1350,7 +1453,7 @@ function _renderInner(){
       }
     }
   } else {
-    if(window._gpuSoftware && cached.grainStatic > 0) cached.grainStatic = 0; // CPU rasterizer: shimmer would render seconds per frame
+    if((window._gpuSoftware || (window._flags && window._flags.noshimmer)) && cached.grainStatic > 0) cached.grainStatic = 0; // CPU rasterizer / ?noshimmer: no animation clock
     const animating = cached.grainStatic > 0 || videoOn;
     if(!needsRedraw && !hasCamData && !hasGifData && !isRecording && !animating) {
       fpsFrames++;
@@ -1496,6 +1599,7 @@ function _renderInner(){
     gl.finish();                       // once, at boot — we need the real GPU time
     const _dt = performance.now() - _t0;
     window._gpuProbed = true;
+    R.diag('probe:' + Math.round(_dt) + 'ms@' + dw + 'x' + dh + (_dt > 90 ? ' SLOW' : ' ok'));
     if(_dt > 90){
       window._gpuSlow = true;
       console.warn('[gl] slow GPU: probe frame ' + Math.round(_dt) + 'ms at ' + dw + 'x' + dh + ' — supersample capped at 2x, masters at 150dpi');
@@ -1709,7 +1813,7 @@ let _calLutWorkerPending = new Map();
 let _calLutWorkerInit = null;
 function _initCalLutWorker(){
   if (_calLutWorkerInit) return _calLutWorkerInit;
-  if (typeof Worker === 'undefined') { _calLutWorkerInit = Promise.resolve(); return _calLutWorkerInit; }
+  if (typeof Worker === 'undefined' || (window._flags && window._flags.noworkers)) { _calLutWorkerInit = Promise.resolve(); return _calLutWorkerInit; }
   _calLutWorkerInit = (async () => {
     let blobUrl;
     try {
@@ -2127,7 +2231,7 @@ const _AMT_POOL_SIZE = Math.max(2, Math.min(8, ((typeof navigator !== 'undefined
 let _amtWorkerReady = null;
 function _initAmtWorker(){
   if (_amtWorkerReady) return _amtWorkerReady;
-  if (typeof Worker === 'undefined') { _amtWorkerReady = Promise.resolve(); return _amtWorkerReady; }
+  if (typeof Worker === 'undefined' || (window._flags && window._flags.noworkers)) { _amtWorkerPool = []; _amtWorkerReady = Promise.resolve(); return _amtWorkerReady; }
   _amtWorkerReady = (async () => {
     let blobUrl;
     try {
@@ -2886,6 +2990,8 @@ R._stippleBindFrame = function(i){
 // Mode-aware master prepass dispatcher — trigger sites don't need to know
 // which engine builds the plates.
 R.runMasterPrepass = function(){
+  if(window._flags && window._flags.noamt){ R.diag('prepass:skipped(noamt)'); return; }
+  R.diag('prepass:' + (window._mode === 'stipple' ? 'stipple' : 'amt'));
   if(window._mode === 'stipple') return runStipplePrepass();
   return runAmtPrepass();
 };

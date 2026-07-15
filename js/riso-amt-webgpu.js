@@ -227,7 +227,7 @@ let _failed = false;
 async function _init() {
   if (_device) return true;
   if (_failed) return false;
-  if (!navigator.gpu) { _failed = true; return false; }
+  if (!navigator.gpu || (window._flags && window._flags.nowebgpu)) { _failed = true; return false; }
   try {
     const adapter = await navigator.gpu.requestAdapter();
     if (!adapter) { _failed = true; return false; }
