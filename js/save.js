@@ -39,26 +39,11 @@ function sizeExportCanvas(w, h){
 // past the GPU's silent-allocation limit in the first place.
 function exportPxPerCell(){ return (mode === 'lines') ? 6 : 12; }
 
-// Windows TDR safety: ONE full-resolution drawArrays at 16-260 MP through the
-// megashader can exceed the D3D11 2-second GPU watchdog on slower GPUs — the
-// OS then resets the device and the WebGL context is lost mid-export. Render
-// in horizontal scissor bands (~2 MP each) with a flush between: every band is
-// its own command submission, so the watchdog clock resets and the driver can
-// preempt. Output is bit-identical — the fragment shader depends only on
-// gl_FragCoord + uniforms, never on band boundaries. Small canvases (≤ one
-// band) take the plain single-draw path.
-function drawFullscreenTiled(w, h){
-  const BAND_PX = 1 << 21;                                   // ~2.1 MP per band
-  const bandH = Math.max(64, Math.floor(BAND_PX / Math.max(1, w)) & ~1);
-  if(bandH >= h){ gl.drawArrays(gl.TRIANGLE_STRIP,0,4); return; }
-  gl.enable(gl.SCISSOR_TEST);
-  for(let y = 0; y < h; y += bandH){
-    gl.scissor(0, y, w, Math.min(bandH, h - y));
-    gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
-    gl.flush();
-  }
-  gl.disable(gl.SCISSOR_TEST);
-}
+// Windows TDR safety: banded scissor draws so no single drawArrays can trip
+// the D3D11 2-second GPU watchdog. Implementation moved to renderer.js
+// (R.drawFullscreenTiled) so the LIVE view shares it; this thin wrapper keeps
+// the local call sites unchanged.
+function drawFullscreenTiled(w, h){ R.drawFullscreenTiled(w, h); }
 
 // Format options:
 //   'png'  → lossless PNG at full export resolution, preserves alpha (archival)

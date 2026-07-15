@@ -35,6 +35,11 @@ function initGL(){
       const rend = String(gl.getParameter(dbg ? dbg.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || '');
       if(/swiftshader|llvmpipe|software/i.test(rend)){
         console.warn('[gl] software renderer detected:', rend);
+        // Skip the timing probe entirely (a gl.finish probe on SwiftShader
+        // can itself take tens of seconds) and pin the hardest quality cap.
+        window._gpuProbed = true;
+        window._gpuSlow = true;
+        window._gpuSoftware = true;   // shimmer gate re-clamps even after state restore
         setTimeout(function(){ R.toast('GPU acceleration is OFF — rendering will be very slow. Chrome: Settings → System → "Use graphics acceleration"'); }, 1200);
       }
     } catch(e){}
@@ -46,7 +51,9 @@ function initGL(){
   // Handle WebGL context loss/restore (registered once — see _ctxLossHooked)
   if(!_ctxLossHooked){
     _ctxLossHooked = true;
-    c.addEventListener('webglcontextlost',e=>{e.preventDefault();_rafId=0;R.toast('GPU context lost — will recover');});
+    c.addEventListener('webglcontextlost',e=>{e.preventDefault();_rafId=0;
+      (window._ctxLossLog = (window._ctxLossLog||[]).filter(t=>performance.now()-t<60000)).push(performance.now());
+      R.toast('GPU context lost — will recover');});
     c.addEventListener('webglcontextrestored',()=>{R.toast('GPU restored — rebuilding');_recoverGLState();});
   }
 
@@ -536,6 +543,21 @@ function initGL(){
 // staleness keys still claim "fresh". Null the caches, re-apply retained
 // CPU-side state, and rebake what has no CPU copy.
 function _recoverGLState(){
+  // TDR loop breaker: repeated losses within a minute mean the GPU cannot
+  // survive our load — each recovery would re-trigger the same reset and
+  // freeze the whole browser (all windows share one GPU process). Clamp
+  // quality before rebuilding; if it still keeps dying, stop the shimmer
+  // clock too — a static print beats a frozen browser.
+  const _losses = (window._ctxLossLog || []).length;
+  if(_losses >= 2 && !window._gpuSlow){
+    window._gpuSlow = true;
+    console.warn('[gl] ' + _losses + ' context losses <60s — GPU safe mode engaged');
+    try { R.toast('GPU struggling — quality reduced for stability'); } catch(e){}
+  }
+  if(_losses >= 3 && cached.grainStatic > 0){
+    cached.grainStatic = 0;
+    try { R.toast('GPU unstable — animation paused'); } catch(e){}
+  }
   // initGL() resets the paper scan to 'procedural' — capture the current key
   // first, and drop data.js's cached GL handle so loadPaperTexture re-creates.
   const paperKey = (typeof activePaperTex !== 'undefined') ? activePaperTex : 'procedural';
@@ -584,6 +606,27 @@ function _recoverGLState(){
   try { markDirty(); } catch(e){}
   scheduleRender();
 }
+
+// Windows TDR safety — shared by the LIVE view and save.js exports: one giant
+// drawArrays through the megashader can exceed the D3D11 2-second GPU
+// watchdog on slow GPUs. The OS then resets the driver, and because every
+// Edge/Chrome window shares ONE GPU process, a reset loop freezes the whole
+// browser, not just the tab. Banded scissor draws with a flush between give
+// the driver preemption points. Output is bit-identical — the fragment
+// shader depends only on gl_FragCoord + uniforms, never on band boundaries.
+// Small buffers (≤ one band) take the plain single-draw path.
+R.drawFullscreenTiled = function(w, h){
+  const BAND_PX = 1 << 21;                                   // ~2.1 MP per band
+  const bandH = Math.max(64, Math.floor(BAND_PX / Math.max(1, w)) & ~1);
+  if(bandH >= h){ gl.drawArrays(gl.TRIANGLE_STRIP,0,4); return; }
+  gl.enable(gl.SCISSOR_TEST);
+  for(let y = 0; y < h; y += bandH){
+    gl.scissor(0, y, w, Math.min(bandH, h - y));
+    gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+    gl.flush();
+  }
+  gl.disable(gl.SCISSOR_TEST);
+};
 
 function genBlueNoise(sz){
   // R2 quasi-random sequence with strong scrambling to prevent visible tiling
@@ -1307,6 +1350,7 @@ function _renderInner(){
       }
     }
   } else {
+    if(window._gpuSoftware && cached.grainStatic > 0) cached.grainStatic = 0; // CPU rasterizer: shimmer would render seconds per frame
     const animating = cached.grainStatic > 0 || videoOn;
     if(!needsRedraw && !hasCamData && !hasGifData && !isRecording && !animating) {
       fpsFrames++;
@@ -1404,9 +1448,17 @@ function _renderInner(){
   const animTick = !_dirtyFrame && !isRecording && !_saving
                    && (cached.grainStatic > 0 || camOn || videoOn);
   const animScale = Math.min(Math.max(resScale, dpr), Math.max(3, dpr * 1.5));
-  const effScale = interacting ? Math.max(2, dpr)
+  // GPU safe mode: BEFORE the first frame has probed the GPU — and forever
+  // after on GPUs the probe judged slow, or after repeated context losses —
+  // cap the supersample at 2×. A 6× ≈ 14 MP frame that costs ~100 ms on an
+  // Apple GPU runs multiple SECONDS on office iGPUs: enough to freeze every
+  // Edge/Chrome window (they share one GPU process) or trip Windows' 2 s
+  // TDR driver reset. Exports are unaffected (their own sizing + tiling).
+  const gpuCap = (!window._gpuProbed || window._gpuSlow) ? 2 : Infinity;
+  const effScale = Math.min(gpuCap,
+                   interacting ? Math.max(2, dpr)
                  : animTick    ? animScale
-                 : Math.max(resScale, dpr);
+                 : Math.max(resScale, dpr));
   const dw=Math.round(cssW*effScale), dh=Math.round(cssH*effScale);
   if($gl.width!==dw||$gl.height!==dh){$gl.width=dw;$gl.height=dh;}
   gl.viewport(0,0,dw,dh);
@@ -1435,7 +1487,24 @@ function _renderInner(){
   // with the export paths in save.js via R._runTonePrepass.
   _runTonePrepass(dw, dh);
 
-  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  if(!window._gpuProbed){
+    // First frame doubles as the GPU speed probe. It renders at ≤2× (gpuCap
+    // above) ≈ 1/9th of full-quality fragments; if even that needs >90 ms,
+    // a 6× frame would run seconds — keep the cap for the whole session.
+    const _t0 = performance.now();
+    R.drawFullscreenTiled(dw, dh);
+    gl.finish();                       // once, at boot — we need the real GPU time
+    const _dt = performance.now() - _t0;
+    window._gpuProbed = true;
+    if(_dt > 90){
+      window._gpuSlow = true;
+      console.warn('[gl] slow GPU: probe frame ' + Math.round(_dt) + 'ms at ' + dw + 'x' + dh + ' — supersample capped at 2x, masters at 150dpi');
+      try { R.toast('Slower GPU detected — quality reduced for stability'); } catch(e){}
+    }
+    markDirty();                       // re-render at the decided quality
+  } else {
+    R.drawFullscreenTiled(dw, dh);
+  }
 
   // Sync CSS paper overlay shift with shader paper shift
   if(cached._lastPaperShiftX !== undefined){
@@ -2230,7 +2299,8 @@ async function _runAmtPrepassImpl(){
   // along soft edges. 300 dpi puts the ladders at/below display-pixel scale
   // (the grain-touch supersample melts the rest) at ~4× bake cost — still
   // well under a second on the worker pool. Phones keep 150 (CPU + memory).
-  const scanDpi = window._amtScanDpi || ((window.R && R.isPhone && R.isPhone()) ? 150 : 300);
+  let scanDpi = window._amtScanDpi || ((window.R && R.isPhone && R.isPhone()) ? 150 : 300);
+  if(window._gpuSlow) scanDpi = Math.min(scanDpi, 150); // GPU safe mode: half-res masters (phone parity)
   const A3_LONG_INCHES = 16.54;
   const targetMaxEdge = Math.round(scanDpi * A3_LONG_INCHES);
   const sourceAspect = srcCanvas.width / srcCanvas.height;
