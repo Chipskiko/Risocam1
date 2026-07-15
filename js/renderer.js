@@ -144,6 +144,21 @@ function initGL(onReady){
   }
   if(!gl){R.toast('WebGL not supported — cannot render');R.diag('ctx:FAILED');return;}
   R.diag('ctx:' + (isWebGL2 ? 'webgl2' : 'webgl1'));
+  // Track every GL object we create so a LIVE-context rebuild (the D3D
+  // variant switch) can free the previous generation. Context LOSS frees
+  // everything with the dead context, but a voluntary rebuild would leak a
+  // program + ~15 textures per mode switch — including the 1588×2048 PBR
+  // sheet and the four AMT masters (tens of MB each at 300 dpi). On an iGPU
+  // sharing system RAM that pressure is what turned a 6 s shader compile into
+  // an 8-minute one by the sixth switch. Patched once; `gl` identity is stable
+  // across getContext calls and across loss/restore.
+  if(!gl._objTrack){
+    gl._objTrack = [];
+    ['createTexture','createProgram','createShader','createBuffer','createFramebuffer'].forEach(function(fn){
+      const orig = gl[fn].bind(gl);
+      gl[fn] = function(){ const o = orig.apply(null, arguments); if(o) gl._objTrack.push([fn, o]); return o; };
+    });
+  }
   // Windows Chrome frequently ships with "Use graphics acceleration" toggled
   // off — WebGL then silently runs on SwiftShader (CPU rasterizer) at
   // seconds-per-frame. Detect once and tell the user instead of crawling.
@@ -719,8 +734,36 @@ function initGL(onReady){
 // created outside initGL are dead handles after a restore — and their JS-side
 // staleness keys still claim "fresh". Null the caches, re-apply retained
 // CPU-side state, and rebake what has no CPU copy.
+// Free the tracked generation of GL objects. Called ONLY before a live-context
+// rebuild: after a real context loss the driver already freed everything and
+// the handles are invalid, so we just drop the list.
+const _GL_DELETE = { createTexture:'deleteTexture', createProgram:'deleteProgram',
+                     createShader:'deleteShader', createBuffer:'deleteBuffer',
+                     createFramebuffer:'deleteFramebuffer' };
+function _releaseGLObjects(){
+  if(!gl || !gl._objTrack) return 0;
+  const list = gl._objTrack;
+  gl._objTrack = [];                       // new generation records into a fresh list
+  if(gl.isContextLost()) return 0;
+  let n = 0;
+  for(let i = 0; i < list.length; i++){
+    try { gl[_GL_DELETE[list[i][0]]](list[i][1]); n++; } catch(e){}
+  }
+  return n;
+}
+
 function _recoverGLState(){
   R.diag('recover:start');
+  // Live-context rebuild (D3D variant switch): free the outgoing generation
+  // first. On context-loss recovery the objects are already gone — dropping
+  // the list is enough (the gl object survives loss, so stale handles would
+  // otherwise accumulate in it forever).
+  if(window._variantBuilding){
+    const _freed = _releaseGLObjects();
+    R.diag('release:' + _freed + ' gl objects');
+  } else if(gl && gl._objTrack){
+    gl._objTrack = [];
+  }
   // TDR loop breaker: repeated losses within a minute mean the GPU cannot
   // survive our load — each recovery would re-trigger the same reset and
   // freeze the whole browser (all windows share one GPU process). Clamp
