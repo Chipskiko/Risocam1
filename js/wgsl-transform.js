@@ -45,12 +45,20 @@
                '#define ' + name + ' ' + name + '_T, ' + name + '_S';
       });
 
+    // rc_fbH: the CURRENT render target's height, for the gl_FragCoord flip.
+    // A dedicated uniform (not u_res.y) because the tone prepass renders at
+    // its own dimensions while u_res keeps main-pass semantics, matching GL
+    // (where the prepass viewport changes but u_res does not).
+    uniforms.push(['float', 'rc_fbH']);
     var block = 'layout(std140, set=0, binding=0) uniform Uniforms {\n' +
       uniforms.map(function(u){ return '  ' + u[0] + ' ' + u[1] + ';'; }).join('\n') + '\n};\n';
 
     // GL's gl_FragCoord is bottom-left origin; WebGPU is top-left — flip via
-    // u_res (the drawing-buffer size, already a uniform).
-    fs = fs.replace(/gl_FragCoord/g, '(vec4(gl_FragCoord_.x, u_res.y - gl_FragCoord_.y, gl_FragCoord_.z, gl_FragCoord_.w))');
+    // the injected framebuffer-height uniform. abs() makes rc_fbH=0 mean
+    // NO flip (identity): offscreen passes whose output is later SAMPLED as
+    // a texture (the tone prepass) must write GL row order — row k = cell k —
+    // so they render unflipped, while the presented main pass flips.
+    fs = fs.replace(/gl_FragCoord/g, '(vec4(gl_FragCoord_.x, abs(rc_fbH - gl_FragCoord_.y), gl_FragCoord_.z, gl_FragCoord_.w))');
     fs = fs.replace(/gl_FragCoord_/g, 'gl_FragCoord');
 
     // WGSL forbids implicit-derivative sampling in non-uniform control flow

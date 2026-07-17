@@ -72,8 +72,12 @@
     }
     return locNames.get(loc);
   }
+  var lastTonePass = 0;   // nonzero u_asciiTonePass seen this frame (the GL
+                          // prepass raises it, draws its FBO, resets to 0 —
+                          // we capture the raise and replay the pass on GPU)
   function uboWrite(name, a, b, c, d){
     if(!gen) return;
+    if(name === 'u_asciiTonePass' && a > 0) lastTonePass = a;
     var slot = gen.layout.offsets[name];
     if(!slot) return;
     var o = slot.offset >> 2;
@@ -113,8 +117,24 @@
     };
     var sub2d = p.texSubImage2D; p.texSubImage2D = function(){
       var r = sub2d.apply(this, arguments);
-      try { var tex = unitBinding[activeUnit]; var e = tex && texMirror.get(tex);
-            if(e) e.unsupported = true;   // band uploads (AMT masters) — v1 excludes these modes
+      // Band uploads (AMT masters land row-band by row-band from workers):
+      // accumulate into the CPU backing and note the dirty row range so the
+      // mirror can upload just those rows.
+      try {
+        var a = arguments;
+        if(a.length >= 9 && a[0] === 0x0DE1){
+          var tex = unitBinding[activeUnit]; var e = tex && texMirror.get(tex);
+          var rec = e && e.rec;
+          if(rec && rec.kind === 'raw' && rec.data && a[8]){
+            var x = a[2], y = a[3], w = a[4], h = a[5], src = a[8];
+            var bpp = rec.r8 ? 1 : 4, stride = rec.w * bpp, rowB = w * bpp;
+            for(var row = 0; row < h; row++)
+              rec.data.set(src.subarray(row * rowB, row * rowB + rowB), (y + row) * stride + x * bpp);
+            if(!e.rows) e.rows = [y, y + h];
+            else { e.rows[0] = Math.min(e.rows[0], y); e.rows[1] = Math.max(e.rows[1], y + h); }
+            e.dirty = true;
+          }
+        }
       } catch(err){}
       return r;
     };
@@ -129,16 +149,17 @@
     var tex = unitBinding[activeUnit];
     if(!tex) return;
     var e = mEntry(tex);
-    e.unsupported = false;
     if(args.length >= 9){          // (t, lvl, ifmt, w, h, border, fmt, type, data)
       var w = args[3], h = args[4], ifmt = args[2], data = args[8];
-      e.rec = { kind: 'raw', w: w, h: h,
-        r8: (ifmt === 0x8229 /*R8*/ || ifmt === 0x1909 /*LUMINANCE*/),
-        lum: (ifmt === 0x1909),
-        data: (data && data.slice) ? data.slice() : null };
+      var r8 = (ifmt === 0x8229 /*R8*/ || ifmt === 0x1909 /*LUMINANCE*/);
+      e.rec = { kind: 'raw', w: w, h: h, r8: r8,
+        // null-data allocation (AMT masters, tone FBO) gets a zeroed backing
+        // so later texSubImage2D bands have somewhere to accumulate.
+        data: (data && data.slice) ? data.slice() : new Uint8Array(w * h * (r8 ? 1 : 4)) };
     } else {                       // (t, lvl, ifmt, fmt, type, source)
       e.rec = { kind: 'elem', src: args[5], r8: false };
     }
+    e.rows = null;
     e.dirty = true;
   }
 
@@ -156,27 +177,35 @@
   function ensureMirror(tex){
     if(!tex) return null;
     var e = texMirror.get(tex);
-    if(!e || !e.rec || e.unsupported) return null;
+    if(!e || !e.rec) return null;
     var rec = e.rec;
     var w = rec.kind === 'elem' ? (rec.src.videoWidth || rec.src.width) : rec.w;
     var h = rec.kind === 'elem' ? (rec.src.videoHeight || rec.src.height) : rec.h;
     if(!w || !h) return null;
+    var fresh = false;
     if(!e.gpu || e.w !== w || e.h !== h){
       if(e.gpu) try { e.gpu.destroy(); } catch(err){}
       e.gpu = device.createTexture({ size: [w, h],
         format: rec.r8 ? 'r8unorm' : 'rgba8unorm',
         usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
       e.view = e.gpu.createView();
-      e.w = w; e.h = h; e.dirty = true;
+      e.w = w; e.h = h; e.dirty = true; fresh = true;
     }
     if(e.dirty){
       if(rec.kind === 'raw'){
-        if(rec.data)
-          device.queue.writeTexture({texture: e.gpu}, rec.data, {bytesPerRow: w * (rec.r8 ? 1 : 4)}, [w, h]);
+        var bpp = rec.r8 ? 1 : 4;
+        if(rec.data && !fresh && e.rows && e.rows[1] > e.rows[0]){
+          // partial: just the accumulated dirty row band
+          var y0 = Math.max(0, e.rows[0]), y1 = Math.min(h, e.rows[1]);
+          device.queue.writeTexture({texture: e.gpu, origin: [0, y0]},
+            rec.data, {offset: y0 * w * bpp, bytesPerRow: w * bpp}, [w, y1 - y0]);
+        } else if(rec.data){
+          device.queue.writeTexture({texture: e.gpu}, rec.data, {bytesPerRow: w * bpp}, [w, h]);
+        }
       } else {
         device.queue.copyExternalImageToTexture({source: rec.src}, {texture: e.gpu}, [w, h]);
       }
-      e.dirty = false;
+      e.dirty = false; e.rows = null;
     }
     return e;
   }
@@ -259,10 +288,7 @@
   }
 
   // ── frame ──────────────────────────────────────────────────────────────
-  function modeOk(){
-    var m = window._mode || (typeof mode !== 'undefined' ? mode : 'grain');
-    return m !== 'flat' && m !== 'stipple';
-  }
+  var toneGpu = null, toneView = null, toneW = 0, toneH = 0, toneUboBuf = null, toneSampler = null;
   function renderWebGPU(w, h){
     var glc = document.getElementById('gl');
     if(overlay.width !== w || overlay.height !== h){
@@ -277,28 +303,84 @@
     overlay.style.display = '';
     glc.style.visibility = 'hidden';
 
+    // Anchor-tone prepass replay (letters / circles soft edges): the GL side
+    // rendered its tone FBO and reset u_asciiTonePass to 0; we captured the
+    // raised value and rerun the SAME pipeline into an offscreen texture,
+    // then feed that texture through u_amtMaster0's slot for the main pass —
+    // exactly the unit-9 time-share the GL path uses.
+    var wantTone = lastTonePass > 0 && window._asciiToneDims &&
+                   window._asciiToneDims[0] > 0 && window._asciiToneDims[1] > 0;
+    var m0 = gen.samplers.indexOf('u_amtMaster0');
+    var tw = 0, th = 0;
+    if(wantTone){
+      tw = window._asciiToneDims[0]; th = window._asciiToneDims[1];
+      if(!toneGpu || toneW !== tw || toneH !== th){
+        if(toneGpu) try { toneGpu.destroy(); } catch(e){}
+        toneGpu = device.createTexture({size: [tw, th], format: overlayFmt,
+          usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING});
+        toneView = toneGpu.createView();
+        toneW = tw; toneH = th;
+        bindKey = '';   // main bind group must pick up the new tone view
+      }
+      if(!toneUboBuf) toneUboBuf = device.createBuffer({size: gen.layout.size,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST});
+      if(!toneSampler) toneSampler = device.createSampler({magFilter: 'linear', minFilter: 'linear'});
+      // tone UBO = main staging with the pass id raised and fb height swapped
+      var oT = gen.layout.offsets['u_asciiTonePass'].offset >> 2;
+      var oH = gen.layout.offsets['rc_fbH'].offset >> 2;
+      var keepT = uboF32[oT], keepH = uboF32[oH];
+      // rc_fbH = 0 → identity fragCoord (no flip): the tone texture must be
+      // written in GL row order because the main pass SAMPLES it (row k =
+      // lattice cell k), unlike the presented pass which flips.
+      uboF32[oT] = lastTonePass; uboF32[oH] = 0;
+      device.queue.writeBuffer(toneUboBuf, 0, uboBytes);
+      uboF32[oT] = keepT; uboF32[oH] = keepH;
+    }
+    uboWrite('rc_fbH', h);
     if(uboDirty){ device.queue.writeBuffer(gpuUbo, 0, uboBytes); uboDirty = false; }
 
-    var entries = [{binding: 0, resource: {buffer: gpuUbo}}];
-    var key = '';
-    for(var i = 0; i < gen.samplers.length; i++){
-      var name = gen.samplers[i];
-      var e = ensureMirror(unitBinding[samplerUnit[name]]);
-      entries.push({binding: 1 + 2 * i, resource: e ? e.view : dummyTex});
-      entries.push({binding: 2 + 2 * i, resource: e ? samplerFor(e) : dummySamp});
-      key += (e ? e.gpuId || (e.gpuId = Math.random()) : 'd') + '/' + (e ? [e.mag, e.min, e.wrapS, e.wrapT].join('.') : '') + '|';
+    function buildEntries(ubo, toneAtMaster0){
+      var entries = [{binding: 0, resource: {buffer: ubo}}];
+      var key = (toneAtMaster0 ? 'T' : 'N') + (ubo === gpuUbo ? 'm' : 't') + '|';
+      for(var i = 0; i < gen.samplers.length; i++){
+        var name = gen.samplers[i];
+        if(toneAtMaster0 && i === m0){
+          entries.push({binding: 1 + 2 * i, resource: toneView});
+          entries.push({binding: 2 + 2 * i, resource: toneSampler});
+          key += 'tone' + toneW + 'x' + toneH + '|';
+          continue;
+        }
+        var e = ensureMirror(unitBinding[samplerUnit[name]]);
+        entries.push({binding: 1 + 2 * i, resource: e ? e.view : dummyTex});
+        entries.push({binding: 2 + 2 * i, resource: e ? samplerFor(e) : dummySamp});
+        key += (e ? e.gpuId || (e.gpuId = Math.random()) : 'd') + '/' + (e ? [e.mag, e.min, e.wrapS, e.wrapT].join('.') : '') + '|';
+      }
+      return {entries: entries, key: key};
     }
-    if(key !== bindKey || !bindGroup){
-      bindGroup = device.createBindGroup({layout: pipeline.getBindGroupLayout(0), entries: entries});
-      bindKey = key;
-    }
+
     var enc = device.createCommandEncoder();
+    if(wantTone){
+      // pass 1 renders the tone lattice; master0 slot gets a dummy (the GL
+      // path swaps the real master in for the same feedback-guard reason)
+      var tb = buildEntries(toneUboBuf, false);
+      var toneBG = device.createBindGroup({layout: pipeline.getBindGroupLayout(0), entries: tb.entries});
+      var p1 = enc.beginRenderPass({colorAttachments: [{view: toneView,
+        loadOp: 'clear', storeOp: 'store', clearValue: {r: 0, g: 0, b: 0, a: 1}}]});
+      p1.setPipeline(pipeline); p1.setBindGroup(0, toneBG);
+      p1.setVertexBuffer(0, quadBuf); p1.draw(4); p1.end();
+    }
+    var mb = buildEntries(gpuUbo, wantTone);
+    if(mb.key !== bindKey || !bindGroup){
+      bindGroup = device.createBindGroup({layout: pipeline.getBindGroupLayout(0), entries: mb.entries});
+      bindKey = mb.key;
+    }
     var pass = enc.beginRenderPass({colorAttachments: [{
       view: overlayCtx.getCurrentTexture().createView(),
       loadOp: 'clear', storeOp: 'store', clearValue: {r: 0, g: 0, b: 0, a: 0} }]});
     pass.setPipeline(pipeline); pass.setBindGroup(0, bindGroup);
     pass.setVertexBuffer(0, quadBuf); pass.draw(4); pass.end();
     device.queue.submit([enc.finish()]);
+    lastTonePass = 0;
     if(++framesDrawn === 1) diag('first frame ' + w + 'x' + h);
   }
 
@@ -309,7 +391,7 @@
     R.drawFullscreenTiled = function(w, h){
       var saving = false;
       try { saving = (typeof _saving !== 'undefined' && _saving) || window._recordingNow; } catch(e){}
-      if(ready && !failed && !saving && modeOk() &&
+      if(ready && !failed && !saving &&
          typeof gl !== 'undefined' && gl && gl.getParameter(gl.FRAMEBUFFER_BINDING) === null){
         try { renderWebGPU(w, h); return; }
         catch(e){ fail('frame', e); }
