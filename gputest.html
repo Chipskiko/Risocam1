@@ -13,6 +13,7 @@ D3D12/DXC compiler — the number that decides the whole port.</p>
      .wasm uploads AND sends a site-wide CSP header (connect-src 'self' data:
      blob:) that blocks cross-origin fetch — but blob: URLs are allowed, so
      the binaries decode to blobs at runtime. One code path everywhere. -->
+<script src="js/wgsl-transform.js"></script>
 <script src="js/vendor/twgsl.js"></script>
 <script src="js/vendor/glslang-wasm-b64.js"></script>
 <script src="js/vendor/twgsl-wasm-b64.js"></script>
@@ -56,62 +57,16 @@ window.RC_BLOB = b64 => URL.createObjectURL(new Blob(
     if(!vs || !fs){ say('FATAL: shader tags not found'); return; }
     say('fs source ' + (fs.length/1024).toFixed(0) + ' KB');
 
-    // ── mechanical GLSL ES 1.00 → Vulkan-flavoured ES 3.10 transforms ──
-    // Fragment: gather every non-sampler uniform into ONE std140 block
-    // (anonymous → member names stay valid unprefixed), give samplers
-    // explicit bindings, modernise builtins, flip gl_FragCoord to GL origin.
-    // Identifiers that ES 1.00 allowed but GLSL 3.10 or WGSL reserve — rename
-    // FIRST, before any injected code (which legitimately uses e.g. `binding`).
-    for(const w of ['active', 'ref', 'target', 'type', 'override', 'enable', 'macro',
-                    'module', 'operator', 'private', 'public', 'static', 'filter',
-                    'common', 'handle', 'yield', 'unless', 'require', 'mutable',
-                    'using', 'where', 'snorm', 'unorm', 'regardless', 'premerge'])
-      fs = fs.replace(new RegExp('\\b' + w + '\\b', 'g'), 'rc_' + w);
-
-    const uniObjs = [];
-    let nBlock = 0;
-    // Handles both single and comma-separated declarations:
-    //   uniform vec3 u_ink0, u_ink1, u_ink2, u_ink3; // comment
-    fs = fs.replace(/^\s*uniform\s+(float|int|vec2|vec3|vec4)\s+([A-Za-z0-9_\s,]+);.*$/gm,
-      (m, ty, names) => {
-        const list = names.split(',').map(s => s.trim()).filter(Boolean);
-        for(const n of list){ uniObjs.push([ty, n]); nBlock++; }
-        return '// moved to UBO: ' + list.join(', ');
-      });
-    // WGSL has no combined image-samplers (tint rejects them) — split each
-    // sampler2D into texture2D + sampler and recombine via #define at use
-    // sites (verified: no shader function takes a sampler parameter).
-    let sIdx = 0; const samplers = [];
-    fs = fs.replace(/^uniform\s+sampler2D\s+([A-Za-z0-9_]+)\s*;.*$/gm,
-      (m, name) => {
-        samplers.push(name);
-        const bT = 1 + 2 * sIdx, bS = 2 + 2 * sIdx; sIdx++;
-        return 'layout(set=0, binding=' + bT + ') uniform highp texture2D ' + name + '_T;\n' +
-               'layout(set=0, binding=' + bS + ') uniform highp sampler ' + name + '_S;\n' +
-               '#define ' + name + ' ' + name + '_T, ' + name + '_S';
-      });
-    say('transform: ' + nBlock + ' uniforms → UBO, ' + samplers.length + ' samplers bound (expect 135/16)');
-    const block = 'layout(std140, set=0, binding=0) uniform Uniforms {\n' +
-      uniObjs.map(([ty, name]) => '  ' + ty + ' ' + name + ';').join('\n') + '\n};\n';
-    fs = fs.replace(/gl_FragCoord/g, '(vec4(gl_FragCoord_.x, u_res.y - gl_FragCoord_.y, gl_FragCoord_.z, gl_FragCoord_.w))');
-    fs = fs.replace(/gl_FragCoord_/g, 'gl_FragCoord');
-    // WGSL forbids implicit-derivative sampling in non-uniform control flow
-    // (this shader branches before sampling constantly). No texture here has
-    // mipmaps, so explicit-LOD sampling is bit-identical — route every call
-    // through rcTex (glslang inlines it; tint emits textureSampleLevel).
-    fs = fs.replace(/\btexture2D\s*\(/g, 'rcTex(');
-    let vloc = 0;   // SPIR-V requires explicit locations on user in/out
-    fs = fs.replace(/\bvarying\b/g, () => 'layout(location=' + (vloc++) + ') in');
-    fs = fs.replace(/\bgl_FragColor\b/g, 'rc_fragColor');
-    fs = '#version 310 es\nprecision highp float;\nprecision highp int;\n' +
-         'layout(location=0) out vec4 rc_fragColor;\n' +
-         'vec4 rcTex(highp texture2D t, highp sampler s, vec2 uv){ return textureLod(sampler2D(t, s), uv, 0.0); }\n' +
-         block + fs;
-
-    let aloc = 0, ovloc = 0;
-    vs = vs.replace(/\battribute\b/g, () => 'layout(location=' + (aloc++) + ') in')
-           .replace(/\bvarying\b/g, () => 'layout(location=' + (ovloc++) + ') out');
-    vs = '#version 310 es\nprecision highp float;\n' + vs;
+    // ── transforms: the SHARED module (js/wgsl-transform.js) — the exact
+    // code tools/build-wgsl.mjs runs at deploy time, so this page doubles as
+    // the browser-side parity check for the pregenerated WGSL asset.
+    if(!window.RC_WGSL){ say('FATAL: js/wgsl-transform.js not loaded'); return; }
+    const fsT = RC_WGSL.transformFS(fs);
+    fs = fsT.src;
+    vs = RC_WGSL.transformVS(vs);
+    say('transform: ' + fsT.uniforms.length + ' uniforms → UBO (' +
+        RC_WGSL.std140Layout(fsT.uniforms).size + ' B std140), ' +
+        fsT.samplers.length + ' samplers bound');
 
     // ── GLSL → SPIR-V ──
     const compile = (src, kind) => {
