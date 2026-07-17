@@ -210,6 +210,12 @@
         diag('build start');
         navigator.gpu.requestAdapter({powerPreference: 'high-performance'}).then(function(ad){
           if(!ad) throw new Error('no adapter');
+          // Note: Windows Chromium currently ignores powerPreference for
+          // WebGPU (crbug 369219127) — the adapter follows the browser's GPU
+          // process. Users pin a dGPU via Windows Graphics settings. Record
+          // what we actually got so it's never a guess.
+          try { var info = ad.info || {};
+                diag('adapter ' + [info.vendor, info.architecture, info.description].filter(Boolean).join('/')); } catch(e){}
           return ad.requestDevice();
         }).then(function(dev){
           device = dev;
