@@ -243,8 +243,27 @@
           // WebGPU (crbug 369219127) — the adapter follows the browser's GPU
           // process. Users pin a dGPU via Windows Graphics settings. Record
           // what we actually got so it's never a guess.
-          try { var info = ad.info || {};
-                diag('adapter ' + [info.vendor, info.architecture, info.description].filter(Boolean).join('/')); } catch(e){}
+          try {
+            var info = ad.info || {};
+            var wgName = [info.vendor, info.architecture, info.description].filter(Boolean).join('/');
+            diag('adapter ' + wgName);
+            // WebGL's high-performance hint IS honored on Windows (ANGLE
+            // picks the adapter itself) — if WebGL landed on a discrete GPU
+            // but WebGPU was handed an iGPU, the machine HAS a better card
+            // and the fix is user-side: surface it instead of silently
+            // rendering on the slow chip.
+            if(typeof gl !== 'undefined' && gl){
+              var dbg = gl.getExtension('WEBGL_debug_renderer_info');
+              var glr = String(gl.getParameter(dbg ? dbg.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || '');
+              if(/nvidia|geforce|rtx|gtx|quadro|radeon\s*(rx|pro)/i.test(glr) && /intel/i.test(wgName)){
+                console.warn('[webgpu-live] mismatch: WebGL uses the discrete GPU (' + glr.slice(0, 70) +
+                  ') but WebGPU was granted "' + wgName + '" — pin the browser to "High performance" in ' +
+                  'Windows Settings > Display > Graphics, then fully restart the browser.');
+                diag('adapter-MISMATCH dGPU exists but WebGPU got iGPU');
+                try { R.toast('WebGPU is on the iGPU — set the browser to High performance in Windows Graphics settings'); } catch(e2){}
+              }
+            }
+          } catch(e){}
           return ad.requestDevice();
         }).then(function(dev){
           device = dev;
