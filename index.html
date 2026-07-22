@@ -14,7 +14,7 @@
 <title>RISO/CAM</title>
 <link rel="manifest" href="manifest.json">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/main.css?v=27">
+<link rel="stylesheet" href="css/main.css?v=29">
 <!-- Styles extracted to css/main.css -->
 <script data-goatcounter="https://chipskiko.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </head>
@@ -354,13 +354,13 @@
       <div class="ph-bcs-row"><svg class="ph-bcs-arc" data-key="imgBright" viewBox="0 0 300 32"><text x="4" y="10" class="ph-bcs-svg-label">B</text><text x="296" y="10" class="ph-bcs-svg-val" id="phBcs0Val">0</text><line x1="53" y1="28" x2="53" y2="32" class="ph-bcs-tick"/><line x1="101" y1="22" x2="101" y2="26" class="ph-bcs-tick"/><line x1="150" y1="18" x2="150" y2="22" class="ph-bcs-tick ph-bcs-tick-mid"/><line x1="199" y1="22" x2="199" y2="26" class="ph-bcs-tick"/><line x1="247" y1="28" x2="247" y2="32" class="ph-bcs-tick"/><path class="ph-bcs-track" d="M 4,30 Q 150,6 296,30"/><circle class="ph-bcs-thumb" r="9"/></svg></div>
       <div class="ph-bcs-row"><svg class="ph-bcs-arc" data-key="imgContrast" viewBox="0 0 300 32"><text x="4" y="10" class="ph-bcs-svg-label">C</text><text x="296" y="10" class="ph-bcs-svg-val" id="phBcs1Val">0</text><line x1="53" y1="28" x2="53" y2="32" class="ph-bcs-tick"/><line x1="101" y1="22" x2="101" y2="26" class="ph-bcs-tick"/><line x1="150" y1="18" x2="150" y2="22" class="ph-bcs-tick ph-bcs-tick-mid"/><line x1="199" y1="22" x2="199" y2="26" class="ph-bcs-tick"/><line x1="247" y1="28" x2="247" y2="32" class="ph-bcs-tick"/><path class="ph-bcs-track" d="M 4,30 Q 150,6 296,30"/><circle class="ph-bcs-thumb" r="9"/></svg></div>
       <div class="ph-bcs-row"><svg class="ph-bcs-arc" data-key="imgSat" viewBox="0 0 300 32"><text x="4" y="10" class="ph-bcs-svg-label">S</text><text x="296" y="10" class="ph-bcs-svg-val" id="phBcs2Val">0</text><line x1="53" y1="28" x2="53" y2="32" class="ph-bcs-tick"/><line x1="101" y1="22" x2="101" y2="26" class="ph-bcs-tick"/><line x1="150" y1="18" x2="150" y2="22" class="ph-bcs-tick ph-bcs-tick-mid"/><line x1="199" y1="22" x2="199" y2="26" class="ph-bcs-tick"/><line x1="247" y1="28" x2="247" y2="32" class="ph-bcs-tick"/><path class="ph-bcs-track" d="M 4,30 Q 150,6 296,30"/><circle class="ph-bcs-thumb" r="9"/></svg></div>
+      <div class="ph-bcs-row"><button class="ph-bcs-btn" onclick="R.newMisreg();try{navigator.vibrate(8);}catch(e){}">RE-REG</button></div>
     </div>
     <!-- Tool strip -->
     <div class="ph-tools" id="phTools">
       <button class="ph-tool-btn" id="phModeBtn" onclick="R.phCycleMode()">GRAIN</button>
       <button class="ph-tool-btn" id="phAspectBtn" onclick="R.phCycleAspect()">4:3</button>
       <button class="ph-tool-btn" id="phFpsBtn" onclick="R.phCycleFps()">4FPS</button>
-      <button class="ph-tool-btn" onclick="R.newMisreg();try{navigator.vibrate(8);}catch(e){}">RE-REG</button>
       <button class="ph-tool-btn" id="phBcsBtn" onclick="R.phToggleBcs()">☀</button>
     </div>
     <!-- Main action row -->
@@ -3481,7 +3481,7 @@ void main(){
 <script src="js/webgpu-live.js?v=4"></script>
 <script src="js/ui-controls.js?v=68"></script>
 <script src="js/ui-paper.js?v=13"></script>
-<script src="js/phone.js?v=23"></script>
+<script src="js/phone.js?v=25"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL
      service workers, and even the attempt makes the browser print a CSP-violation report
      that no .catch can silence. Offline caching works where CSP allows (e.g. localhost).

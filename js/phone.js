@@ -135,9 +135,17 @@ function phBindBcs(){
     thumb.setAttribute('cx',initPt.x);
     thumb.setAttribute('cy',initPt.y);
     function ptrToNorm(e){
+      // Under the landscape counter-rotation (ph-ls-cw/-ccw) the arc's local
+      // x axis runs vertically on screen and getBoundingClientRect returns
+      // the swapped AABB, so project the pointer through the active rotation.
       const r=svg.getBoundingClientRect();
+      const b=document.body.classList;
+      let t;
+      if(b.contains('ph-ls-cw')) t=(e.clientY-r.top)/r.height;
+      else if(b.contains('ph-ls-ccw')) t=(r.bottom-e.clientY)/r.height;
+      else t=(e.clientX-r.left)/r.width;
       // Arc spans x=4..296 in viewBox 0..300, map pointer to arc range
-      const svgX=((e.clientX-r.left)/r.width)*300;
+      const svgX=t*300;
       return (svgX-4)/(296-4);
     }
     svg.addEventListener('pointerdown',e=>{
@@ -328,16 +336,26 @@ function phCloseOverlay(){
 }
 
 // Swipe down to dismiss overlays
+// Screen→UI-local "down" proxy: under the landscape counter-rotation the
+// UI's y axis runs along the screen x axis, so swipe deltas must be read
+// off the matching screen axis (sign flips with rotation direction).
+function phLocalY(t){
+  const b=document.body.classList;
+  if(b.contains('ph-ls-cw')) return -t.clientX;  // rotate(90): local +y = screen −x
+  if(b.contains('ph-ls-ccw')) return t.clientX;  // rotate(−90): local +y = screen +x
+  return t.clientY;
+}
+
 function initOverlaySwipe(){
   document.querySelectorAll('.ph-overlay').forEach(ov=>{
     let startY=0,curY=0,dragging=false;
     ov.addEventListener('touchstart',e=>{
       if(ov.scrollTop>0)return; // only swipe when at top
-      startY=e.touches[0].clientY;curY=startY;dragging=true;
+      startY=phLocalY(e.touches[0]);curY=startY;dragging=true;
     },{passive:true});
     ov.addEventListener('touchmove',e=>{
       if(!dragging)return;
-      curY=e.touches[0].clientY;
+      curY=phLocalY(e.touches[0]);
       const dy=curY-startY;
       if(dy>0){
         ov.style.transform='translateY('+dy+'px)';
@@ -412,6 +430,13 @@ function phPopulateOverlay(name){
           <div id="phGrainSettings" style="display:${mode==='grain'?'block':'none'}"><button class="regmark-btn active" id="phGrainSizeBtn" onclick="R.cycleGrainSize()"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="2.5" fill="currentColor"/><circle cx="5" cy="5" r="1" fill="currentColor" opacity="0.5"/><circle cx="15" cy="5" r="1.2" fill="currentColor" opacity="0.5"/><circle cx="5" cy="15" r="1.1" fill="currentColor" opacity="0.5"/><circle cx="15" cy="15" r="0.9" fill="currentColor" opacity="0.5"/><circle cx="10" cy="4" r="0.8" fill="currentColor" opacity="0.4"/><circle cx="4" cy="10" r="0.9" fill="currentColor" opacity="0.4"/><circle cx="16" cy="10" r="1" fill="currentColor" opacity="0.4"/><circle cx="10" cy="16" r="0.8" fill="currentColor" opacity="0.4"/></svg><span class="regmark-val" id="phGrainSizeBtnVal">1.5</span></button></div>
           <div id="phScreenSettings" style="display:${(mode==='screen'||mode==='lines'||mode==='letters')?'flex':'none'};gap:6px;flex-wrap:wrap"><button class="regmark-btn active" id="phLpiBtn" onclick="R.cycleLpi()"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="5" cy="5" r="1.5" fill="currentColor"/><circle cx="13" cy="5" r="1.5" fill="currentColor"/><circle cx="5" cy="13" r="1.5" fill="currentColor"/><circle cx="13" cy="13" r="1.5" fill="currentColor"/><circle cx="9" cy="9" r="2" fill="currentColor"/></svg><span class="regmark-val" id="phLpiBtnVal">Fine</span></button><button class="regmark-btn" id="phStampShapeBtn" onclick="R.cycleStampShape()" title="Halftone stamp shape"><span class="regmark-icon" id="phStampShapeIcon" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px"></span><span class="regmark-val" id="phStampShapeBtnVal">Circle</span></button><button class="regmark-btn" id="phAsciiCharsetBtn" style="display:none" onclick="R.cycleAsciiCharset()" title="ASCII charset — Latin / Georgian / mixed"><span class="regmark-val" id="phAsciiCharsetVal">ABC</span></button><button class="regmark-btn" id="phAsciiFontBtn" style="display:none" onclick="R.asciiFontClick()" title="ASCII font — upload TTF/OTF/WOFF; tap again to reset"><span class="regmark-val" id="phAsciiFontVal">Aa</span></button><input type="text" id="phLettersTextInput" maxlength="128" placeholder="word…" style="display:none;flex:1;min-width:90px;font-family:'Space Mono',monospace;font-size:10px;padding:6px 8px;border:1px solid var(--border);background:transparent;color:var(--text)" oninput="R.setLettersText(this.value)"></div>
         </div>
+        <div class="regmark-row" id="phLinesRow" style="display:${mode==='lines'?'flex':'none'};gap:6px;flex-wrap:wrap">
+          <button class="regmark-btn active" onclick="R.cycleLineShape();R.phSyncLines()" title="Line shape"><span class="regmark-val" id="phLineShapeVal">LINES</span></button>
+          <button class="regmark-btn" onclick="R.cycleLineWave();R.phSyncLines()" title="Wave modulation"><span class="regmark-val" id="phLineWaveVal">None</span></button>
+          <button class="regmark-btn" onclick="R.cycleLineWeight();R.phSyncLines()" title="Line weight"><span class="regmark-val" id="phLineWeightVal">1×</span></button>
+          <button class="regmark-btn" onclick="R.cycleLineRoughness();R.phSyncLines()" title="Edge roughness"><span class="regmark-val" id="phLineRoughVal">Med</span></button>
+          <button class="regmark-btn" onclick="R.toggleLineSpin();R.phSyncLines()" title="Animate — plate angles precess on the FPS clock"><span class="regmark-val" id="phLineSpinVal">Anim Off</span></button>
+        </div>
         <div class="regmark-row">
           <button class="regmark-btn" id="phInkSpreadBtn" onclick="R.cycleInkSpread()" title="Drum Pressure"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="9.5" r="6.6" stroke="currentColor" stroke-width="1.2" fill="none"/><line x1="2" y1="16.6" x2="18" y2="16.6" stroke="currentColor" stroke-width="1"/><circle cx="10" cy="10" r="1" stroke="currentColor" stroke-width="1.2" fill="none"/><line x1="10" y1="11.1" x2="10" y2="15" stroke="currentColor" stroke-width="0.7"/><path d="M8.9,14.2 L10,15.5 L11.1,14.2" fill="currentColor"/></svg><span class="regmark-val" id="phInkSpreadBtnVal">Low</span></button>
           <button class="regmark-btn" id="phGhostingBtn" onclick="R.cycleGhosting()" title="Ghosting"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><path d="M10 2C6.5 2 4 5 4 8v7c0 0 1-1.5 2-1.5s1.5 1.5 2.5 1.5 1.5-1.5 2.5-1.5 1.5 1.5 2.5 1.5S15 14 16 15.5V8c0-3-2.5-6-6-6z" fill="currentColor" opacity="0.7"/><circle cx="8" cy="8" r="1.2" fill="white"/><circle cx="12" cy="8" r="1.2" fill="white"/></svg><span class="regmark-val" id="phGhostingBtnVal">OFF</span></button>
@@ -425,7 +450,22 @@ function phPopulateOverlay(name){
       </div>`;
     phBindSliders();
     R.updateRegmarkUI();
+    phSyncLines();
   }
+}
+
+// Mirror the LINES control labels from the (hidden) desktop panel spans —
+// the cycle handlers update desktop ids, and reading those back beats
+// duplicating the step tables here.
+function phSyncLines(){
+  [['lineShapeBtnPanelVal','phLineShapeVal'],['lineWaveBtnVal','phLineWaveVal'],
+   ['lineWeightBtnVal','phLineWeightVal'],['lineRoughBtnVal','phLineRoughVal']]
+    .forEach(function(pair){
+      var d=el(pair[0]), p=el(pair[1]);
+      if(d&&p) p.textContent=d.textContent;
+    });
+  var spin=el('phLineSpinVal'), dSpin=el('lineSpinBtnVal');
+  if(spin&&dSpin) spin.textContent='Anim '+dSpin.textContent;
 }
 
 function phBindSliders(){
@@ -473,7 +513,30 @@ function layoutSwitch(){
     $vf=vf;
     phCloseOverlay();
   }
+  phOrientLock();
   needsAspectUpdate=true;scheduleRender();
+}
+
+// ── Landscape lock ──────────────────────────────────────────────
+// Keep the phone UI portrait-oriented when the device rotates, like the
+// iOS camera app: the frame rotates, the app doesn't. Both landscape grips
+// report orientation:landscape, so counter-rotate by the reported rotation
+// angle instead (angle 90 → rotate −90 [ph-ls-ccw], angle 270 → rotate 90
+// [ph-ls-cw]; CSS in main.css). Coarse-pointer gate keeps the desktop 📱
+// preview unaffected.
+function phOrientLock(){
+  const b=document.body.classList;
+  let ang=0;
+  if(screen.orientation && typeof screen.orientation.angle==='number') ang=screen.orientation.angle;
+  else if(typeof window.orientation==='number') ang=(window.orientation+360)%360;
+  const touch=window.matchMedia('(pointer: coarse)').matches;
+  const want=(phoneActive&&touch) ? (ang===90?'ph-ls-ccw':(ang===270?'ph-ls-cw':'')) : '';
+  const had=b.contains('ph-ls-ccw')?'ph-ls-ccw':(b.contains('ph-ls-cw')?'ph-ls-cw':'');
+  if(want===had) return;
+  b.toggle('ph-ls',!!want);
+  b.toggle('ph-ls-ccw',want==='ph-ls-ccw');
+  b.toggle('ph-ls-cw',want==='ph-ls-cw');
+  markDirty();needsAspectUpdate=true;scheduleRender();
 }
 
 // Update aspect buttons across both UIs
@@ -577,6 +640,15 @@ document.addEventListener('DOMContentLoaded',()=>{
   // Redraw on resize/orientation change
   window.addEventListener('resize',()=>{markDirty();needsAspectUpdate=true;if(compareOn)setTimeout(R.sizeCompareOverlay,50);});
 
+  // Landscape lock: rotation fires resize AND orientationchange, but iOS
+  // updates the reported angle slightly after the event — re-check on a
+  // short delay too.
+  window.addEventListener('resize',phOrientLock);
+  window.addEventListener('orientationchange',()=>{phOrientLock();setTimeout(phOrientLock,80);});
+  if(screen.orientation&&screen.orientation.addEventListener)
+    screen.orientation.addEventListener('change',()=>{phOrientLock();setTimeout(phOrientLock,80);});
+  phOrientLock();
+
   // Undo/Redo keyboard shortcuts (Cmd+Z / Ctrl+Z, Cmd+Shift+Z / Ctrl+Shift+Z)
   document.addEventListener('keydown',e=>{
     const mod=e.metaKey||e.ctrlKey;
@@ -670,6 +742,7 @@ R.phCloseOverlay = phCloseOverlay;
 R.initOverlaySwipe = initOverlaySwipe;
 R.phPopulateOverlay = phPopulateOverlay;
 R.phBindSliders = phBindSliders;
+R.phSyncLines = phSyncLines;
 R.layoutSwitch = layoutSwitch;
 
 })(window.R);
