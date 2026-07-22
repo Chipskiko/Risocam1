@@ -1697,7 +1697,11 @@ function _renderInner(){
   // Edge/Chrome window (they share one GPU process) or trip Windows' 2 s
   // TDR driver reset. Exports are unaffected (their own sizing + tiling).
   const gpuCap = (!window._gpuProbed || window._gpuSlow) ? 2 : Infinity;
-  const effScale = Math.min(gpuCap,
+  // Phones: cap full-quality frames at 4× CSS — that is already ≥1.3× the
+  // DEVICE pixels (dpr-3 screens at CSS-1 sizing), so 6× is invisible extra
+  // fill and battery. Exports have their own sizing and are unaffected.
+  const platCap = isPhoneNow ? 4 : Infinity;
+  const effScale = Math.min(gpuCap, platCap,
                    interacting ? Math.max(2, dpr)
                  : animTick    ? animScale
                  : Math.max(resScale, dpr));

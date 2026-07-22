@@ -559,7 +559,11 @@ function startMediaRecorderRecording(){
   const chunks = [];
   let recorder;
   try {
-    recorder = new MediaRecorder(stream, {mimeType: mime, videoBitsPerSecond: 16_000_000});
+    // Phones record HEVC on Safari (mime preference above) at a phone-sized
+    // canvas — 8 Mbps HEVC ≈ visually lossless there and halves the files;
+    // desktop keeps 16 Mbps for its larger canvas.
+    const kbps = (R.isPhone && R.isPhone()) ? 8_000_000 : 16_000_000;
+    recorder = new MediaRecorder(stream, {mimeType: mime, videoBitsPerSecond: kbps});
   } catch(e) {
     R.toast('Recorder error: '+e.message);
     return;

@@ -228,7 +228,12 @@ function initShutter(){
       haptic(15);
       phStopRec();
     } else {
-      R.saveHiRes();
+      // Phone captures save as JPEG: ~10× smaller than PNG, encodes in a
+      // fraction of the time on A-series, and iOS Photos handles it
+      // natively. (HEIC can't be encoded from a web canvas — Safari's
+      // toBlob only does PNG/JPEG.) The header PNG button still gives
+      // lossless on demand.
+      R.saveHiRes('jpg');
     }
   };
   btn.addEventListener('touchstart',startHold,{passive:false});
@@ -602,7 +607,7 @@ document.addEventListener('DOMContentLoaded',()=>{
       _volDown=false;
       clearTimeout(_shutterTimer);
       if(_shutterIsLong) phStopRec();
-      else R.saveHiRes();
+      else R.saveHiRes('jpg');   // volume shutter = camera capture → JPEG
     }
   });
   // Initial undo snapshot
