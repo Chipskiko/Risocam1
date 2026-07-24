@@ -39,6 +39,90 @@ function sizeExportCanvas(w, h){
 // past the GPU's silent-allocation limit in the first place.
 function exportPxPerCell(){ return (mode === 'lines') ? 6 : 12; }
 
+// ─── Export quality: master density + supersampling ─────────────────────
+// A3 long edge in inches — the virtual sheet the 1-bit RISO master burns onto.
+const A3_LONG_IN = 16.54;
+
+// The master must be at least as dense as the raster we export, or every
+// exported dot is a magnified texel (a 6400 px export off a 300 dpi master is
+// a 1.29x stretch; off 150 dpi it is 2.58x). The dpi control is a PREVIEW
+// latency tradeoff — bakes measure ~1 s at 300 dpi and ~3 s at 600 on the
+// worker pool — so exports raise it to whatever the output needs, capped at
+// the 600 dpi real-drum resolution. Returns the previous value when it
+// changed so the caller can restore it, else null.
+async function raiseMasterForExport(finalLongEdge){
+  if(mode !== 'flat' && mode !== 'stipple') return null;
+  // GPU safe mode deliberately pins masters at 150 dpi; the prepass would
+  // clamp any raise straight back, so don't burn time re-baking.
+  if(window._gpuSlow || window._gpuSoftware) return null;
+  const cur = window._amtScanDpi || ((R.isPhone && R.isPhone()) ? 150 : 300);
+  const need = Math.min(600, Math.ceil(finalLongEdge / A3_LONG_IN));
+  if(need <= cur) return null;
+  window._amtScanDpi = need;
+  if(R.invalidateAmt) R.invalidateAmt();
+  try{ R.toast('Baking ' + need + ' dpi master for export…'); }catch(e){}
+  if(R.runMasterPrepass) await R.runMasterPrepass();
+  while(window._amtPrepassRunning) await new Promise(r => setTimeout(r, 60));
+  return cur;
+}
+function restoreMasterAfterExport(prev){
+  if(prev == null) return;
+  window._amtScanDpi = prev;
+  if(R.invalidateAmt) R.invalidateAmt();
+  // Async — the live view catches up on its own; blocking the save would
+  // just delay the download for a preview-quality bake.
+  if(R.runMasterPrepass) setTimeout(R.runMasterPrepass, 0);
+}
+
+// The PREVIEW renders into a 3-6x buffer that the browser box-filters down to
+// the screen, so what the user approves is heavily supersampled. Exports
+// rendered 1:1, so the same frame came out harder-edged in the file. Render
+// 2x and box-filter down instead: at exactly 2:1 the bilinear filter averages
+// precisely the four covered texels, i.e. a true box average.
+function exportSSAA(w, h){
+  if(window._gpuSlow || window._gpuSoftware) return 1;
+  const maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+  if(w * 2 > maxTex || h * 2 > maxTex) return 1;
+  // iOS Safari is far tighter on buffer memory than desktop; its exports are
+  // JPEG-capped at 2400 px anyway, so the smaller budget still covers them.
+  const budget = (R.isPhone && R.isPhone()) ? 36e6 : 140e6;
+  if(w * 2 * h * 2 > budget) return 1;
+  return 2;
+}
+
+// Allocate the export drawing buffer, preferring the supersampled size but
+// never at the cost of output resolution. Browsers cap the WebGL drawing
+// buffer well below MAX_TEXTURE_SIZE (~33 MP on this Mac), so a doubled
+// request for an already-large export comes back reduced — and halving THAT
+// would ship a smaller file than before. When the GPU short-changes us, fall
+// back to a 1:1 render at the requested size. Returns the render dims plus
+// the (possibly GPU-reduced) output dims to build the file from.
+function allocExportBuffer(outW, outH){
+  let ssaa = exportSSAA(outW, outH);
+  let [rw, rh] = sizeExportCanvas(outW * ssaa, outH * ssaa);
+  if(ssaa > 1 && (rw < outW * ssaa || rh < outH * ssaa)){
+    ssaa = 1;
+    [rw, rh] = sizeExportCanvas(outW, outH);
+  }
+  return { ssaa: ssaa, rw: rw, rh: rh,
+           outW: Math.max(2, Math.round(rw / ssaa)) & ~1,
+           outH: Math.max(2, Math.round(rh / ssaa)) & ~1 };
+}
+
+// Box-filter the (possibly supersampled) drawing buffer down to the final
+// size. fillWhite flattens alpha onto paper white for JPEG, which cannot
+// carry transparency.
+function downsampleExport(outW, outH, fillWhite){
+  const c = document.createElement('canvas');
+  c.width = outW; c.height = outH;
+  const cx = c.getContext('2d');
+  cx.imageSmoothingEnabled = true;
+  cx.imageSmoothingQuality = 'high';
+  if(fillWhite){ cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, outW, outH); }
+  cx.drawImage($gl, 0, 0, outW, outH);
+  return c;
+}
+
 // Windows TDR safety: banded scissor draws so no single drawArrays can trip
 // the D3D11 2-second GPU watchdog. Implementation moved to renderer.js
 // (R.drawFullscreenTiled) so the LIVE view shares it; this thin wrapper keeps
@@ -85,33 +169,34 @@ async function saveHiRes(format){
     saveW = Math.round(saveW*s); saveH = Math.round(saveH*s);
   }
   saveW=saveW&~1;saveH=saveH&~1;
+  // Master density must cover the output before anything is rendered.
+  var _prevDpi = await raiseMasterForExport(Math.max(saveW,saveH));
+  try{
   const origW=$gl.width,origH=$gl.height;
   // Hide canvas during save to prevent visible stretch/flash
   const origCssW=$gl.style.width, origCssH=$gl.style.height;
   $gl.style.width=$gl.clientWidth+'px';
   $gl.style.height=$gl.clientHeight+'px';
   $gl.style.visibility='hidden';
-  [saveW,saveH]=sizeExportCanvas(saveW,saveH);
-  gl.viewport(0,0,saveW,saveH);
-  const effectiveScale=Math.min(saveW,saveH)/(baseSize/3);
-  R.setRenderUniforms(saveW,saveH,effectiveScale,false);
+  // rw/rh = what the GPU renders; saveW/saveH = what lands in the file.
+  const buf=allocExportBuffer(saveW,saveH);
+  const ssaa=buf.ssaa, rw=buf.rw, rh=buf.rh;
+  saveW=buf.outW; saveH=buf.outH;
+  gl.viewport(0,0,rw,rh);
+  const effectiveScale=Math.min(rw,rh)/(baseSize/3);
+  R.setRenderUniforms(rw,rh,effectiveScale,false);
   // P5 export parity: run the anchor-tone prepass at EXPORT dims (ASCII tone
   // + circle soft edges) so the export matches the preview instead of reading
   // a stale preview-sized tone texture.
-  if(R._runTonePrepass) R._runTonePrepass(saveW,saveH);
-  drawFullscreenTiled(saveW,saveH);
+  if(R._runTonePrepass) R._runTonePrepass(rw,rh);
+  drawFullscreenTiled(rw,rh);
   const filename='risocam_'+(names||'empty')+'_'+saveW+'x'+saveH+'_'+Date.now()+'.'+ext;
   let blob;
-  if(isJpg){
-    // JPEG can't render the canvas alpha as transparency — flatten onto white
-    // first so transparent areas show as paper-white instead of black.
-    const flat = document.createElement('canvas');
-    flat.width = saveW; flat.height = saveH;
-    const fctx = flat.getContext('2d');
-    fctx.fillStyle = '#ffffff';
-    fctx.fillRect(0, 0, saveW, saveH);
-    fctx.drawImage($gl, 0, 0);
-    blob = await new Promise(r => flat.toBlob(b => r(b), 'image/jpeg', jpgQuality));
+  if(ssaa>1 || isJpg){
+    // Supersampled renders box-filter down here; JPEG additionally flattens
+    // alpha onto white (it cannot carry transparency).
+    const flat=downsampleExport(saveW,saveH,isJpg);
+    blob = await new Promise(r => flat.toBlob(b => r(b), mime, isJpg?jpgQuality:undefined));
   } else {
     blob = await new Promise(r => $gl.toBlob(b => r(b), mime));
   }
@@ -121,6 +206,7 @@ async function saveHiRes(format){
   markDirty();needsAspectUpdate=true;
   _saving=false;
   await doSaveBlob(blob,filename,saveW,saveH);
+  } finally { restoreMasterAfterExport(_prevDpi); }
   }catch(e){console.error(ext.toUpperCase()+' save error:',e);R.toast('Save failed');}
   finally{_saving=false;}
 }
@@ -869,21 +955,28 @@ async function exportSeparations(){
   const maxTex=gl.getParameter(gl.MAX_TEXTURE_SIZE);
   if(dw>maxTex||dh>maxTex){const s=maxTex/Math.max(dw,dh);dw=Math.round(dw*s);dh=Math.round(dh*s);}
   dw=dw&~1;dh=dh&~1;
+  // Separations are the path that actually reaches a drum — bake the master
+  // to cover the plate raster, and render supersampled.
+  var _prevDpi = await raiseMasterForExport(Math.max(dw,dh));
   // Hide canvas + lock CSS so the export resize isn't visible
   const origW=$gl.width, origH=$gl.height;
   const origCssW=$gl.style.width, origCssH=$gl.style.height;
   $gl.style.width=$gl.clientWidth+'px';
   $gl.style.height=$gl.clientHeight+'px';
   $gl.style.visibility='hidden';
-  [dw,dh]=sizeExportCanvas(dw,dh);
-  const effectiveScale=Math.min(dw,dh)/(baseSize/3);
-  gl.viewport(0,0,dw,dh);
+  // rw/rh = GPU render size; dw/dh stay the PLATE size every canvas and the
+  // PDF page geometry below is built from.
+  const sepBuf=allocExportBuffer(dw,dh);
+  const rw=sepBuf.rw, rh=sepBuf.rh;
+  dw=sepBuf.outW; dh=sepBuf.outH;
+  const effectiveScale=Math.min(rw,rh)/(baseSize/3);
+  gl.viewport(0,0,rw,rh);
 
   // Set separation mode
   gl.uniform1i(locs.u_sepMode,1);
   gl.uniform1i(locs.u_sepType,cached.sepType||0);
   gl.uniform1i(locs.u_layers,layers.length);
-  gl.uniform2f(locs.u_res,dw,dh);
+  gl.uniform2f(locs.u_res,rw,rh);
   gl.uniform1f(locs.u_grainSize,cached.grainSize);
   // Master noise multiplier — every hardcoded noise effect in the
   // shader scales by u_simNoise; FLAT and SCREEN+Clean set it to 0.
@@ -914,7 +1007,7 @@ async function exportSeparations(){
   gl.uniform1f(locs.u_postSat,cached.postSat||0);
   // Dot pitch follows the LPI control freely (match live path); only the
   // matrix/TRC choice snaps to 43/71/106 in the unit-8 bind below.
-  gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(dw,dh)/(8.267*cached.lpi)));
+  gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(rw,rh)/(8.267*cached.lpi)));
   gl.uniform1f(locs.u_ucrStr, cached.ucrStr * 0.01);
   gl.uniform4f(locs.u_cmykBal, cached.balC*0.01, cached.balM*0.01, cached.balY*0.01, cached.balK*0.01);
   gl.uniform1f(locs.u_tac, cached.tac * 0.01);
@@ -1060,14 +1153,16 @@ async function exportSeparations(){
       gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[L.ch]);
       gl.activeTexture(gl.TEXTURE0);
     }
-    drawFullscreenTiled(dw,dh);
+    drawFullscreenTiled(rw,rh);
 
-    // Snapshot this layer's plate to an opaque temp canvas (white bg, no alpha).
+    // Snapshot this layer's plate to an opaque temp canvas (white bg, no
+    // alpha), box-filtering the supersampled render down to plate size.
     const tmpC=document.createElement('canvas');
     tmpC.width=dw;tmpC.height=dh;
     const ctx=tmpC.getContext('2d');
+    ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
     ctx.fillStyle='#fff';ctx.fillRect(0,0,dw,dh);
-    ctx.drawImage($gl,0,0);
+    ctx.drawImage($gl,0,0,dw,dh);
     // Merge into this color's group canvas. 'darken' keeps the darker pixel
     // (more ink), i.e. the union of both channels' halftones on one drum.
     let grp=colorGroups[L.color];
@@ -1159,6 +1254,7 @@ async function exportSeparations(){
       markDirty();needsAspectUpdate=true;
     }catch(_){}
   }finally{
+    restoreMasterAfterExport(typeof _prevDpi!=='undefined'?_prevDpi:null);
     _saving=false;
   }
 }
@@ -1176,6 +1272,7 @@ async function savePdf(){
   if(!window.jspdf||!window.jspdf.jsPDF){R.toast('PDF library not loaded');return;}
   const isPdfMode=!!window._pdfDoc;
   _saving=true;
+  let pdfPrevDpi=null; // set by the first page that needs a denser master
   try{
     const ts=Date.now();
     const {jsPDF}=window.jspdf;
@@ -1282,24 +1379,33 @@ async function savePdf(){
         rasterW=Math.round(rasterW*s); rasterH=Math.round(rasterH*s);
       }
       rasterW=rasterW&~1; rasterH=rasterH&~1;
-      // Render through the riso shader at the target raster size
-      [rasterW,rasterH]=sizeExportCanvas(rasterW,rasterH);
-      gl.viewport(0,0,rasterW,rasterH);
+      // Master density must cover this page's raster (no-op once raised — the
+      // first page's bake carries the rest of the document).
+      pdfPrevDpi = (await raiseMasterForExport(Math.max(rasterW,rasterH))) ?? pdfPrevDpi;
+      // Render through the riso shader at the target raster size, supersampled
+      // where memory allows (rw/rh render, rasterW/H land in the page).
+      const pgBuf=allocExportBuffer(rasterW,rasterH);
+      const ssaa=pgBuf.ssaa, rw=pgBuf.rw, rh=pgBuf.rh;
+      rasterW=pgBuf.outW; rasterH=pgBuf.outH;
+      gl.viewport(0,0,rw,rh);
       const baseSize=2400;
-      const effectiveScale=Math.min(rasterW,rasterH)/(baseSize/3);
-      R.setRenderUniforms(rasterW,rasterH,effectiveScale,false);
-      if(R._runTonePrepass) R._runTonePrepass(rasterW,rasterH); // export parity (ASCII/circle tone)
-      drawFullscreenTiled(rasterW,rasterH);
+      const effectiveScale=Math.min(rw,rh)/(baseSize/3);
+      R.setRenderUniforms(rw,rh,effectiveScale,false);
+      if(R._runTonePrepass) R._runTonePrepass(rw,rh); // export parity (ASCII/circle tone)
+      drawFullscreenTiled(rw,rh);
       // Encode JPEG. Try OffscreenCanvas.convertToBlob (non-blocking, can
       // run on browser worker thread) first; fall back to toDataURL.
       let dataUrl;
+      // Supersampled pages must box-filter down through a 2D canvas first;
+      // bitmaprenderer can only transfer a bitmap 1:1.
+      const srcCanvas = ssaa>1 ? downsampleExport(rasterW,rasterH,false) : $gl;
       // (Gate previously checked $gl.transferToImageBitmap, which only exists
       // on OffscreenCanvas — so this fast path was dead code and every page
       // encoded via synchronous toDataURL. The body uses createImageBitmap.)
       if(typeof OffscreenCanvas!=='undefined' && typeof createImageBitmap==='function'){
-        // Copy WebGL output to an OffscreenCanvas (which can encode off-thread)
+        // Copy output to an OffscreenCanvas (which can encode off-thread)
         try{
-          const bitmap=await createImageBitmap($gl);
+          const bitmap=await createImageBitmap(srcCanvas);
           const oc=new OffscreenCanvas(rasterW, rasterH);
           oc.getContext('bitmaprenderer').transferFromImageBitmap(bitmap);
           const blob=await oc.convertToBlob({type:'image/jpeg', quality:0.92});
@@ -1307,10 +1413,10 @@ async function savePdf(){
             const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(blob);
           });
         }catch(_){
-          dataUrl=$gl.toDataURL('image/jpeg', 0.92);
+          dataUrl=srcCanvas.toDataURL('image/jpeg', 0.92);
         }
       } else {
-        dataUrl=$gl.toDataURL('image/jpeg', 0.92);
+        dataUrl=srcCanvas.toDataURL('image/jpeg', 0.92);
       }
       // Add to PDF (first page initialises the document)
       if(!pdf){
@@ -1362,6 +1468,7 @@ async function savePdf(){
       markDirty();needsAspectUpdate=true;
     }catch(_){}
   }finally{
+    restoreMasterAfterExport(pdfPrevDpi);
     _saving=false;
   }
 }
