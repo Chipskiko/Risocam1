@@ -59,6 +59,8 @@ async function saveHiRes(format){
   const jpgMaxW = 2400;
   _saving=true;
   try{
+  // RISO/stipple: don't snapshot half-written masters mid-prepass
+  while((mode==='flat'||mode==='stipple') && window._amtPrepassRunning) await new Promise(r=>setTimeout(r,80));
   const unique=[...new Set(channels.filter(c=>c))];
   const names=unique.join('-').replace(/[\s.]/g,'');
   const saveScale=Math.max(resScale,3);
@@ -1222,11 +1224,28 @@ async function savePdf(){
         // Apply this page's per-page settings (variation if exists, else master)
         window._pdfActiveIdx=i;
         if(typeof R.pdfApplyForActive==='function') R.pdfApplyForActive();
+        // Page-scoped side channels — without these, page N renders with
+        // page N-1's text mask / inpainted source / halftone masters (the
+        // "ghost of the previous page on the next one" bug).
+        const twExp=exportRasterW(window._pdfMeta[i]);
+        const pdfTextOn=(typeof pdfModeOn!=='undefined')&&pdfModeOn;
+        const inp=pdfTextOn&&R.pdfPageInpainted?R.pdfPageInpainted(window._pdfDoc,i+1,twExp):null;
+        const up=inp||c; // text channel on → glyphs come from the mask, bg from inpainted
         gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
-        gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,c);
+        gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,up);
         gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
-        gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,c);
+        gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,up);
+        if(R.uploadTextMask) R.uploadTextMask(pdfTextOn&&R.pdfPageMask?R.pdfPageMask(window._pdfDoc,i+1,twExp):null);
         srcImg=c; needsAspectUpdate=true; computeCrop();
+        // RISO/stipple: the masters on the GPU were baked from the PREVIOUS
+        // page's source — rebake for this page and wait for it, otherwise
+        // the whole previous page prints through as its halftone plates.
+        if(mode==='flat'||mode==='stipple'){
+          while(window._amtPrepassRunning) await new Promise(r=>setTimeout(r,80));
+          if(R.invalidateAmt) R.invalidateAmt();
+          if(R.runMasterPrepass) await R.runMasterPrepass();
+          while(window._amtPrepassRunning) await new Promise(r=>setTimeout(r,80));
+        }
         R.toast('Rendering page '+(i+1)+'/'+pages+'…');
       }
       // Determine raster size — match input PDF native dims @ 300dpi when in
@@ -1312,7 +1331,8 @@ async function savePdf(){
       // viewfinder shows what the user saw before exporting, and restore
       // its settings.
       const m=window._pdfMeta[origActive];
-      const c=await R.renderPdfPage(window._pdfDoc, origActive+1, Math.min(2400, m.nativeW*3));
+      const twPrev=Math.min(2400, m.nativeW*3);
+      const c=await R.renderPdfPage(window._pdfDoc, origActive+1, twPrev);
       window._pdfActiveIdx=origActive;
       if(typeof R.pdfApplyForActive==='function') R.pdfApplyForActive();
       gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
@@ -1320,6 +1340,12 @@ async function savePdf(){
       gl.activeTexture(gl.TEXTURE3);gl.bindTexture(gl.TEXTURE_2D,window._srcTexB);
       gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,c);
       srcImg=c;
+      // Undo the export loop's per-page side channels for the live view:
+      // preview-res mask for the active page, inpainted source swap, and an
+      // async master rebake (applyPdfSourceForMode handles the latter two).
+      const pdfTextOnR=(typeof pdfModeOn!=='undefined')&&pdfModeOn;
+      if(R.uploadTextMask) R.uploadTextMask(pdfTextOnR&&R.pdfPageMask?R.pdfPageMask(window._pdfDoc,origActive+1,twPrev):null);
+      if(typeof R.applyPdfSourceForMode==='function') R.applyPdfSourceForMode();
     }
     markDirty(); needsAspectUpdate=true;
     const filename='risocam_'+pages+'page'+(pages>1?'s':'')+'_'+ts+'.pdf';

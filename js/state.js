@@ -61,6 +61,7 @@ const cached={
   skew:0,
   postExposure:0, postContrast:0, postSat:0,
   warmCool:0, // -50..50 — channel mixer warm/cool bias
+  paperScale:1, // 1×/2×/3× — paper texture zoom-out (higher = finer fibers)
 };
 let needsAspectUpdate=true;
 let videoFrameReady=false;

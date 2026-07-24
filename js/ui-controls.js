@@ -545,13 +545,35 @@ function onChannelsChanged(){
   R.newMisreg();cacheInkColors();updateUI();markDirty();
 }
 
+// A profile counts as ACTIVE only while the channels still hold exactly what
+// applying it would produce — deriving this (instead of trusting the sticky
+// activeProf set at apply time) means any later ink swap/add/remove instantly
+// unlights the pill, and picking your way back to the palette re-lights it.
+function channelsMatchProfile(p){
+  const m=mapProfileToSlots(p.colors);
+  for(let i=0;i<4;i++) if((channels[i]||null)!==(m[i]||null)) return false;
+  return true;
+}
+
 function updateUI(){
-  // Profiles
+  // Profiles — derive the active pill from actual channel state
   const all=allProfiles();
+  const matchIdx=all.findIndex(channelsMatchProfile);
+  activeProf=matchIdx>=0?all[matchIdx]:null; // keeps save-state naming honest ('custom' fallback)
   document.querySelectorAll('.profile-pill').forEach(p=>{
     const idx=parseInt(p.dataset.ai);
-    const pr=all[idx];
-    if(pr) p.classList.toggle('active',activeProf&&pr.name===activeProf.name);
+    p.classList.toggle('active',idx===matchIdx);
+  });
+  // No preset matches → show a live "Custom" chip next to the section title
+  // with the actual plate inks, so the palette area reflects reality.
+  document.querySelectorAll('.profile-custom-chip').forEach(chip=>{
+    if(matchIdx>=0){chip.style.display='none';chip.innerHTML='';return;}
+    const sw=[...new Set(channels.filter(c=>c))].map(n=>{
+      const c=RISO_COLORS.find(r=>r.name===n);
+      return `<span class="chip-swatch" style="background:${c?c.hex:'#ccc'}"></span>`;
+    }).join('');
+    chip.innerHTML='CUSTOM'+sw;
+    chip.style.display='inline-flex';
   });
 
   // Rebuild channel rows with dropdowns + density

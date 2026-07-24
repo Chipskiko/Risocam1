@@ -216,6 +216,10 @@ body.pdf-mode .viewfinder-panel>#gl{
 .profile-swatches{display:flex;gap:2px}.profile-swatch{width:14px;height:14px;border-radius:50%;border:1px solid rgba(0,0,0,.06)}
 .profile-add{border-style:dashed;opacity:.6}.profile-add:hover{opacity:1}.profile-add .profile-label{font-size:14px;font-weight:bold;line-height:1}
 .profile-del{margin-left:2px;font-size:12px;opacity:.4;cursor:pointer;line-height:1}.profile-del:hover{opacity:1;color:#e44}
+/* Live "Custom" chip beside the PROFILES title — appears when the plate inks
+   no longer match any preset; swatches show the ACTUAL current palette. */
+.profile-custom-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;border:1px solid var(--text);background:var(--text);color:#fff;font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.5px;text-transform:none}
+.profile-custom-chip .chip-swatch{width:9px;height:9px;border-radius:50%;border:1px solid rgba(255,255,255,.35);display:inline-block}
 .prof-creator-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
 .prof-creator-modal{background:#fff;border-radius:12px;padding:20px 24px;width:min(420px,90vw);max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.3)}
 .prof-creator-title{font-family:'Space Mono',monospace;font-size:13px;font-weight:700;letter-spacing:1px;margin-bottom:12px}

@@ -55,6 +55,8 @@ function renderPaperUI(){
     ch+=`<div class="paper-dot${i===0?' active':''}" onclick="R.setPaperColor(${i})" style="background:${c.hex};${border}" title="${c.name}"></div>`;
   });
   colorGrid.innerHTML=ch;
+  const psBtn=el('paperScaleBtn');
+  if(psBtn) psBtn.textContent=(cached.paperScale||1)+'×';
   // Paper texture selector (hidden grid kept for setPaperTex compatibility)
   const texGrid=el('paperTexGrid');
   if(texGrid){
@@ -109,11 +111,19 @@ function cyclePaperTex(){
   const next=PAPER_TEX_KEYS[(i+1)%PAPER_TEX_KEYS.length];
   setPaperTex(next);
 }
+// Paper scale 1×/2×/3× — zooms the fiber texture out (PBR mirror-tiles,
+// scan/procedural tile denser). Mirrored on desktop + phone buttons.
+function cyclePaperScale(){
+  cached.paperScale=(cached.paperScale%3)+1;
+  document.querySelectorAll('#paperScaleBtn,.ph-paper-scale-val').forEach(b=>{b.textContent=cached.paperScale+'×';});
+  markDirty();
+}
 // --- Namespace exports ---
 R.setPaperColor = setPaperColor;
 R.renderPaperUI = renderPaperUI;
 R.setPaperTex = setPaperTex;
 R.cyclePaperTex = cyclePaperTex;
+R.cyclePaperScale = cyclePaperScale;
 R.updatePaperBg = updatePaperBg;
 
 })(window.R);

@@ -383,7 +383,7 @@ function phPopulateOverlay(name){
   } else if(name==='look'){
     const body=el('phLookBody');
     // Profiles section
-    let html='<div style="padding:0 12px"><div class="section-header" style="font-size:10px;letter-spacing:1px;padding:6px 4px;margin-bottom:4px;border-bottom:1px solid #333;color:#888">PROFILES</div>';
+    let html='<div style="padding:0 12px"><div class="section-header" style="font-size:10px;letter-spacing:1px;padding:6px 4px;margin-bottom:4px;border-bottom:1px solid #333;color:#888;display:flex;align-items:center;gap:8px">PROFILES<span class="profile-custom-chip" style="display:none"></span></div>';
     html+='<div class="profiles-body" id="phProfileGrid"></div>';
     // Paper section
     html+='<div class="section-header" style="font-size:10px;letter-spacing:1px;padding:6px 4px;margin:12px 0 4px;border-bottom:1px solid #333;color:#888">PAPER</div>';
@@ -400,6 +400,7 @@ function phPopulateOverlay(name){
     texKeys.forEach(k=>{
       html+=`<button class="paper-tex-btn ph-paper-tex-btn${k===activePaperTex?' active':''}" data-tex="${k}" onclick="R.setPaperTex('${k}')">${texLabels[k]}</button>`;
     });
+    html+=`<button class="paper-tex-btn" onclick="R.cyclePaperScale()" title="Paper texture scale"><span class="ph-paper-scale-val">${(cached.paperScale||1)}×</span></button>`;
     html+='</div>';
     // Margin
     html+='<div style="display:flex;align-items:center;gap:6px;padding:4px 0;flex-wrap:wrap">';
@@ -409,6 +410,11 @@ function phPopulateOverlay(name){
     html+='</div>';
     body.innerHTML=html;
     R.renderProfiles('phProfileGrid');
+    // Sync the Custom chip into the freshly-built header — updateUI only
+    // touches chips that exist at the moment it runs.
+    const dChip=document.querySelector('.ctrl-group__title .profile-custom-chip');
+    const pChip=document.querySelector('#phLookBody .profile-custom-chip');
+    if(dChip&&pChip){pChip.innerHTML=dChip.innerHTML;pChip.style.display=dChip.style.display;}
     // Bind phone margin slider to desktop slider
     const phMg=el('phMargin');
     if(phMg){

@@ -14,7 +14,7 @@
 <title>RISO/CAM</title>
 <link rel="manifest" href="manifest.json">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/main.css?v=29">
+<link rel="stylesheet" href="css/main.css?v=30">
 <!-- Styles extracted to css/main.css -->
 <script data-goatcounter="https://chipskiko.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </head>
@@ -78,6 +78,7 @@
     <span class="paper-compact-label">PAPER</span>
     <div id="paperColorGrid" style="display:flex;gap:4px;flex-wrap:wrap"></div>
     <div class="header-cycle paper-type-box"><span class="header-cycle-val" id="paperTypeBtn" onclick="R.cyclePaperTex()" style="cursor:pointer">Standard</span></div>
+    <div class="header-cycle" title="Paper texture scale — higher zooms the fibers out"><span class="header-cycle-val" id="paperScaleBtn" onclick="R.cyclePaperScale()" style="cursor:pointer;min-width:18px">1&times;</span></div>
     <div id="paperTexGrid" style="display:none"></div>
     <input type="range" id="paperTex" min="0" max="25" value="12" step="1" style="display:none"><span class="slider-value" id="paperTexVal" style="display:none">12</span>
     <div class="controls-sep"></div>
@@ -89,7 +90,7 @@
     <input type="checkbox" id="cropMarksToggle" style="display:none">
   </div>
   <!-- Profiles -->
-  <div class="control-section ctrl-group" data-ctrl="profiles"><div class="section-header no-border ctrl-group__title">PROFILES</div><div class="profile-list" id="profileList"></div></div>
+  <div class="control-section ctrl-group" data-ctrl="profiles"><div class="section-header no-border ctrl-group__title" style="display:flex;align-items:center;gap:8px">PROFILES<span class="profile-custom-chip" style="display:none"></span></div><div class="profile-list" id="profileList"></div></div>
   </div> <!-- end left-col -->
   <div class="controls-panel">
     <!-- Channels -->
@@ -490,6 +491,7 @@ uniform float u_useAmt;        // 1.0 = sample u_amtMaster<idx> (Grain Touch tru
 uniform float u_liveSource;    // 1.0 = camera/video (use real-time GPU grain-touch when no master); 0.0 = static (smooth fallback while master builds)
 uniform vec2 u_amtTexel;       // 1.0 / master_resolution — for stochastic supersampling in RISO mode
 uniform float u_amtSuperSample; // sample radius multiplier (in master texels). 0 = single-sample, 1.5 = good default.
+uniform float u_amtJitter;      // 1 = stochastic taps (live grain-touch), 0 = deterministic ring (exports: no hash speckle on dot edges)
 uniform float u_amtInkSpread;   // (D) ink-spread radius in master texels. >0 widens the master-sampling
                                 //     footprint so soft round-dot edges emerge on the GPU instead of from
                                 //     a per-channel CPU Gaussian blur. 0 = spread already baked in (CPU path).
@@ -561,6 +563,7 @@ uniform int u_sepMode; // 0=normal, 1=output grayscale separation (black=ink)
 uniform int u_sepType; // 0=CMYK, 1=Approx (NNLS spot color decomposition)
 uniform vec3 u_paperColor;   // paper base color
 uniform float u_paperTex;    // paper texture intensity 0..1 (from slider 0-25 mapped)
+uniform float u_paperScaleK; // paper zoom-out 1/2/3 — higher = finer fibers (PBR mirror-tiles, scan/procedural tile denser)
 uniform sampler2D u_paperScan; // scanned paper fiber texture (grayscale, tiling)
 uniform float u_usePaperScan;  // 1.0 = use scanned texture, 0.0 = procedural
 // PBR paper substrate (ambientCG Paper002, CC0): one tiling texture packing
@@ -2056,7 +2059,12 @@ vec2 paperPbrUV(vec2 uv){
   // u_paperOrient.xy mirrors the sheet around its center — same margins, so
   // the clamped edge is never reached, but the fiber layout can't be tracked
   // from frame to frame.
-  return (uv - 0.5) * vis * PAPER_ZOOM * u_paperOrient.xy + 0.5 + u_paperPbrShift;
+  vec2 raw = (uv - 0.5) * vis * PAPER_ZOOM * u_paperScaleK * u_paperOrient.xy + 0.5 + u_paperPbrShift;
+  // Paper scale >1 pushes UVs outside [0,1]; the 2K sheet is NPOT so the
+  // sampler must stay CLAMP — mirror-tile in shader instead (identity on
+  // [0,1], so 1× is bit-exact with the pre-scale path).
+  return vec2(1.0 - abs(1.0 - 2.0 * fract(raw.x * 0.5)),
+              1.0 - abs(1.0 - 2.0 * fract(raw.y * 0.5)));
 }
 
 // 'Dissolve' ink compositing v2 — fiber-height thresholding: where ink
@@ -2164,10 +2172,22 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
       float total = 0.0;
       vec2 radius = u_amtTexel * (u_amtSuperSample + u_amtInkSpread);
       for(int s = 0; s < 8; s++){
-        vec2 off = vec2(
-          hash(gl_FragCoord.xy + vec2(float(s) * 7.13, 0.0)) - 0.5,
-          hash(gl_FragCoord.xy + vec2(0.0, float(s) * 11.37)) - 0.5
-        );
+        // Live: per-pixel stochastic taps (organic grain-touch). Export
+        // (u_amtJitter=0): the output grid is much finer than the master,
+        // so per-pixel hash decorrelates neighbours and dot edges dissolve
+        // into speckle — use a fixed two-ring pattern instead. Same mean
+        // footprint (box RMS ≈ 0.408), so dot size/gain match the preview.
+        vec2 off;
+        if(u_amtJitter > 0.5){
+          off = vec2(
+            hash(gl_FragCoord.xy + vec2(float(s) * 7.13, 0.0)) - 0.5,
+            hash(gl_FragCoord.xy + vec2(0.0, float(s) * 11.37)) - 0.5
+          );
+        } else {
+          float ringR = (s < 4) ? 0.22 : 0.44;
+          float ringA = float(s) * 1.5707963 + ((s < 4) ? 0.0 : 0.7853982);
+          off = vec2(cos(ringA), sin(ringA)) * ringR;
+        }
         vec2 sUV = uv_riso + off * radius;
         float v;
         if(idx == 0)      v = texture2D(u_amtMaster0, sUV).r;
@@ -2598,6 +2618,7 @@ float paperFieldProcedural(vec2 pix){
 }
 
 float paperField(vec2 pix){
+  pix *= u_paperScaleK; // paper zoom-out: fibers tile denser at 2×/3×
   if (u_usePaperScan < 0.5) return paperFieldProcedural(pix);
   // Shift + mirror paper position per frame (each scan is a different sheet);
   // u_scanSwap rotates the tiling 90° for extra decorrelation (REPEAT wrap
@@ -3468,20 +3489,20 @@ void main(){
 <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.min.js"></script>
 <script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
 <script src="js/data.js?v=17"></script>
-<script src="js/state.js?v=16"></script>
+<script src="js/state.js?v=17"></script>
 <script src="js/undo.js?v=11"></script>
 <script src="js/compare.js?v=6"></script>
 <script src="js/riso-amt.js?v=24"></script>
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/riso-amt-webgpu.js?v=6"></script>
-<script src="js/renderer.js?v=182"></script>
+<script src="js/renderer.js?v=183"></script>
 <script src="js/source.js?v=57"></script>
-<script src="js/save.js?v=65"></script>
+<script src="js/save.js?v=66"></script>
 <script src="js/webgpu-live.js?v=4"></script>
-<script src="js/ui-controls.js?v=68"></script>
-<script src="js/ui-paper.js?v=13"></script>
-<script src="js/phone.js?v=25"></script>
+<script src="js/ui-controls.js?v=69"></script>
+<script src="js/ui-paper.js?v=14"></script>
+<script src="js/phone.js?v=26"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL
      service workers, and even the attempt makes the browser print a CSP-violation report
      that no .catch can silence. Offline caching works where CSP allows (e.g. localhost).

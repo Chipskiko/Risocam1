@@ -260,7 +260,7 @@ function initGL(onReady){
    'u_chan0','u_chan1','u_chan2','u_chan3',
    'u_stampSeed','u_asciiTonePass','u_aMin','u_aDims','u_aPitch','u_wordLen','u_edgeSoft','u_mtxTexel','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineWave','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineGrain','u_inkDissolve','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_useLabResidual','u_useCalChord','u_ynN','u_useSepLut','u_sepLutN','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
    'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_paperShift','u_paperPbrShift','u_paperPbrMul','u_paperOrient','u_scanSwap','u_crop','u_paper',
-   'u_paperPBR','u_usePaperPBR',
+   'u_paperPBR','u_usePaperPBR','u_paperScaleK',
    'u_lutA0','u_lutA1','u_lutA2','u_lutA3',
    'u_lutB0','u_lutB1','u_lutB2','u_lutB3',
    'u_lutC0','u_lutC1','u_lutC2','u_lutC3',
@@ -282,7 +282,7 @@ function initGL(onReady){
    'u_driverLUT','u_useDriverLUT',
    'u_ht5Matrix',
    'u_amtMaster0','u_amtMaster1','u_amtMaster2','u_amtMaster3','u_useAmt','u_liveSource',
-   'u_amtTexel','u_amtSuperSample','u_amtInkSpread','u_amtCrisp',
+   'u_amtTexel','u_amtSuperSample','u_amtInkSpread','u_amtCrisp','u_amtJitter',
    'u_bnVC','u_risoGamma','u_risoGrainScale','u_risoDebugBaseline',
    // T3-F: pre-baked per-ink coverage→color LUT texture
    'u_calLutTex','u_useCalLutTex'
@@ -573,6 +573,7 @@ function initGL(onReady){
   if(locs.u_amtTexel) gl.uniform2f(locs.u_amtTexel, 1/1241, 1/931);  // placeholder
   if(locs.u_amtSuperSample) gl.uniform1f(locs.u_amtSuperSample, 1.5);
   if(locs.u_amtCrisp) gl.uniform1f(locs.u_amtCrisp, 0.0);
+  if(locs.u_amtJitter) gl.uniform1f(locs.u_amtJitter, 1.0);
   // (D) GPU ink-spread radius in master texels. 0 = no spread (CPU blur path).
   // Set per-prepass from the ink-spread slider; default seeded here.
   if(locs.u_amtInkSpread) gl.uniform1f(locs.u_amtInkSpread, 0.5);
@@ -1272,6 +1273,10 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   }
   // Set per-frame so a SEPS export (which forces it off) can't leave it stuck.
   if(locs.u_usePaperPBR) gl.uniform1f(locs.u_usePaperPBR, (window._usePaperPBR ?? true) ? 1.0 : 0.0);
+  if(locs.u_paperScaleK) gl.uniform1f(locs.u_paperScaleK, cached.paperScale || 1);
+  // Exports swap the stochastic AMT taps for the deterministic ring — at
+  // export resolution the per-pixel hash reads as speckle on dot edges.
+  if(locs.u_amtJitter) gl.uniform1f(locs.u_amtJitter, _saving ? 0.0 : 1.0);
   // Live source (camera/video): RISO mode uses the real-time GPU grain-touch
   // fallback. Static sources show smooth tone while the FS master builds.
   if(locs.u_liveSource) gl.uniform1f(locs.u_liveSource, (camOn || videoOn) ? 1.0 : 0.0);
