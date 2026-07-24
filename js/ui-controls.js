@@ -820,7 +820,10 @@ function toggleStippleLive(){
     // Build (or rebuild) the loop; playback below cycles whatever exists.
     if(window._mode === 'stipple' && window.R && R.runMasterPrepass) setTimeout(R.runMasterPrepass, 0);
     _stippleLiveTimer = setInterval(function(){
-      if(window._mode !== 'stipple' || window._paused || window._saving || document.hidden) return;
+      // _saving is a script-global (state.js), never a window property — the
+      // old window._saving read was permanently undefined, so this timer kept
+      // rebinding texture units 9-12 underneath an in-flight export.
+      if(window._mode !== 'stipple' || window._paused || _saving || document.hidden) return;
       const L = window._stippleLoop;
       if(!L || L.frames.length < 2) return;    // still baking the first frames
       L.idx = (L.idx + 1) % L.frames.length;

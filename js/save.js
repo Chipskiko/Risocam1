@@ -1049,6 +1049,11 @@ async function exportSeparations(){
   // SENTENCE mode length (mirror of the live path — after the atlas ladder)
   if(locs.u_wordLen) gl.uniform1f(locs.u_wordLen,
     (mode === 'letters' && (window._lettersMode|0) === 1 && window._lettersTextLen) ? window._lettersTextLen : 0);
+  // Deterministic AMT taps. This path never calls setRenderUniforms, so the
+  // uniform keeps whatever the live view last wrote (1.0 = stochastic) and the
+  // one export that actually reaches a drum would keep the hash speckle the
+  // ring pattern exists to remove.
+  if(locs.u_amtJitter) gl.uniform1f(locs.u_amtJitter, 0.0);
   // SEPARATIONS stay per-fragment (u_edgeSoft=0) on purpose: seps are the
   // production masters — a real 600dpi RIP slices dots at content edges, so
   // authentic thresholding IS the correct sep output. (PNG/JPG/GIF/PDF

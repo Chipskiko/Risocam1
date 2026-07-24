@@ -409,7 +409,10 @@
     var orig = R.drawFullscreenTiled;
     R.drawFullscreenTiled = function(w, h){
       var saving = false;
-      try { saving = (typeof _saving !== 'undefined' && _saving) || window._recordingNow; } catch(e){}
+      // isRecording is the real flag (state.js); window._recordingNow was
+      // never assigned anywhere, so recording used to fall through to WebGPU.
+      try { saving = (typeof _saving !== 'undefined' && _saving) ||
+                     (typeof isRecording !== 'undefined' && isRecording); } catch(e){}
       if(ready && !failed && !saving &&
          typeof gl !== 'undefined' && gl && gl.getParameter(gl.FRAMEBUFFER_BINDING) === null){
         try { renderWebGPU(w, h); return; }
