@@ -672,6 +672,10 @@ function setMode(m){
   if(R.syncGrainEngineBtn) R.syncGrainEngineBtn();
   if(scrP) scrP.style.display = (m==='screen') ? 'flex' : 'none';
   if(lnsP) lnsP.style.display = (m==='lines') ? 'flex' : 'none';
+  // SHAPE lives in its own row below DENSITY; it must follow the same gate,
+  // otherwise it renders in every mode (it was hardcoded display:flex).
+  const lnsShape = el('linesShapeRow');
+  if(lnsShape) lnsShape.style.display = (m==='lines') ? 'flex' : 'none';
   if(fltP) fltP.style.display = (m==='flat') ? 'flex' : 'none';
   if(letP) letP.style.display = (m==='letters') ? 'flex' : 'none';
   if(stpP) stpP.style.display = (m==='stipple') ? 'flex' : 'none';
