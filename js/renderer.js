@@ -2419,6 +2419,9 @@ async function _buildWorkerBlobUrl(workerPath){
 
 let _amtWorkerPool = [];
 let _amtWorkerPending = new Map();
+// Generous: a 600 dpi 4-plate bake measures ~3s on desktop and can be much
+// slower on a phone. This only needs to catch a permanent wedge.
+const _AMT_WATCHDOG_MS = 30000;
 let _amtWorkerNextId = 0;
 let _amtWorkerRR = 0;
 // Pool sized to physical parallelism (was capped at 4): with band-parallel FS
@@ -2536,9 +2539,31 @@ async function runAmtPrepass(){
   // the re-entry guard and the FIRST image's halftone composites over it.
   const startSeq = window._amtSeq || 0;
   try {
-    await _runAmtPrepassImpl();
+    // WATCHDOG. A worker that is created successfully and then goes SILENT —
+    // never erroring, never replying — leaves Promise.all pending forever.
+    // _amtPrepassRunning then stays true and the re-entrancy guard silently
+    // drops every later prepass, so the master freezes on whatever image baked
+    // last and controls that trigger a rebake (dpi, ink changes) appear dead.
+    // Suspected on Safari, where a blob: Worker can be refused by CSP without
+    // a throw. onerror already rejects in-flight jobs; this covers the case
+    // where nothing is ever reported at all.
+    await Promise.race([
+      _runAmtPrepassImpl(),
+      new Promise(function(_, rej){
+        setTimeout(function(){ rej(new Error('prepass watchdog: no completion in ' + _AMT_WATCHDOG_MS + 'ms')); }, _AMT_WATCHDOG_MS);
+      })
+    ]);
   } catch(e) {
     console.error('[RisoAmt] prepass failed:', e);
+    if(/watchdog/.test(e && e.message || '')){
+      // Retire the pool so the retry runs synchronously on the main thread.
+      R.diag('prepass:watchdog-fired');
+      try { _amtWorkerPool.forEach(function(w){ try{ w.terminate(); }catch(_){} }); } catch(_){}
+      _amtWorkerPool = [];
+      for(const [id, resolver] of _amtWorkerPending){ resolver.reject(new Error('pool retired')); _amtWorkerPending.delete(id); }
+      window._amtWatchdogTripped = true;
+      setTimeout(function(){ if(!window._amtPrepassRunning) runAmtPrepass(); }, 50);
+    }
   } finally {
     window._amtPrepassRunning = false;
     // The render loop was bailing on _amtPrepassRunning=true; now that it's
