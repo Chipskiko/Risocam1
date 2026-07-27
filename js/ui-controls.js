@@ -1084,7 +1084,7 @@ function refreshDitherScaleVisibility(){
 // (n=2 -> 0, 1/2, 1). The low end is where the flat screen-print look lives:
 // n=2 across 3 inks is at most 27 possible colours in the whole image.
 const COLOR_QUANT_STEPS = [{v:0, l:'Off'}, {v:16, l:'16'}, {v:8, l:'8'},
-                           {v:4, l:'4'}, {v:3, l:'3'}, {v:2, l:'2'}];
+                           {v:4, l:'4'}, {v:3, l:'3'}, {v:2, l:'2'}, {v:1, l:'Flat'}];
 window._colorQuant = window._colorQuant ?? 0;
 // ─── Perceptual Lab residual toggle ───
 // When on, NNLS picks the best ink subset using Lab color distance instead

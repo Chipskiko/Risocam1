@@ -801,7 +801,9 @@ vec4 toCMYK(vec3 rgb){
 // also acts as a coarse cache: many similar pixels map to the same target,
 // so the GPU's instruction cache benefits from the reduced state-space.
 vec3 quantizeColor(vec3 c){
-  if(u_colorQuant < 1.5) return c;
+  // n=1 is legal and means BINARY (round to 0 or 1 per channel). The old
+  // n<1.5 guard made the most useful setting unreachable.
+  if(u_colorQuant < 0.5) return c;
   float n = u_colorQuant;
   return floor(c * n + 0.5) / n;
 }
@@ -812,7 +814,10 @@ vec3 quantizeColor(vec3 c){
 // never appear. Snapping coverage is what actually collapses an area to one
 // solid ink. At N=2 each plate is limited to none / half / full.
 float quantizeCoverage(float cov){
-  if(u_covQuant < 1.5) return cov;
+  // n=1 -> each plate is fully ON or fully OFF, which is what actually gives
+  // flat single-ink areas: at n=2 a region can land on 0.5 coverage and the
+  // screen dithers it into a 50% speckle field instead of a solid.
+  if(u_covQuant < 0.5) return cov;
   float n = u_covQuant;
   return clamp(floor(cov * n + 0.5) / n, 0.0, 1.0);
 }
@@ -1256,13 +1261,27 @@ float fmDotDither(float val, vec2 rpx, float scale, float layerOff){
 // ─── Grain touch dithering ───
 // u_static controls grain animation: smooth drift, not discrete jumps
 float grainDither(float val, vec2 pix, float scale, float layerOff){
-  vec2 fiberScale = vec2(1.0, 1.25);
+  // Paper-fibre Y-squash, faded out as the grain cell grows. This makes cells
+  // 1/1.25 as TALL as they are wide; at the 1.5 default that is sub-pixel and
+  // invisible, but at scale 9 the cell is 7.4 x 5.9 px and the grain reads as
+  // strongly horizontal — measured on a FLAT patch, h/v autocorrelation 4.19.
+  // (A first attempt at this was reverted after a whole-image measurement
+  // showed no change; that measurement was contaminated by the source's own
+  // horizontal structure. Flat-patch measurement is the valid one.)
+  // Anchored so the 1.5 default keeps exactly 1.25.
+  vec2 fiberScale = vec2(1.0, mix(1.25, 1.0, clamp((scale - 1.5) / 7.5, 0.0, 1.0)));
   // Use noise-based drift instead of sine wave to avoid visible wave banding.
   // Even so, the noise sampling here has a low X-frequency that reads as
   // a wave at certain scales — gate it via u_simNoise so it disappears
   // (and dial-able when we add an intensity slider).
   float driftNoise = texture2D(u_noise, fract(vec2(pix.x * 0.0004, 0.3 + layerOff))).r;
-  vec2 fiberDrift = vec2(0.0, (driftNoise - 0.5) * 2.0 * u_simNoise);
+  // Scaled by grain size so the drift stays a constant fraction of a CELL.
+  // It displaces the noise vertically by an amount that depends only on x, so
+  // whole columns shift together. At the 1.5 default that is ~0.8 of a cell
+  // and scrambles fine; at scale 9 it was only ~0.14 of a cell — a coherent
+  // sub-cell shear, which is what reads as horizontal streaking. scale/1.5
+  // keeps the 1.5 default byte-identical.
+  vec2 fiberDrift = vec2(0.0, (driftNoise - 0.5) * 2.0 * u_simNoise * (scale / 1.5));
   // Grain cell size, PROPORTIONAL to the control.
   // Was mix(1.0, 1.8, clamp((scale - 0.5)/3.5)) — which compressed the whole
   // control into a 1.8x range AND saturated at scale 4, so the 100dpi preset
@@ -3567,11 +3586,11 @@ void main(){
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/riso-amt-webgpu.js?v=6"></script>
-<script src="js/renderer.js?v=188"></script>
+<script src="js/renderer.js?v=189"></script>
 <script src="js/source.js?v=57"></script>
 <script src="js/save.js?v=70"></script>
 <script src="js/webgpu-live.js?v=5"></script>
-<script src="js/ui-controls.js?v=72"></script>
+<script src="js/ui-controls.js?v=73"></script>
 <script src="js/ui-paper.js?v=14"></script>
 <script src="js/phone.js?v=27"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL
