@@ -25,7 +25,7 @@
     <a class="header-btn header-back" href="../" title="Art Tools">←</a>
     <div class="header-mode">
       <button class="header-mode-btn active" id="modeGrain" onclick="R.setMode('grain')" title="Stochastic grain — random dot placement, like real riso">GRAIN</button>
-      <button class="header-mode-btn" id="modeFlat" onclick="R.setMode('flat')" title="RISO — true Riso driver pipeline (vanilla Floyd-Steinberg + empirical tone curve from real captured prints). CPU prepass, static source only. All physical effects (paper, misreg, slip jitter, drum noise) still animate on top.">RISO</button>
+      <button class="header-mode-btn" id="modeFlat" style="display:none" onclick="R.setMode('flat')" title="RISO — true Riso driver pipeline (vanilla Floyd-Steinberg + empirical tone curve from real captured prints). CPU prepass, static source only. All physical effects (paper, misreg, slip jitter, drum noise) still animate on top.">RISO</button>
       <button class="header-mode-btn" id="modeScreen" onclick="R.setMode('screen')" title="Halftone screen — circular dots in a regular grid">SCREEN</button>
       <button class="header-mode-btn" id="modeLines" onclick="R.setMode('lines')" title="Line screen — parallel lines varying in thickness, like litho/engraving">LINES</button>
       <button class="header-mode-btn" id="modeLetters" style="display:none" onclick="R.setMode('letters')" title="Letter screen — the image is halftoned out of stamped letterforms (random letters, or your own word/sentence). Latin + Georgian + custom fonts.">LETTERS</button>
@@ -68,7 +68,7 @@
     <div class="img-slider"><span class="img-label">C</span><input type="range" id="imgContrast" min="-30" max="30" value="0" step="2"><span class="img-val" id="imgContrastVal">0</span></div>
     <div class="img-slider"><span class="img-label">S</span><input type="range" id="imgSat" min="-30" max="30" value="0" step="2"><span class="img-val" id="imgSatVal">0</span></div>
     <div class="header-cycle" onclick="R.rotateSource()" title="Rotate 90° clockwise"><span class="header-cycle-val" id="rotateBtn" style="min-width:24px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></span></div>
-    <div class="header-cycle" onclick="R.cycleAspect()"><span class="header-cycle-val" id="aspectBtn" style="min-width:42px">4:3</span></div>
+    <div class="header-cycle" onclick="R.cycleAspect()"><span class="header-cycle-val" id="aspectBtn" style="min-width:42px">FIT</span></div>
     <div class="header-cycle" onclick="R.cycleFps()"><span class="header-cycle-label">FPS</span><span class="header-cycle-val" id="fpsBtn" style="min-width:50px">4</span></div>
     <!-- RES removed: always max resolution -->
   </div>
@@ -124,8 +124,8 @@
         <div class="regmark-row">
           <!-- GRAIN: grain size + dither algo -->
           <div id="grainPrimary" style="display:flex;gap:6px">
-            <button class="regmark-btn active" id="grainSizeBtn" onclick="R.cycleGrainSize()" title="Grain Size"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="2.5" fill="currentColor"/><circle cx="5" cy="5" r="1" fill="currentColor" opacity="0.5"/><circle cx="15" cy="5" r="1.2" fill="currentColor" opacity="0.5"/><circle cx="5" cy="15" r="1.1" fill="currentColor" opacity="0.5"/><circle cx="15" cy="15" r="0.9" fill="currentColor" opacity="0.5"/><circle cx="10" cy="4" r="0.8" fill="currentColor" opacity="0.4"/><circle cx="4" cy="10" r="0.9" fill="currentColor" opacity="0.4"/><circle cx="16" cy="10" r="1" fill="currentColor" opacity="0.4"/><circle cx="10" cy="16" r="0.8" fill="currentColor" opacity="0.4"/></svg><span class="regmark-val" id="grainSizeBtnVal">1.5</span></button>
-            <button class="regmark-btn" id="ditherModeBtn" onclick="R.cycleDitherMode()" title="Dither algorithm — Grain (stochastic), RISO (literal ht5 matrix from MZ9 driver), Bayer 4/8 (ordered), Stucki/JJN/Atkinson/FS (error-diffusion approximations)"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><rect x="3" y="3" width="3" height="3" fill="currentColor"/><rect x="9" y="3" width="3" height="3" fill="currentColor" opacity="0.4"/><rect x="15" y="3" width="2" height="2" fill="currentColor" opacity="0.7"/><rect x="3" y="9" width="2" height="2" fill="currentColor" opacity="0.5"/><rect x="9" y="9" width="3" height="3" fill="currentColor"/><rect x="15" y="9" width="3" height="3" fill="currentColor" opacity="0.6"/><rect x="3" y="15" width="3" height="3" fill="currentColor" opacity="0.7"/><rect x="9" y="15" width="2" height="2" fill="currentColor" opacity="0.4"/><rect x="15" y="15" width="3" height="3" fill="currentColor"/></svg><span class="regmark-val" id="ditherModeBtnVal">Grain</span></button>
+            
+            <button class="regmark-btn" id="ditherModeBtn" onclick="R.cycleDitherMode()" title="Dither algorithm — Grain (stochastic), RISO (literal ht5 matrix from MZ9 driver), Bayer 4/8 (ordered), Stucki/JJN/Atkinson/FS (error-diffusion approximations)"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><rect x="3" y="3" width="3" height="3" fill="currentColor"/><rect x="9" y="3" width="3" height="3" fill="currentColor" opacity="0.4"/><rect x="15" y="3" width="2" height="2" fill="currentColor" opacity="0.7"/><rect x="3" y="9" width="2" height="2" fill="currentColor" opacity="0.5"/><rect x="9" y="9" width="3" height="3" fill="currentColor"/><rect x="15" y="9" width="3" height="3" fill="currentColor" opacity="0.6"/><rect x="3" y="15" width="3" height="3" fill="currentColor" opacity="0.7"/><rect x="9" y="15" width="2" height="2" fill="currentColor" opacity="0.4"/><rect x="15" y="15" width="3" height="3" fill="currentColor"/></svg><span class="regmark-val" id="ditherModeBtnVal">Grain</span></button><button class="regmark-btn active" id="grainSizeBtn" onclick="R.cycleGrainSize()" title="Grain Size"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="2.5" fill="currentColor"/><circle cx="5" cy="5" r="1" fill="currentColor" opacity="0.5"/><circle cx="15" cy="5" r="1.2" fill="currentColor" opacity="0.5"/><circle cx="5" cy="15" r="1.1" fill="currentColor" opacity="0.5"/><circle cx="15" cy="15" r="0.9" fill="currentColor" opacity="0.5"/><circle cx="10" cy="4" r="0.8" fill="currentColor" opacity="0.4"/><circle cx="4" cy="10" r="0.9" fill="currentColor" opacity="0.4"/><circle cx="16" cy="10" r="1" fill="currentColor" opacity="0.4"/><circle cx="10" cy="16" r="0.8" fill="currentColor" opacity="0.4"/></svg><span class="regmark-val" id="grainSizeBtnVal">1.5</span></button>
           </div>
           <!-- SCREEN: LPI + halftone stamp shape -->
           <div id="screenPrimary" style="display:none;gap:6px">
@@ -3520,7 +3520,7 @@ void main(){
 <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.min.js"></script>
 <script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
 <script src="js/data.js?v=19"></script>
-<script src="js/state.js?v=18"></script>
+<script src="js/state.js?v=19"></script>
 <script src="js/undo.js?v=11"></script>
 <script src="js/compare.js?v=6"></script>
 <script src="js/riso-amt.js?v=24"></script>
@@ -3531,9 +3531,9 @@ void main(){
 <script src="js/source.js?v=57"></script>
 <script src="js/save.js?v=71"></script>
 <script src="js/webgpu-live.js?v=5"></script>
-<script src="js/ui-controls.js?v=75"></script>
+<script src="js/ui-controls.js?v=76"></script>
 <script src="js/ui-paper.js?v=14"></script>
-<script src="js/phone.js?v=28"></script>
+<script src="js/phone.js?v=29"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL
      service workers, and even the attempt makes the browser print a CSP-violation report
      that no .catch can silence. Offline caching works where CSP allows (e.g. localhost).

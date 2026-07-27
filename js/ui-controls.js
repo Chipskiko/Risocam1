@@ -635,7 +635,7 @@ function setMode(m){
   applyScreenDensity();
   // Desktop mode buttons (may not exist in phone-only scenarios)
   const mg=el('modeGrain'),ms=el('modeScreen'),ml=el('modeLines'),mf=el('modeFlat'),mL=el('modeLetters'),mSt=el('modeStipple');
-  if(mg)mg.classList.toggle('active',m==='grain');
+  if(mg)mg.classList.toggle('active',m==='grain'||m==='flat'); // RISO is a GRAIN sub-mode
   if(ms)ms.classList.toggle('active',m==='screen');
   if(ml)ml.classList.toggle('active',m==='lines');
   if(mf)mf.classList.toggle('active',m==='flat');
@@ -663,7 +663,13 @@ function setMode(m){
   // Show the right primary block, hide the others.
   const screenLike = m==='screen' || m==='lines' || m==='letters';
   const grnP=el('grainPrimary'), scrP=el('screenPrimary'), lnsP=el('linesPrimary'), fltP=el('flatPrimary'), letP=el('lettersPrimary'), stpP=el('stipplePrimary');
-  if(grnP) grnP.style.display = (m==='grain') ? 'flex' : 'none';
+  // GRAIN and RISO share this row: RISO is a grain sub-mode now, so the
+  // engine button must stay reachable from inside RISO or you cannot get back.
+  if(grnP) grnP.style.display = (m==='grain'||m==='flat') ? 'flex' : 'none';
+  // Grain SIZE is a grain-only control; RISO's density knob is amtDpiBtn in
+  // flatPrimary, so hide the size button while the RISO engine is selected.
+  const gsBtn = el('grainSizeBtn'); if(gsBtn) gsBtn.style.display = (m==='grain') ? '' : 'none';
+  if(R.syncGrainEngineBtn) R.syncGrainEngineBtn();
   if(scrP) scrP.style.display = (m==='screen') ? 'flex' : 'none';
   if(lnsP) lnsP.style.display = (m==='lines') ? 'flex' : 'none';
   if(fltP) fltP.style.display = (m==='flat') ? 'flex' : 'none';
@@ -1076,18 +1082,9 @@ function toggleScreenClean(){
 // Wraps the existing R.setDitherMode (which only fires from debug-panel
 // buttons) so users can cycle through algorithms from the main settings panel.
 const DITHER_MODE_STEPS = [
-  {v:0, l:'Grain'},     // stochastic hash threshold
-  {v:7, l:'Grain Touch'}, // JS AMT pre-pass: Floyd-Steinberg + ht5 matrix + measured tone curve (Ghidra-confirmed RISO MZ9 algorithm)
-  {v:5, l:'Bayer 4'},   // ordered 4×4 matrix (visually distinct from grain)
-  {v:6, l:'Bayer 8'},   // ordered 8×8 matrix (finer)
-  // Removed: Atkinson / F-S / Stucki / JJN. All four were the same shader
-  // trick — a weighted average of a few noise-texture samples, then a
-  // threshold — which is a mild low-pass of one field and cannot express
-  // what actually distinguishes these algorithms (sequential error
-  // propagation, impossible in a fragment shader). Measured pairwise
-  // difference among them was 3.6-7.7, against ~34 between genuinely
-  // distinct modes. Real Floyd-Steinberg does exist in this app: it is
-  // RISO / Grain Touch, which runs true serpentine FS on the CPU worker.
+  {v:0, l:'Grain'},   // live per-fragment stochastic dither
+  // Bayer 4/8 removed with the error-diffusion set: the two engines that
+  // actually differ are the live dither and the real driver master.
 ];
 // Dither cell scale — bigger = chunkier dots. Only affects error-diffusion +
 // Bayer modes (grain has its own size knob via grainSize).
@@ -1104,16 +1101,28 @@ function cycleDitherScale(){
 }
 
 window._ditherMode = window._ditherMode ?? 0;
+// GRAIN sub-mode. Two engines only:
+//   GRAIN — the live per-fragment stochastic dither (mode 'grain')
+//   RISO  — the real driver pipeline: a 1-bit master baked by the CPU worker
+//           with true serpentine Floyd-Steinberg and the measured MZ9 tables
+//           (internally mode 'flat')
+// These are genuinely different app modes, not two values of one uniform: RISO
+// needs its master prepass, and entering grain calls invalidateAmt(). So the
+// button switches mode rather than poking u_ditherMode, which is why RISO no
+// longer needs a slot in the top mode bar.
 function cycleDitherMode(){
-  let i = DITHER_MODE_STEPS.findIndex(s => s.v === window._ditherMode);
-  if(i < 0) i = 0;
-  i = (i + 1) % DITHER_MODE_STEPS.length;
-  window._ditherMode = DITHER_MODE_STEPS[i].v;
-  const v = el('ditherModeBtnVal'); if(v) v.textContent = DITHER_MODE_STEPS[i].l;
-  R.setDitherMode(DITHER_MODE_STEPS[i].v);
-  R.toast('Dither: ' + DITHER_MODE_STEPS[i].l);
-  refreshDitherScaleVisibility();
+  const toRiso = (window._mode !== 'flat');
+  window._ditherMode = 0;                 // the shader sub-dithers are gone
+  R.setDitherMode(0);
+  R.setMode(toRiso ? 'flat' : 'grain');
+  syncGrainEngineBtn();
+  R.toast(toRiso ? 'RISO — driver master (Floyd-Steinberg)' : 'GRAIN — live stochastic');
 }
+function syncGrainEngineBtn(){
+  const v = el('ditherModeBtnVal');
+  if(v) v.textContent = (window._mode === 'flat') ? 'RISO' : 'Grain';
+}
+R.syncGrainEngineBtn = syncGrainEngineBtn;
 // Dither scale only affects the sub-mode dithers (Bayer / Atkinson / FS /
 // Stucki / JJN). Default Grain ignores it, so hide the button when
 // ditherMode is 0 to remove a useless control.

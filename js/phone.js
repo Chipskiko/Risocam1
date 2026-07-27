@@ -10,9 +10,9 @@ let currentOverlay=null;
 let lastLayoutPhone=null; // track layout switches
 let phBcsOpen=false;
 
-const ASPECT_CYCLE=[[1,1],[4,3],[3,4],[5,4],[4,5],[16,9],[9,16]];
-const ASPECT_LABELS=['1:1','4:3','3:4','5:4','4:5','16:9','9:16'];
-let aspectIdx=1; // default to 4:3
+const ASPECT_CYCLE=['fit',[1,1],[4,3],[3,4],[5,4],[4,5],[16,9],[9,16]];
+const ASPECT_LABELS=['FIT','1:1','4:3','3:4','5:4','4:5','16:9','9:16'];
+let aspectIdx=0; // default FIT — matches the desktop default
 
 
 // Crop guide: shows what area will be saved when aspect is set

@@ -46,7 +46,7 @@ let textKnockout=false;
 let trappingPx=0;
 let resScale=6; // always max resolution
 let curPaperColor=0;
-let cropAspect=[4,3]; // default 4:3
+let cropAspect='fit'; // default FIT — use the source's own aspect, no crop
 let cropRect=[0,0,1,1]; // UV crop: x,y,w,h
 
 const cached={
