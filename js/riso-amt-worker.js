@@ -58,6 +58,12 @@ function gaussianBlurPlane(src, W, H, sigma) {
 }
 
 self.onmessage = function(e) {
+  // Liveness handshake. The main thread will not dispatch real work until a
+  // worker has answered this, because a worker can be constructed successfully
+  // and then be silently dead (CSP refusing the script load fires onerror in
+  // some browsers and nothing at all in others). Answering proves the script
+  // actually ran.
+  if (e.data && e.data.ping) { self.postMessage({ pong: e.data.ping }); return; }
   // Band protocol: the input may be a horizontal BAND of a larger image.
   //   globalRowOffset — index of this slice's first row in the full image
   //                     (drives serpentine parity + Table-A column counter so

@@ -2422,6 +2422,9 @@ let _amtWorkerPending = new Map();
 // Generous: a 600 dpi 4-plate bake measures ~3s on desktop and can be much
 // slower on a phone. This only needs to catch a permanent wedge.
 const _AMT_WATCHDOG_MS = 30000;
+// A live worker answers in single-digit ms; this only needs to outlast
+// script fetch + parse on a cold cache.
+const _AMT_HANDSHAKE_MS = 2500;
 let _amtWorkerNextId = 0;
 let _amtWorkerRR = 0;
 // Pool sized to physical parallelism (was capped at 4): with band-parallel FS
@@ -2449,6 +2452,7 @@ function _initAmtWorker(){
       try { w = new Worker(blobUrl); }
       catch (e) { console.warn('[RisoAmt] worker create failed, falling back to sync:', e); break; }
       w.onmessage = function(e){
+        if(e.data && e.data.pong){ if(w.__pong) w.__pong(); return; }
         const { id, plane, error, on, outH } = e.data;
         const resolver = _amtWorkerPending.get(id);
         if (!resolver) return;
@@ -2473,8 +2477,44 @@ function _initAmtWorker(){
       };
       _amtWorkerPool.push(w);
     }
+    // LIVENESS HANDSHAKE — do not trust a constructed worker.
+    // Neocities' CSP is `worker-src blob:` with no script-src for workers, so a
+    // DIRECT `new Worker('js/foo.js')` is blocked and the blob: URL is what
+    // works — in Chrome. Safari does not implement worker-src and falls back to
+    // child-src/default-src, so it can block the very blob: worker Chrome
+    // allows. In that case the constructor still succeeds and the worker is
+    // simply mute: no error, no reply. Jobs posted to it never resolve, the
+    // prepass hangs, _amtPrepassRunning stays true, and every later rebake is
+    // dropped by the re-entrancy guard — which is why a previous image stayed
+    // burnt in and dpi appeared dead on Safari.
+    // Requiring a pong before use turns that from a permanent wedge into a
+    // 2.5s fallback to the synchronous path.
+    if (_amtWorkerPool.length) {
+      const alive = await Promise.all(_amtWorkerPool.map(function(w){
+        return new Promise(function(res){
+          let settled = false;
+          const done = function(ok){ if(settled) return; settled = true; res(ok); };
+          w.__pong = function(){ done(true); };
+          const t = setTimeout(function(){ done(false); }, _AMT_HANDSHAKE_MS);
+          try { w.postMessage({ ping: 1 }); } catch(e){ clearTimeout(t); done(false); }
+        });
+      }));
+      const live = _amtWorkerPool.filter(function(w, i){
+        if (alive[i]) return true;
+        try { w.terminate(); } catch(e){}
+        return false;
+      });
+      if (live.length !== _amtWorkerPool.length) {
+        console.warn('[RisoAmt] ' + (_amtWorkerPool.length - live.length) + ' worker(s) failed the liveness handshake — likely CSP; using the synchronous path');
+        R.diag('worker:handshake-failed');
+        window._amtWorkersMute = true;
+      }
+      _amtWorkerPool = live;
+    }
     if (_amtWorkerPool.length) {
       console.log(`[RisoAmt] worker pool initialized — ${_amtWorkerPool.length} workers via blob: URL (FS off-main-thread)`);
+    } else {
+      R.diag('worker:none-synchronous');
     }
   })();
   return _amtWorkerReady;

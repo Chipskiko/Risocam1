@@ -1,4 +1,4 @@
-const CACHE = 'risocam-v42';
+const CACHE = 'risocam-v43';
 // Paths are RELATIVE to sw.js's location so the cache is correct under any
 // mount point (localhost root, /risocam/ subpath, etc.). The old root-absolute
 // list ('/index.html', '/js/...') only worked when the app was served at the
