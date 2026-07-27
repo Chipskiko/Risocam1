@@ -666,8 +666,23 @@ function initGL(onReady){
       window._paperPbrReady = true;
       try { markDirty(); } catch(e){}
     };
-    img.onerror = function(){ console.warn('[paper] PBR texture failed to load'); };
-    img.src = 'textures/paper002_pbr_2k.png?v=1';
+    // WebP q85: 744 KB against the PNG's 7.3 MB — a 10x cut in total page
+    // weight, since this one asset was 38x the next largest file. Measured on
+    // the bench at MAX paper intensity: mean dE00 0.195, max 0.605 against the
+    // original, i.e. under the ~1.0 just-noticeable threshold. (A lossless-WebP
+    // control rendered bit-identically, which is what established the method.)
+    // Alpha was dropped too — the shader reads .r for height and .gb for the
+    // packed normal, and the source alpha was uniformly 255.
+    var triedFallback = false;
+    img.onerror = function(){
+      if(!triedFallback){                       // pre-WebP browsers
+        triedFallback = true;
+        img.src = 'textures/paper002_pbr_2k.png?v=1';
+        return;
+      }
+      console.warn('[paper] PBR texture failed to load');
+    };
+    img.src = 'textures/paper002_pbr_2k.webp?v=1';
   })();
 
   // CRITICAL: reset activeTexture to a safe unit so subsequent makeSrcTex()
