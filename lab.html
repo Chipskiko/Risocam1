@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>RISO/CAM — LAB</title>
+<style>
+  body{font:12px/1.5 ui-monospace,Menlo,monospace;background:#111;color:#ddd;margin:0;padding:14px}
+  h1{font-size:13px;letter-spacing:2px;margin:0 0 10px;color:#fff}
+  .row{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+  .panel{background:#1a1a1a;border:1px solid #333;border-radius:6px;padding:10px;margin-bottom:10px}
+  button{font:11px ui-monospace,monospace;background:#262626;color:#ddd;border:1px solid #444;
+    border-radius:4px;padding:5px 10px;cursor:pointer;margin:2px}
+  button:hover{background:#333;border-color:#666}
+  button.hot{background:#2b4;color:#000;border-color:#2b4;font-weight:bold}
+  button.warn{background:#a33;color:#fff;border-color:#a33}
+  select,input{font:11px ui-monospace,monospace;background:#222;color:#ddd;border:1px solid #444;padding:4px}
+  canvas{border:1px solid #333;image-rendering:pixelated;background:#000}
+  table{border-collapse:collapse;font-size:10px;margin-top:6px}
+  th,td{border:1px solid #333;padding:2px 6px;text-align:right}
+  th{background:#222;color:#fff}
+  td.name{text-align:left;color:#aaa}
+  .big{font-size:16px;color:#fff}
+  .ok{color:#4d4}.bad{color:#f66}.mid{color:#fd4}
+  #log{white-space:pre-wrap;font-size:10px;max-height:180px;overflow:auto;background:#0c0c0c;
+    border:1px solid #333;padding:8px;border-radius:4px}
+  iframe{width:900px;height:640px;border:1px solid #333;background:#fff}
+  .sw{display:inline-block;width:26px;height:14px;border:1px solid #555;vertical-align:middle}
+  label{color:#999}
+</style>
+
+<h1>RISO/CAM — LAB &nbsp;<span style="color:#666;font-weight:normal;letter-spacing:0">deterministic A/B bench</span></h1>
+
+<div class="row">
+  <div style="flex:1;min-width:520px">
+
+    <div class="panel">
+      <b style="color:#fff">1. TARGET</b><br>
+      <button id="tChart" class="hot">Synthetic chart</button>
+      <button id="tPhoto">Drop a photo…</button>
+      <input type="file" id="fileIn" accept="image/*" style="display:none">
+      <span id="tName" style="color:#666"></span>
+      <div style="margin-top:6px">
+        <canvas id="target" width="440" height="330" style="width:440px"></canvas>
+      </div>
+    </div>
+
+    <div class="panel">
+      <b style="color:#fff">2. STATE</b> <span style="color:#666">(locked deterministic: seed fixed, shimmer off)</span><br>
+      <label>mode</label>
+      <select id="mode">
+        <option>grain</option><option selected>flat</option><option>screen</option>
+        <option>lines</option><option>letters</option><option>stipple</option>
+      </select>
+      <label>profile</label><select id="prof"></select>
+      <label>sep</label><select id="sep"><option value="0">CMYK</option><option value="1">SPOT</option></select>
+      <button id="apply">Apply</button>
+    </div>
+
+    <div class="panel">
+      <b style="color:#fff">3. CAPTURE &amp; COMPARE</b><br>
+      <button id="capA">Capture A</button>
+      <button id="capB">Capture B</button>
+      <button id="diff" class="hot">Diff A→B</button>
+      <button id="saveA">Save A as baseline</button>
+      <button id="loadA">Load baseline</button>
+      <button id="sweep">Stage sweep</button>
+      <div class="row" style="margin-top:8px">
+        <div><div style="color:#666">A</div><canvas id="cA" width="300" height="225"></canvas></div>
+        <div><div style="color:#666">B</div><canvas id="cB" width="300" height="225"></canvas></div>
+        <div><div style="color:#666">|Δ| ×4</div><canvas id="cD" width="300" height="225"></canvas></div>
+      </div>
+      <div id="summary" class="big" style="margin-top:8px"></div>
+      <div id="patches"></div>
+    </div>
+
+    <div class="panel"><b style="color:#fff">LOG</b><div id="log"></div></div>
+  </div>
+
+  <div>
+    <div style="color:#666;margin-bottom:4px">live app (real code, iframed)</div>
+    <iframe id="app"></iframe>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════
+// RISO/CAM LAB — a bench for changing the colour/ink model without
+// touching the site. It iframes the REAL app and drives it through an
+// injected bridge, so what is measured here is the shipped code path,
+// never a reimplementation that can silently drift from it.
+//
+// Workflow: Capture A -> change something (code or control) -> reload ->
+// Capture B -> Diff. Numbers are per-patch on the synthetic chart, which
+// carries known reference values, so a change reports as "patch N moved
+// by dE 4.2", not "looks different".
+// ═══════════════════════════════════════════════════════════════════════
+
+const $ = id => document.getElementById(id);
+const log = m => { $('log').textContent += m + '\n'; $('log').scrollTop = 1e9; };
+
+// ── The measuring instrument ───────────────────────────────────────────
+// ColorChecker-24 sRGB values + a 21-step neutral ramp + primary ramps.
+// Synthetic (not a photo) so patch rectangles are exact and the reference
+// value of every patch is known rather than estimated off a scan.
+const CC24 = [
+  ['dark skin',115,82,68],   ['light skin',194,150,130],['blue sky',98,122,157],
+  ['foliage',87,108,67],     ['blue flower',133,128,177],['bluish green',103,189,170],
+  ['orange',214,126,44],     ['purplish blue',80,91,166],['moderate red',193,90,99],
+  ['purple',94,60,108],      ['yellow green',157,188,64],['orange yellow',224,163,46],
+  ['blue',56,61,150],        ['green',70,148,73],        ['red',175,54,60],
+  ['yellow',231,199,31],     ['magenta',187,86,149],     ['cyan',8,133,161],
+  ['white',243,243,242],     ['neutral 8',200,200,200],  ['neutral 6.5',160,160,160],
+  ['neutral 5',122,122,121], ['neutral 3.5',85,85,85],   ['black',52,52,52],
+];
+const CHART_W = 440, CHART_H = 330;
+let PATCHES = [];   // {name, x,y,w,h, ref:[r,g,b]} in chart pixel coords
+
+function buildChart(){
+  const cv = $('target'), g = cv.getContext('2d');
+  cv.width = CHART_W; cv.height = CHART_H;
+  PATCHES = [];
+  g.fillStyle = '#808080'; g.fillRect(0,0,CHART_W,CHART_H);
+
+  // ColorChecker 6x4, top half
+  const pw = 66, ph = 46, ox = 12, oy = 12;
+  CC24.forEach((p,i)=>{
+    const cx = i % 6, cy = (i / 6) | 0;
+    const x = ox + cx*(pw+4), y = oy + cy*(ph+4);
+    g.fillStyle = `rgb(${p[1]},${p[2]},${p[3]})`;
+    g.fillRect(x,y,pw,ph);
+    PATCHES.push({name:p[0], x, y, w:pw, h:ph, ref:[p[1],p[2],p[3]]});
+  });
+
+  // 21-step neutral ramp — the tone-response instrument
+  const ry = oy + 4*(ph+4) + 8, rh = 34, rw = CHART_W / 21;
+  for(let i=0;i<21;i++){
+    const v = Math.round(i*255/20);
+    g.fillStyle = `rgb(${v},${v},${v})`;
+    g.fillRect(i*rw, ry, Math.ceil(rw), rh);
+    PATCHES.push({name:'grey '+(i*5)+'%', x:i*rw+3, y:ry+3, w:rw-6, h:rh-6, ref:[v,v,v]});
+  }
+
+  // Primary/secondary ramps at 25/50/75/100 — where overprint errors live
+  const prim = [[255,0,0],[0,255,0],[0,0,255],[0,255,255],[255,0,255],[255,255,0]];
+  const py = ry + rh + 8, pph = 40, ppw = CHART_W/6;
+  prim.forEach((c,i)=>{
+    for(let s=0;s<4;s++){
+      const f = (s+1)/4;
+      const col = [Math.round(255-(255-c[0])*f), Math.round(255-(255-c[1])*f), Math.round(255-(255-c[2])*f)];
+      const x = i*ppw, y = py + s*(pph/4);
+      g.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
+      g.fillRect(x, y, Math.ceil(ppw), Math.ceil(pph/4));
+      PATCHES.push({name:['R','G','B','C','M','Y'][i]+' '+((s+1)*25)+'%',
+        x:x+4, y:y+2, w:ppw-8, h:pph/4-4, ref:col});
+    }
+  });
+  $('tName').textContent = ' ' + PATCHES.length + ' known patches';
+  log('chart built: ' + PATCHES.length + ' patches');
+  return cv;
+}
+
+// ── Colour maths (sRGB -> Lab, CIEDE2000) ──────────────────────────────
+function srgbToLab(r,g,b){
+  const f = v => { v/=255; return v<=0.04045 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4); };
+  const R=f(r), G=f(g), B=f(b);
+  let X = R*0.4124+G*0.3576+B*0.1805, Y = R*0.2126+G*0.7152+B*0.0722, Z = R*0.0193+G*0.1192+B*0.9505;
+  X/=0.95047; Z/=1.08883;
+  const h = t => t>0.008856 ? Math.cbrt(t) : (7.787*t + 16/116);
+  const fx=h(X), fy=h(Y), fz=h(Z);
+  return [116*fy-16, 500*(fx-fy), 200*(fy-fz)];
+}
+function dE00(L1,L2){
+  const [l1,a1,b1]=L1, [l2,a2,b2]=L2;
+  const avgL=(l1+l2)/2, C1=Math.hypot(a1,b1), C2=Math.hypot(a2,b2), avgC=(C1+C2)/2;
+  const G=0.5*(1-Math.sqrt(Math.pow(avgC,7)/(Math.pow(avgC,7)+Math.pow(25,7))||0));
+  const a1p=a1*(1+G), a2p=a2*(1+G);
+  const C1p=Math.hypot(a1p,b1), C2p=Math.hypot(a2p,b2), avgCp=(C1p+C2p)/2;
+  let h1=Math.atan2(b1,a1p)*180/Math.PI; if(h1<0)h1+=360;
+  let h2=Math.atan2(b2,a2p)*180/Math.PI; if(h2<0)h2+=360;
+  let dhp = Math.abs(h1-h2)<=180 ? h2-h1 : (h2<=h1 ? h2-h1+360 : h2-h1-360);
+  const dLp=l2-l1, dCp=C2p-C1p, dHp=2*Math.sqrt(C1p*C2p)*Math.sin(dhp*Math.PI/360);
+  let avgH = Math.abs(h1-h2)>180 ? (h1+h2+360)/2 : (h1+h2)/2;
+  if(C1p*C2p===0) avgH=h1+h2;
+  const T=1-0.17*Math.cos((avgH-30)*Math.PI/180)+0.24*Math.cos(2*avgH*Math.PI/180)
+    +0.32*Math.cos((3*avgH+6)*Math.PI/180)-0.20*Math.cos((4*avgH-63)*Math.PI/180);
+  const SL=1+(0.015*Math.pow(avgL-50,2))/Math.sqrt(20+Math.pow(avgL-50,2));
+  const SC=1+0.045*avgCp, SH=1+0.015*avgCp*T;
+  const RT=-2*Math.sqrt(Math.pow(avgCp,7)/(Math.pow(avgCp,7)+Math.pow(25,7))||0)
+    *Math.sin(60*Math.exp(-Math.pow((avgH-275)/25,2))*Math.PI/180);
+  return Math.sqrt(Math.pow(dLp/SL,2)+Math.pow(dCp/SC,2)+Math.pow(dHp/SH,2)+RT*(dCp/SC)*(dHp/SH));
+}
+
+// ── App bridge ─────────────────────────────────────────────────────────
+let cw = null, lab = null;
+
+async function boot(){
+  const f = $('app');
+  f.src = './index.html?lab=1';
+  await new Promise(r => f.onload = r);
+  cw = f.contentWindow;
+  const s = cw.document.createElement('script');
+  // Injected into the app realm: script-scoped globals (gl, cached, mode,
+  // frameSeed) are invisible from here otherwise.
+  s.textContent = `window.__lab = {
+    ready: () => !!window._glReady && !window._variantBuilding,
+    busy:  () => !!window._amtPrepassRunning,
+    profiles: () => R.PROFILES.map(p => p.name),
+
+    // Deterministic lock: no shimmer, no animation, fixed seed + misreg.
+    lock: () => {
+      cached.grainStatic = 0;
+      window._lineSpin = 0;
+      try { frameSeed = 0.4242; } catch(e){}
+      return 1;
+    },
+    setMode: (m) => { R.setMode(m); return 1; },
+    setProfile: (n) => { const p = R.PROFILES.find(x => x.name === n); if(p) R.applyProf(p); return !!p; },
+    setSep: (t) => { R.setSepType(t); return 1; },
+    // Geometry lock: 'fit' makes cropRect [0,0,1,1] (whole source, no crop)
+    // and margin 0 removes the paper inset, so the source maps to one solid
+    // rectangle of the canvas that calibrateMapping() can then locate.
+    geomLock: () => {
+      R.setAspect('fit');
+      cached.margin = 0;
+      const m = el('margin'); if(m){ m.value = 0; }
+      const mv = el('marginVal'); if(mv) mv.textContent = '0';
+      cached.showCropMarks = false;
+      needsAspectUpdate = true; markDirty(); R.render();
+      return 1;
+    },
+
+    // Push a target image straight into both source textures, mirroring
+    // what the PDF page-swap path does.
+    loadTarget: (bitmap) => {
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, window._srcTexA);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,bitmap);
+      gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, window._srcTexB);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,bitmap);
+      srcImg = bitmap; hasSrc = true;
+      needsAspectUpdate = true; computeCrop();
+      if(R.invalidateAmt) R.invalidateAmt();
+      markDirty();
+      return 1;
+    },
+    rebake: async () => { if(R.runMasterPrepass) await R.runMasterPrepass(); return 1; },
+    render: () => { markDirty(); R.render(); return 1; },
+
+    // Read the canvas back. Re-renders immediately before readPixels: the
+    // drawing buffer is cleared on composite, so a stale read returns black.
+    grab: (w,h) => {
+      markDirty(); R.render();
+      const W = gl.drawingBufferWidth, H = gl.drawingBufferHeight;
+      const px = new Uint8Array(W*H*4);
+      gl.readPixels(0,0,W,H,gl.RGBA,gl.UNSIGNED_BYTE,px);
+      return { w:W, h:H, px:Array.from(px) };
+    },
+    // Debug-uniform sweep: these already exist in the shader and isolate
+    // individual stages of the ink model.
+    dbg: (name, v) => { if(locs[name]) { gl.uniform1f(locs[name], v); markDirty(); R.render(); return 1; } return 0; },
+    dbgList: () => Object.keys(locs).filter(k => k.indexOf('u_dbg') === 0),
+  };`;
+  cw.document.head.appendChild(s);
+  lab = () => cw.__lab;
+
+  await until(() => lab() && lab().ready(), 60000);
+  lab().lock();
+  const names = lab().profiles();
+  $('prof').innerHTML = names.map(n => `<option${/cmyk/i.test(n)&&!/pure/i.test(n)?' selected':''}>${n}</option>`).join('');
+  log('app ready — ' + names.length + ' profiles');
+  await applyState();
+}
+
+const until = async (fn, ms, step=200) => {
+  const t0 = performance.now();
+  while(performance.now()-t0 < ms){ try{ if(await fn()) return true; }catch(e){} await new Promise(r=>setTimeout(r,step)); }
+  return false;
+};
+
+async function applyState(){
+  if(!lab()) return;
+  lab().lock();
+  lab().geomLock();
+  lab().setMode($('mode').value);
+  lab().setProfile($('prof').value);
+  lab().setSep(+$('sep').value);
+  await pushTarget();
+  await until(() => !lab().busy(), 120000);
+  await calibrateMapping();
+  lab().render();
+  log('state: ' + $('mode').value + ' / ' + $('prof').value + ' / ' + ($('sep').value==='1'?'SPOT':'CMYK'));
+}
+
+let targetBitmap = null;
+async function pushTarget(){
+  const cv = $('target');
+  targetBitmap = await createImageBitmap(cv);
+  lab().loadTarget(targetBitmap);
+  await until(() => !lab().busy(), 120000);
+}
+
+// ── Capture / compare ──────────────────────────────────────────────────
+const SHOT = {};   // 'A' | 'B' -> {w,h,px}
+
+function drawShot(slot, cvId){
+  const s = SHOT[slot]; if(!s) return;
+  const cv = $(cvId), g = cv.getContext('2d');
+  const im = new ImageData(new Uint8ClampedArray(s.px), s.w, s.h);
+  const tmp = document.createElement('canvas'); tmp.width=s.w; tmp.height=s.h;
+  tmp.getContext('2d').putImageData(im,0,0);
+  g.save(); g.translate(0, cv.height); g.scale(1,-1);   // GL origin is bottom-left
+  g.drawImage(tmp, 0,0, cv.width, cv.height); g.restore();
+}
+
+async function capture(slot){
+  if(!lab()) return log('app not ready');
+  await until(() => !lab().busy(), 120000);
+  SHOT[slot] = lab().grab();
+  drawShot(slot, slot==='A' ? 'cA' : 'cB');
+  log(`captured ${slot}: ${SHOT[slot].w}x${SHOT[slot].h}`);
+}
+
+// Where the source image actually lands in the drawing buffer. Derived by
+// measurement, not arithmetic: the app crops, letterboxes and insets by the
+// paper margin, and guessing that chain is how patch tables end up sampling
+// the wrong squares. Push an all-black source, find the bounding box of ink,
+// and that rectangle IS the source. Cached until geometry changes.
+let MAP = null;
+
+async function calibrateMapping(){
+  const cal = document.createElement('canvas');
+  cal.width = CHART_W; cal.height = CHART_H;
+  const g = cal.getContext('2d');
+  g.fillStyle = '#000'; g.fillRect(0,0,CHART_W,CHART_H);
+  lab().loadTarget(await createImageBitmap(cal));
+  await until(() => !lab().busy(), 120000);
+  const s = lab().grab();
+
+  // Luma threshold: max ink is far darker than paper or the surround.
+  let x0=s.w, y0=s.h, x1=-1, y1=-1;
+  for(let y=0;y<s.h;y++) for(let x=0;x<s.w;x++){
+    const i=(y*s.w+x)*4;
+    const L=(s.px[i]*0.299+s.px[i+1]*0.587+s.px[i+2]*0.114);
+    if(L<110){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; }
+  }
+  if(x1<0 || (x1-x0)<20 || (y1-y0)<20){ log('CALIBRATION FAILED — no ink field found'); MAP=null; return false; }
+  MAP = {x0, y0, w:(x1-x0+1), h:(y1-y0+1), bw:s.w, bh:s.h};
+  const arErr = Math.abs((MAP.w/MAP.h)/(CHART_W/CHART_H) - 1);
+  log(`mapping: source occupies ${MAP.w}x${MAP.h} at (${x0},${y0}) of ${s.w}x${s.h}` +
+      ` — aspect err ${(arErr*100).toFixed(1)}%` + (arErr>0.04 ? '  ⚠ CROPPED, patches may be off' : ' ✓'));
+  await pushTarget();
+  return true;
+}
+
+// Map a chart patch into buffer coords through the measured rectangle, and
+// sample only the middle half of each patch so halftone edges and any
+// registration slop at the borders stay out of the mean.
+function patchSamples(shot){
+  const out = [];
+  if(!MAP) return PATCHES.map(p=>({name:p.name, rgb:[0,0,0], ref:p.ref}));
+  for(const p of PATCHES){
+    const fx = (p.x + p.w/2) / CHART_W, fy = (p.y + p.h/2) / CHART_H;
+    // GL buffer origin is bottom-left, so flip within the mapped rectangle.
+    const sx = Math.round(MAP.x0 + fx * MAP.w);
+    const sy = Math.round(MAP.y0 + (1 - fy) * MAP.h);
+    const rw = Math.max(2, Math.round(p.w/CHART_W * MAP.w * 0.5));
+    const rh = Math.max(2, Math.round(p.h/CHART_H * MAP.h * 0.5));
+    let r=0,g=0,b=0,n=0;
+    for(let y=sy-rh/2; y<sy+rh/2; y++){
+      for(let x=sx-rw/2; x<sx+rw/2; x++){
+        const xi=x|0, yi=y|0;
+        if(xi<0||yi<0||xi>=shot.w||yi>=shot.h) continue;
+        const i=(yi*shot.w+xi)*4;
+        r+=shot.px[i]; g+=shot.px[i+1]; b+=shot.px[i+2]; n++;
+      }
+    }
+    out.push(n ? {name:p.name, rgb:[r/n,g/n,b/n], ref:p.ref} : {name:p.name, rgb:[0,0,0], ref:p.ref});
+  }
+  return out;
+}
+
+function compare(){
+  if(!SHOT.A || !SHOT.B) return log('need both A and B');
+  if(SHOT.A.w !== SHOT.B.w || SHOT.A.h !== SHOT.B.h) return log('size mismatch — recapture both');
+
+  // Pixel-level difference image
+  const cv = $('cD'), g = cv.getContext('2d');
+  const w = SHOT.A.w, h = SHOT.A.h;
+  const d = new Uint8ClampedArray(w*h*4);
+  let sum=0, mx=0;
+  for(let i=0;i<w*h*4;i+=4){
+    const dr=Math.abs(SHOT.A.px[i]-SHOT.B.px[i]),
+          dg=Math.abs(SHOT.A.px[i+1]-SHOT.B.px[i+1]),
+          db=Math.abs(SHOT.A.px[i+2]-SHOT.B.px[i+2]);
+    const m=(dr+dg+db)/3; sum+=m; mx=Math.max(mx,m);
+    d[i]=Math.min(255,dr*4); d[i+1]=Math.min(255,dg*4); d[i+2]=Math.min(255,db*4); d[i+3]=255;
+  }
+  const tmp=document.createElement('canvas'); tmp.width=w; tmp.height=h;
+  tmp.getContext('2d').putImageData(new ImageData(d,w,h),0,0);
+  g.save(); g.translate(0,cv.height); g.scale(1,-1);
+  g.drawImage(tmp,0,0,cv.width,cv.height); g.restore();
+
+  // Per-patch dE00 between A and B
+  const pa = patchSamples(SHOT.A), pb = patchSamples(SHOT.B);
+  const rows = pa.map((p,i)=>{
+    const la = srgbToLab(...p.rgb), lb = srgbToLab(...pb[i].rgb);
+    return {name:p.name, a:p.rgb, b:pb[i].rgb, de:dE00(la,lb)};
+  }).sort((x,y)=>y.de-x.de);
+
+  const des = rows.map(r=>r.de);
+  const mean = des.reduce((a,b)=>a+b,0)/des.length;
+  const med = des.slice().sort((a,b)=>a-b)[des.length>>1];
+  const p95 = des.slice().sort((a,b)=>a-b)[Math.floor(des.length*0.95)];
+  const cls = v => v<1?'ok':v<3?'mid':'bad';
+  $('summary').innerHTML =
+    `mean ΔE00 <span class="${cls(mean)}">${mean.toFixed(2)}</span> · ` +
+    `median <span class="${cls(med)}">${med.toFixed(2)}</span> · ` +
+    `p95 <span class="${cls(p95)}">${p95.toFixed(2)}</span> · ` +
+    `max <span class="${cls(des[0])}">${des[0].toFixed(2)}</span> · ` +
+    `<span style="color:#888;font-size:12px">mean|Δpx| ${(sum/(w*h)).toFixed(2)}</span>`;
+
+  $('patches').innerHTML = '<table><tr><th>patch</th><th>A</th><th>B</th><th>ΔE00</th></tr>' +
+    rows.slice(0,16).map(r=>`<tr><td class="name">${r.name}</td>`+
+      `<td><span class="sw" style="background:rgb(${r.a.map(Math.round)})"></span></td>`+
+      `<td><span class="sw" style="background:rgb(${r.b.map(Math.round)})"></span></td>`+
+      `<td class="${cls(r.de)}">${r.de.toFixed(2)}</td></tr>`).join('') +
+    '</table><div style="color:#666;margin-top:4px">top 16 of ' + rows.length + ' by ΔE00</div>';
+  log(`diff: mean ΔE00 ${mean.toFixed(2)}, max ${des[0].toFixed(2)} (${rows[0].name})`);
+}
+
+// Stage sweep — toggle each u_dbg* uniform in turn and report how much of
+// the image each stage is responsible for. This is "compare at each step".
+async function stageSweep(){
+  if(!lab()) return;
+  const base = lab().grab();
+  const names = lab().dbgList();
+  log('── stage sweep (' + names.length + ' debug stages) ──');
+  const rows = [];
+  for(const n of names){
+    lab().dbg(n, 1);
+    await new Promise(r=>setTimeout(r,120));
+    const s = lab().grab();
+    lab().dbg(n, 0);
+    if(s.w!==base.w||s.h!==base.h) continue;
+    let sum=0;
+    for(let i=0;i<s.px.length;i+=4)
+      sum += (Math.abs(s.px[i]-base.px[i])+Math.abs(s.px[i+1]-base.px[i+1])+Math.abs(s.px[i+2]-base.px[i+2]))/3;
+    rows.push({n, d:sum/(s.w*s.h)});
+  }
+  lab().render();
+  rows.sort((a,b)=>b.d-a.d);
+  $('patches').innerHTML = '<table><tr><th>debug stage</th><th>mean |Δ| vs normal</th></tr>' +
+    rows.map(r=>`<tr><td class="name">${r.n}</td><td class="${r.d>1?'bad':r.d>0.1?'mid':'ok'}">${r.d.toFixed(3)}</td></tr>`).join('') +
+    '</table><div style="color:#666;margin-top:4px">how much each stage changes the image — 0.000 means the stage is a no-op here</div>';
+  rows.forEach(r=>log('  ' + r.n.padEnd(24) + r.d.toFixed(3)));
+}
+
+// Baseline persistence — patch values only (small, diffable, git-friendly).
+function saveBaseline(){
+  if(!SHOT.A) return log('capture A first');
+  const data = {
+    when: new Date().toISOString(),
+    mode: $('mode').value, prof: $('prof').value, sep: $('sep').value,
+    patches: patchSamples(SHOT.A).map(p=>({name:p.name, rgb:p.rgb.map(v=>+v.toFixed(2))})),
+  };
+  const blob = new Blob([JSON.stringify(data,null,1)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `lab-baseline-${data.mode}-${data.prof.replace(/\W/g,'')}.json`;
+  a.click();
+  log('baseline saved (' + data.patches.length + ' patches)');
+}
+
+function loadBaseline(){
+  const inp = document.createElement('input'); inp.type='file'; inp.accept='.json';
+  inp.onchange = async e => {
+    const d = JSON.parse(await e.target.files[0].text());
+    if(!SHOT.B) return log('capture B first, then load a baseline to compare against it');
+    const pb = patchSamples(SHOT.B);
+    const rows = d.patches.map((p,i)=>({
+      name:p.name, de: dE00(srgbToLab(...p.rgb), srgbToLab(...pb[i].rgb)), a:p.rgb, b:pb[i].rgb
+    })).sort((x,y)=>y.de-x.de);
+    const des = rows.map(r=>r.de), mean = des.reduce((a,b)=>a+b,0)/des.length;
+    $('summary').innerHTML = `vs baseline (${d.when.slice(0,16)}): mean ΔE00 ` +
+      `<span class="${mean<1?'ok':mean<3?'mid':'bad'}">${mean.toFixed(2)}</span> · max ${des[0].toFixed(2)}`;
+    $('patches').innerHTML = '<table><tr><th>patch</th><th>base</th><th>now</th><th>ΔE00</th></tr>' +
+      rows.slice(0,16).map(r=>`<tr><td class="name">${r.name}</td>`+
+        `<td><span class="sw" style="background:rgb(${r.a.map(Math.round)})"></span></td>`+
+        `<td><span class="sw" style="background:rgb(${r.b.map(Math.round)})"></span></td>`+
+        `<td>${r.de.toFixed(2)}</td></tr>`).join('') + '</table>';
+    log('compared against baseline ' + d.when);
+  };
+  inp.click();
+}
+
+// ── wiring ─────────────────────────────────────────────────────────────
+$('tChart').onclick = async () => { buildChart(); if(lab()) { await pushTarget(); lab().render(); } };
+$('tPhoto').onclick = () => $('fileIn').click();
+$('fileIn').onchange = async e => {
+  const img = await createImageBitmap(e.target.files[0]);
+  const cv = $('target'), g = cv.getContext('2d');
+  cv.width = CHART_W; cv.height = CHART_H;
+  g.drawImage(img, 0,0, CHART_W, CHART_H);
+  PATCHES = [];   // a photo has no known reference patches
+  $('tName').textContent = ' ' + e.target.files[0].name + ' (visual only — no patch table)';
+  if(lab()){ await pushTarget(); lab().render(); }
+  log('loaded photo: ' + e.target.files[0].name);
+};
+$('apply').onclick = applyState;
+$('capA').onclick = () => capture('A');
+$('capB').onclick = () => capture('B');
+$('diff').onclick = compare;
+$('saveA').onclick = saveBaseline;
+$('loadA').onclick = loadBaseline;
+$('sweep').onclick = stageSweep;
+
+buildChart();
+boot().catch(e => log('BOOT FAILED: ' + e.message));
+</script>
