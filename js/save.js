@@ -1047,8 +1047,8 @@ async function exportSeparations(){
     gl.activeTexture(gl.TEXTURE0);
   }
   // SENTENCE mode length (mirror of the live path — after the atlas ladder)
-  if(locs.u_wordLen) gl.uniform1f(locs.u_wordLen,
-    (mode === 'letters' && (window._lettersMode|0) === 1 && window._lettersTextLen) ? window._lettersTextLen : 0);
+  // SENTENCE sub-mode removed — word-strip path dormant.
+  if(locs.u_wordLen) gl.uniform1f(locs.u_wordLen, 0.0);
   // Deterministic AMT taps. This path never calls setRenderUniforms, so the
   // uniform keeps whatever the live view last wrote (1.0 = stochastic) and the
   // one export that actually reaches a drum would keep the hash speckle the
@@ -1081,6 +1081,9 @@ async function exportSeparations(){
   gl.uniform1f(locs.u_lineEdgeThickness, window._lineEdgeThickness ?? 0.0);
   gl.uniform1f(locs.u_lineCount, window._lineCount ?? 1.0);
   gl.uniform1f(locs.u_colorQuant, window._colorQuant ?? 0.0);
+  if(locs.u_covQuant) gl.uniform1f(locs.u_covQuant, window._colorQuant ?? 0.0);
+  if(locs.u_koExclusive) gl.uniform1f(locs.u_koExclusive,
+    (typeof layerKnockout !== 'undefined' && layerKnockout.some(Boolean)) ? 1.0 : 0.0);
   gl.uniform1f(locs.u_useLabResidual, window._useLabResidual ? 1.0 : 0.0);
   gl.uniform1f(locs.u_warmCool, (cached.warmCool ?? 0) * 0.02);
   gl.uniform1i(locs.u_stampShape, mode === 'letters' ? 5 : (window._stampShape || 0));

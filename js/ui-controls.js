@@ -305,9 +305,10 @@ function buildChannelUI(targetId){
     if(canRemove){
       html+=`<span class="ch-remove-btn" onclick="event.stopPropagation();R.removeSpotChannel(${i})" title="Remove">&times;</span>`;
     }
-    // Per-plate knockout button removed from the UI — the feature is
-    // available via the global text-channel knockout in PDF mode and
-    // wasn't pulling its weight as a per-plate toggle.
+    // Per-plate knockout. Restored: paired with posterize it is what makes a
+    // region resolve to ONE flat ink (the plate cuts through everything below
+    // instead of overprinting), which is the single-ink/screen-print look.
+    html+=`<span class="ch-ko-btn${layerKnockout[i]?' active':''}" onclick="event.stopPropagation();R.toggleKnockout(${i})" title="Knockout — this ink cuts through the plates below back to paper instead of overprinting">KO</span>`;
     if(isScreen){
       const linkStyle=isLinked?` style="border-bottom:2px solid ${linkedColor[i]};padding-bottom:1px"`:'';
       if(mode==='lines'){
@@ -1003,36 +1004,18 @@ function cycleStampShape(){
 }
 // ASCII-only chips (charset + custom font) appear next to the stamp button
 // only while the ASCII stamp is active. Toggles both desktop and phone chips.
-// LETTERS sub-mode: 0 = random letters (charset chip applies), 1 = sentence
-// (text input applies; language comes from the typed text, charset hidden).
-window._lettersMode = window._lettersMode ?? 0;
-function toggleLettersMode(){
-  window._lettersMode = ((window._lettersMode|0) + 1) % 2;
-  syncAsciiChips();
-  if((window._lettersMode|0) === 1){
-    const t = el('lettersTextInput'); if(t) t.focus();
-  }
-  R.toast((window._lettersMode|0) === 1 ? 'Sentence — type your text' : 'Random letters');
-  markDirty();
-}
+// LETTERS is random-letters only. The SENTENCE sub-mode (type text, spelled
+// out readably with tone carried by letter size) was removed on request —
+// _lettersMode is pinned to 0 so the shader's word-strip path (u_wordLen)
+// stays dormant rather than being ripped out of the megashader.
+window._lettersMode = 0;
 function syncAsciiChips(){
   const letters = (mode === 'letters');
-  const sentence = letters && (window._lettersMode|0) === 1;
   const show = (id, on) => { const e = el(id); if(e) e.style.display = on ? '' : 'none'; };
-  show('lettersModeBtn', letters);
-  show('asciiCharsetBtn', letters && !sentence);
-  show('phAsciiCharsetBtn', letters && !sentence);
+  show('asciiCharsetBtn', letters);
+  show('phAsciiCharsetBtn', letters);
   show('asciiFontBtn', letters);
   show('phAsciiFontBtn', letters);
-  show('lettersTextInput', sentence);
-  show('phLettersTextInput', sentence);
-  const mv = el('lettersModeBtnVal'); if(mv) mv.textContent = sentence ? 'Sentence' : 'Random';
-  // Panels rebuild from static defaults — restore the typed text (skip the
-  // field being edited so we never clobber mid-keystroke).
-  ['lettersTextInput','phLettersTextInput'].forEach(id => {
-    const t = el(id);
-    if(t && document.activeElement !== t && t.value !== (window._lettersText||'')) t.value = window._lettersText||'';
-  });
 }
 R.syncAsciiChips = syncAsciiChips;
 // Clean halftone toggle — Spectrolite-style preview where SCREEN renders
@@ -1097,7 +1080,11 @@ function refreshDitherScaleVisibility(){
 
 // ─── Color quantization (pre-NNLS posterize / coarse cache) ───
 // Off = full range; 32/16/8 = N levels per channel. Lower = chunkier.
-const COLOR_QUANT_STEPS = [{v:0, l:'Off'}, {v:32, l:'32'}, {v:16, l:'16'}, {v:8, l:'8'}];
+// n is the divisor in floor(c*n + 0.5)/n, so it yields n+1 tones per channel
+// (n=2 -> 0, 1/2, 1). The low end is where the flat screen-print look lives:
+// n=2 across 3 inks is at most 27 possible colours in the whole image.
+const COLOR_QUANT_STEPS = [{v:0, l:'Off'}, {v:16, l:'16'}, {v:8, l:'8'},
+                           {v:4, l:'4'}, {v:3, l:'3'}, {v:2, l:'2'}];
 window._colorQuant = window._colorQuant ?? 0;
 // ─── Perceptual Lab residual toggle ───
 // When on, NNLS picks the best ink subset using Lab color distance instead
@@ -1299,6 +1286,42 @@ function cycleTrapping(){
   const mm = (trappingPx * 25.4 / 600).toFixed(2);
   R.toast('Trapping: ' + TRAPPING_STEPS[i].l + (trappingPx > 0 ? ' (' + mm + ' mm)' : ''));
   markDirty();
+}
+
+// Posterize — quantise the source to N levels per channel BEFORE separation
+// (quantizeColor() in the shader). Flattens gradients into discrete regions so
+// each area resolves to one ink rather than a blend. The engine and the step
+// table already existed; this is the control that was missing.
+function cycleColorQuant(){
+  let i = COLOR_QUANT_STEPS.findIndex(s => s.v === (window._colorQuant || 0));
+  if(i < 0) i = 0;
+  i = (i + 1) % COLOR_QUANT_STEPS.length;
+  window._colorQuant = COLOR_QUANT_STEPS[i].v;
+  const v = el('posterizeBtnVal'); if(v) v.textContent = COLOR_QUANT_STEPS[i].l;
+  const b = el('posterizeBtn'); if(b) b.classList.toggle('active', window._colorQuant > 0);
+  R.toast('Posterize: ' + (window._colorQuant ? COLOR_QUANT_STEPS[i].l + ' levels' : 'Off'));
+  // Source quantisation changes the separation itself, so RISO/stipple masters
+  // baked from the old values are stale.
+  if(window._mode === 'flat' || window._mode === 'stipple'){
+    if(R.invalidateAmt) R.invalidateAmt();
+    if(R.runMasterPrepass) setTimeout(R.runMasterPrepass, 0);
+  }
+  markDirty();
+}
+
+// Per-plate KNOCKOUT — this ink cuts through everything printed below it back
+// to bare paper instead of overprinting. With posterize on, that is what makes
+// each region read as a single flat ink. Same-colour plates are kept in sync
+// (they are one physical drum).
+function toggleKnockout(ch){
+  const on = !layerKnockout[ch];
+  const color = channels[ch];
+  for(let i = 0; i < 4; i++) if(channels[i] === color) layerKnockout[i] = on;
+  buildChannelUI();
+  if(el('phChannelList') && el('phChannelList').children.length) buildChannelUI('phChannelList');
+  R.toast((color || 'Plate ' + ch) + ' knockout ' + (on ? 'ON' : 'OFF'));
+  markDirty();
+  R.pushUndo();
 }
 
 function toggleTextKnockout(){
@@ -2070,6 +2093,8 @@ R.pickTextChannelColor = pickTextChannelColor;
 R.clearTextChannel = clearTextChannel;
 R.toggleTextKnockout = toggleTextKnockout;
 R.cycleTrapping = cycleTrapping;
+R.cycleColorQuant = cycleColorQuant;
+R.toggleKnockout = toggleKnockout;
 R.toggleLabResidual = toggleLabResidual;
 R.cycleDitherMode = cycleDitherMode;
 R.cycleDitherScale = cycleDitherScale;
@@ -2094,7 +2119,6 @@ R.cycleLineRoughness = cycleLineRoughness;
 R.cycleLineGrain = cycleLineGrain;
 R.toggleLineSpin = toggleLineSpin;
 R.toggleStippleLive = toggleStippleLive;
-R.toggleLettersMode = toggleLettersMode;
 R.cycleLineWave = cycleLineWave;
 R.cycleLineEdgeThickness = cycleLineEdgeThickness;
 R.cycleLineCount = cycleLineCount;

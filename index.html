@@ -14,7 +14,7 @@
 <title>RISO/CAM</title>
 <link rel="manifest" href="manifest.json">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/main.css?v=30">
+<link rel="stylesheet" href="css/main.css?v=31">
 <!-- Styles extracted to css/main.css -->
 <script data-goatcounter="https://chipskiko.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </head>
@@ -136,8 +136,6 @@
           <!-- LETTERS: letter density + text + charset/font (screen engine, glyph stamp) -->
           <div id="lettersPrimary" style="display:none;gap:6px;flex-wrap:wrap;align-items:center">
             <button class="regmark-btn active" id="lpiBtnLetters" onclick="R.cycleLpi()" title="Letter density (lines per inch — coarser = bigger letters)"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><text x="10" y="15" text-anchor="middle" font-size="13" font-weight="bold" font-family="monospace" fill="currentColor">A</text></svg><span class="regmark-val" id="lpiBtnLettersVal">Fine</span></button>
-            <button class="regmark-btn" id="lettersModeBtn" onclick="R.toggleLettersMode()" title="Random letters (artistic stamp cloud, charset applies) ⇄ Sentence (your text spelled out readably — tone carried by letter size, no overlap)"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><text x="10" y="14" text-anchor="middle" font-size="10" font-weight="bold" font-family="monospace" fill="currentColor">Aa</text></svg><span class="regmark-val" id="lettersModeBtnVal">Random</span></button>
-            <input type="text" id="lettersTextInput" maxlength="128" placeholder="type your sentence…" title="The image is rendered out of your text, spelled out over and over — letters on a clean grid, tone carried by letter size, spaces become gaps." style="display:none;flex:1;min-width:130px;max-width:260px;font-family:'Space Mono',monospace;font-size:10px;padding:6px 8px;border:1px solid var(--border);background:transparent;color:var(--text)" oninput="R.setLettersText(this.value)">
             <button class="regmark-btn" id="asciiCharsetBtn" style="display:none" onclick="R.cycleAsciiCharset()" title="Charset for random letters — Latin / Georgian Mkhedruli / mixed"><span class="regmark-val" id="asciiCharsetVal">ABC</span></button>
             <button class="regmark-btn" id="asciiFontBtn" style="display:none" onclick="R.asciiFontClick()" title="Letter font — click to upload a TTF/OTF/WOFF; click again to reset to default"><span class="regmark-val" id="asciiFontVal">Aa</span></button>
             <input type="file" id="asciiFontFile" accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2" style="display:none" onchange="R.uploadAsciiFont(this.files[0])">
@@ -183,6 +181,8 @@
           <input type="range" id="skew" min="-1" max="1" value="0" step="0.1" style="display:none"><span id="skewVal" style="display:none">0°</span>
           <span class="regmark-link">&ndash;</span>
           <button class="regmark-btn" id="trappingBtn" onclick="R.cycleTrapping()" title="Trapping — contracts knockout regions by N px so adjacent inks overlap, hiding white halos from misregistration. Same UX as Spectrolite (px values shown with mm equivalent at 600dpi)."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><rect x="3" y="3" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="8" y="8" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="1.5,1"/></svg><span class="regmark-val" id="trappingBtnVal">None</span></button>
+          <span class="regmark-link">&ndash;</span>
+          <button class="regmark-btn" id="posterizeBtn" onclick="R.cycleColorQuant()" title="Posterize — quantises the source to N levels per channel BEFORE separation, so each region resolves to a flat ink area instead of a blended gradient. Pair with plate KO for single-ink designs."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><rect x="2" y="12" width="5" height="6" fill="currentColor" opacity="0.9"/><rect x="7" y="9" width="5" height="9" fill="currentColor" opacity="0.65"/><rect x="12" y="5" width="5" height="13" fill="currentColor" opacity="0.4"/><line x1="2" y1="3" x2="18" y2="3" stroke="currentColor" stroke-width="1.2"/></svg><span class="regmark-val" id="posterizeBtnVal">Off</span></button>
         </div>
         <input type="range" id="grainStatic" min="0" max="20" value="0" step="1" style="display:none"><span id="grainStaticVal" style="display:none">0</span>
       </div>
@@ -593,7 +593,9 @@ uniform int u_textLayerIdx;    // which active layer (0..3) gets text; -1 = off
 uniform sampler2D u_srcOrig;   // un-inpainted PDF raster (text plate reads glyph color from here)
 uniform float u_textKnockout;  // 1.0 = text glyphs punch through every plate to paper; 0.0 = render bg behind glyphs
 uniform float u_trappingPx;    // canvas-pixel trapping amount — contracts knockout regions so adjacent inks overlap (no white halos at misregistered edges)
-uniform float u_colorQuant;    // 0=off, else N levels per channel (8/16/32) — pre-NNLS posterize
+uniform float u_colorQuant;    // 0=off, else N levels per channel — pre-NNLS posterize (source colour)
+uniform float u_covQuant;      // 0=off, else N steps of per-plate COVERAGE — what actually flattens a halftoned render
+uniform float u_koExclusive;   // 1 = only the strongest plate carries ink at a pixel; the rest are zeroed (true separation knockout)
 uniform float u_useLabResidual; // 0=RGB residual, 1=Lab residual in NNLS subset selection
 uniform float u_useCalChord;     // 0=naive delta (ink100-paper), 1=calibrated chord 2*(p50-paper)
 uniform float u_ynN;             // Yule-Nielsen exponent for SPOT NNLS space (1 = legacy linear RGB, ~2 = uncoated stock)
@@ -729,7 +731,30 @@ vec3 adjustRGB(vec3 rgb, vec2 pix){
 //     data (swatches were measured against this pipeline).
 //   - Toggle u_dbgLinearize=1 to compute CMY in linear space (more physically
 //     correct for saturated colors, but mismatches LUT calibration → darker).
+// Forward declaration — quantizeColor is defined further down with the other
+// quantisers, but the separation functions above need it.
+vec3 quantizeColor(vec3 c);
+
+// Exclusive knockout: keep only the strongest plate at this pixel and zero
+// the rest, so no two inks ever land on the same spot. Applied at the
+// SEPARATION output (where all plate weights exist together) rather than at
+// composite time, where each plate is handled in its own sequential block.
+// Ties go to the lower index, i.e. the earlier-printed plate.
+vec4 koExclusive(vec4 w){
+  if(u_koExclusive < 0.5) return w;
+  float m = max(max(w.x, w.y), max(w.z, w.w));
+  if(m <= 0.0) return w;
+  if(w.x >= m) return vec4(w.x, 0.0, 0.0, 0.0);
+  if(w.y >= m) return vec4(0.0, w.y, 0.0, 0.0);
+  if(w.z >= m) return vec4(0.0, 0.0, w.z, 0.0);
+  return vec4(0.0, 0.0, 0.0, w.w);
+}
+
 vec4 toCMYK(vec3 rgb){
+  // Posterize at the SEPARATION INPUT, mirroring nnlsDecompose. This call was
+  // missing: quantizeColor() was only ever invoked inside nnlsDecompose, so
+  // the control did nothing whatsoever in CMYK mode — only SPOT was affected.
+  rgb = quantizeColor(rgb);
   // K in sRGB — preserves perceptual spacing for grayscale calibration
   float k = 1.0 - max(rgb.r, max(rgb.g, rgb.b));
   if(k >= 0.999) return vec4(0.0, 0.0, 0.0, 1.0);
@@ -779,6 +804,17 @@ vec3 quantizeColor(vec3 c){
   if(u_colorQuant < 1.5) return c;
   float n = u_colorQuant;
   return floor(c * n + 0.5) / n;
+}
+
+// Quantise a plate's COVERAGE to the same N steps. Posterising the source
+// alone barely changes a halftoned render — coverage still varies smoothly,
+// so the screen just draws every intermediate dot size and the flat regions
+// never appear. Snapping coverage is what actually collapses an area to one
+// solid ink. At N=2 each plate is limited to none / half / full.
+float quantizeCoverage(float cov){
+  if(u_covQuant < 1.5) return cov;
+  float n = u_covQuant;
+  return clamp(floor(cov * n + 0.5) / n, 0.0, 1.0);
 }
 
 // ─── RGB → Lab (D65) for perceptual residuals ───
@@ -2000,7 +2036,7 @@ float getCoverage(vec4 cmyk, vec2 rpx, int idx, int ch, float noise1, float dens
   // Ink absorption softening: ink sits on surface before absorbing
   ink = mix(ink, sqrt(ink), 0.08);
 
-  return clamp(ink, 0.0, 1.0);
+  return quantizeCoverage(clamp(ink, 0.0, 1.0));
 }
 
 // ─── Approximate mode: coverage from NNLS weight (no CMYK mapping) ───
@@ -2050,7 +2086,7 @@ float getCoverageApprox(float weight, vec2 rpx, int idx, float noise1, float den
   ink += (noise1 - 0.5) * u_inkNoise * 0.006 * (u_mode == 0 ? u_simNoise : 0.0);
   ink = clamp(ink, 0.0, 1.0);
   ink = mix(ink, sqrt(ink), 0.08); // absorption softening
-  return clamp(ink, 0.0, 1.0);
+  return quantizeCoverage(clamp(ink, 0.0, 1.0));
 }
 
 // Real-time GPU Grain-Touch (per-fragment, no prepass). Thresholds the coverage
@@ -2760,10 +2796,10 @@ float asciiCov(vec2 suv, vec2 srpx, int idx, vec2 boxHalf){
   src = adjustRGB(src, srpx);
   float ink;
   if(u_sepType == 1){
-    vec4 w = nnlsDecompose(u_layers, u_paperColor, src, u_ink0, u_ink1, u_ink2, u_ink3);
+    vec4 w = koExclusive(nnlsDecompose(u_layers, u_paperColor, src, u_ink0, u_ink1, u_ink2, u_ink3));
     ink = idx == 0 ? w.x : (idx == 1 ? w.y : (idx == 2 ? w.z : w.w));
   } else {
-    vec4 cmyk = toCMYK(src);
+    vec4 cmyk = koExclusive(toCMYK(src));
     int ch = idx == 0 ? u_chan0 : (idx == 1 ? u_chan1 : (idx == 2 ? u_chan2 : u_chan3));
     ink = getChannel(cmyk, ch, u_layers, src);
   }
@@ -3008,7 +3044,7 @@ void main(){
     float d;
     if(u_sepType == 1){
       // Approx mode: NNLS decomposition for this channel
-      vec4 wts = nnlsDecompose(u_layers, u_paperColor, src, u_ink0, u_ink1, u_ink2, u_ink3);
+      vec4 wts = koExclusive(nnlsDecompose(u_layers, u_paperColor, src, u_ink0, u_ink1, u_ink2, u_ink3));
       float w = u_chan0==0?wts.x:(u_chan0==1?wts.y:(u_chan0==2?wts.z:wts.w));
       float cov = getCoverageApprox(w, rpx, 0, n1, u_dens0, pf);
       // LETTERS/ASCII plates: stamp the actual glyphs (reads the LIVE frame's
@@ -3019,7 +3055,7 @@ void main(){
         ? asciiStamp(uv, u_off0, 0, cov, pf) * printMask(uv, u_off0, rpx)
         : getGrainTexture(cov, rpx, pix, 0, u_angle0, pf, u_grainMul0);
     } else {
-      vec4 cmyk = toCMYK(src);
+      vec4 cmyk = koExclusive(toCMYK(src));
       float n2 = hash2(rpx * 3.1);
       if(u_mode == 1 && u_stampShape == 5){
         float cov = getCoverage(cmyk, rpx, 0, u_chan0, n1, u_dens0, pf, src, u_inkGamma0);
@@ -3082,14 +3118,14 @@ void main(){
     if(u_sepType == 1){
       vec3 src0a = texture2D(u_src, srcUV(snapUV0)).rgb;
       src0a = adjustRGB(src0a, lrpx);
-      vec4 w0 = nnlsDecompose(u_layers, u_paperColor, src0a, u_ink0, u_ink1, u_ink2, u_ink3);
+      vec4 w0 = koExclusive(nnlsDecompose(u_layers, u_paperColor, src0a, u_ink0, u_ink1, u_ink2, u_ink3));
       cov = getCoverageApprox(w0.x, lrpx, 0, n0, u_dens0, pf);
     } else {
       vec3 src = texture2D(u_src, srcUV(snapUV0)).rgb;
       vec3 srcS = texture2D(u_src, srcUV(snapUV0 + vec2(0.0, 0.0012))).rgb;
       src = mix(src, srcS, 0.35);
       src = adjustRGB(src, lrpx);
-      vec4 cmyk = toCMYK(src);
+      vec4 cmyk = koExclusive(toCMYK(src));
       cov = getCoverage(cmyk, lrpx, 0, u_chan0, n0, u_dens0, pf, src, u_inkGamma0);
     }
     // Mask applied to COVERAGE (not post-dither) so dots taper naturally
@@ -3143,14 +3179,14 @@ void main(){
     if(u_sepType == 1){
       vec3 src1a = texture2D(u_src, srcUV(snapUV1)).rgb;
       src1a = adjustRGB(src1a, lrpx);
-      vec4 w1 = nnlsDecompose(u_layers, u_paperColor, src1a, u_ink0, u_ink1, u_ink2, u_ink3);
+      vec4 w1 = koExclusive(nnlsDecompose(u_layers, u_paperColor, src1a, u_ink0, u_ink1, u_ink2, u_ink3));
       cov = getCoverageApprox(w1.y, lrpx, 1, n1, u_dens1, pf);
     } else {
       vec3 src = texture2D(u_src, srcUV(snapUV1)).rgb;
       vec3 srcS = texture2D(u_src, srcUV(snapUV1 + vec2(0.0, 0.0008))).rgb;
       src = mix(src, srcS, 0.25);
       src = adjustRGB(src, lrpx);
-      vec4 cmyk = toCMYK(src);
+      vec4 cmyk = koExclusive(toCMYK(src));
       cov = getCoverage(cmyk, lrpx, 1, u_chan1, n1, u_dens1, pf, src, u_inkGamma1);
     }
     float mask = (u_mode==1) ? printMaskCell(skUV1, off1, lpix, u_screenCell, u_angle1) : printMask(skUV1, off1, lrpx);
@@ -3194,14 +3230,14 @@ void main(){
     if(u_sepType == 1){
       vec3 src2a = texture2D(u_src, srcUV(snapUV2)).rgb;
       src2a = adjustRGB(src2a, lrpx);
-      vec4 w2 = nnlsDecompose(u_layers, u_paperColor, src2a, u_ink0, u_ink1, u_ink2, u_ink3);
+      vec4 w2 = koExclusive(nnlsDecompose(u_layers, u_paperColor, src2a, u_ink0, u_ink1, u_ink2, u_ink3));
       cov = getCoverageApprox(w2.z, lrpx, 2, n2, u_dens2, pf);
     } else {
       vec3 src = texture2D(u_src, srcUV(snapUV2)).rgb;
       vec3 srcS = texture2D(u_src, srcUV(snapUV2 + vec2(0.0, 0.0004))).rgb;
       src = mix(src, srcS, 0.15);
       src = adjustRGB(src, lrpx);
-      vec4 cmyk = toCMYK(src);
+      vec4 cmyk = koExclusive(toCMYK(src));
       cov = getCoverage(cmyk, lrpx, 2, u_chan2, n2, u_dens2, pf, src, u_inkGamma2);
     }
     float mask = (u_mode==1) ? printMaskCell(skUV2, off2, lpix, u_screenCell, u_angle2) : printMask(skUV2, off2, lrpx);
@@ -3245,12 +3281,12 @@ void main(){
     if(u_sepType == 1){
       vec3 src3a = texture2D(u_src, srcUV(snapUV3)).rgb;
       src3a = adjustRGB(src3a, lrpx);
-      vec4 w3 = nnlsDecompose(u_layers, u_paperColor, src3a, u_ink0, u_ink1, u_ink2, u_ink3);
+      vec4 w3 = koExclusive(nnlsDecompose(u_layers, u_paperColor, src3a, u_ink0, u_ink1, u_ink2, u_ink3));
       cov = getCoverageApprox(w3.w, lrpx, 3, n3, u_dens3, pf);
     } else {
       vec3 src = texture2D(u_src, srcUV(snapUV3)).rgb;
       src = adjustRGB(src, lrpx);
-      vec4 cmyk = toCMYK(src);
+      vec4 cmyk = koExclusive(toCMYK(src));
       cov = getCoverage(cmyk, lrpx, 3, u_chan3, n3, u_dens3, pf, src, u_inkGamma3);
     }
     float mask = (u_mode==1) ? printMaskCell(skUV3, off3, lpix, u_screenCell, u_angle3) : printMask(skUV3, off3, lrpx);
@@ -3524,13 +3560,13 @@ void main(){
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/riso-amt-webgpu.js?v=6"></script>
-<script src="js/renderer.js?v=186"></script>
+<script src="js/renderer.js?v=188"></script>
 <script src="js/source.js?v=57"></script>
-<script src="js/save.js?v=68"></script>
+<script src="js/save.js?v=70"></script>
 <script src="js/webgpu-live.js?v=5"></script>
-<script src="js/ui-controls.js?v=70"></script>
+<script src="js/ui-controls.js?v=72"></script>
 <script src="js/ui-paper.js?v=14"></script>
-<script src="js/phone.js?v=26"></script>
+<script src="js/phone.js?v=27"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL
      service workers, and even the attempt makes the browser print a CSP-violation report
      that no .catch can silence. Offline caching works where CSP allows (e.g. localhost).

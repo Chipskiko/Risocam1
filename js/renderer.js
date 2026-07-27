@@ -258,7 +258,7 @@ function initGL(onReady){
    'u_off0','u_off1','u_off2','u_off3',
    'u_angle0','u_angle1','u_angle2','u_angle3','u_screenCell',
    'u_chan0','u_chan1','u_chan2','u_chan3',
-   'u_stampSeed','u_asciiTonePass','u_aMin','u_aDims','u_aPitch','u_wordLen','u_edgeSoft','u_mtxTexel','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineWave','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineGrain','u_inkDissolve','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_useLabResidual','u_useCalChord','u_ynN','u_useSepLut','u_sepLutN','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
+   'u_stampSeed','u_asciiTonePass','u_aMin','u_aDims','u_aPitch','u_wordLen','u_edgeSoft','u_mtxTexel','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineWave','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineGrain','u_inkDissolve','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_covQuant','u_koExclusive','u_useLabResidual','u_useCalChord','u_ynN','u_useSepLut','u_sepLutN','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
    'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_paperShift','u_paperPbrShift','u_paperPbrMul','u_paperOrient','u_scanSwap','u_crop','u_paper',
    'u_paperPBR','u_usePaperPBR','u_paperScaleK',
    'u_lutA0','u_lutA1','u_lutA2','u_lutA3',
@@ -1175,6 +1175,14 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   gl.uniform1f(locs.u_lineEdgeThickness, window._lineEdgeThickness ?? 0.0);
   gl.uniform1f(locs.u_lineCount, window._lineCount ?? 1.0);
   gl.uniform1f(locs.u_colorQuant, window._colorQuant ?? 0.0);
+  // Coverage quantisation rides the same control — posterising the source
+  // alone leaves a halftoned render essentially unchanged (measured: 458 ->
+  // 434 distinct colours); snapping COVERAGE is what flattens an area to
+  // one solid ink.
+  if(locs.u_covQuant) gl.uniform1f(locs.u_covQuant, window._colorQuant ?? 0.0);
+  // Exclusive knockout: any plate flagged KO means no two inks share a pixel.
+  if(locs.u_koExclusive) gl.uniform1f(locs.u_koExclusive,
+    (typeof layerKnockout !== 'undefined' && layerKnockout.some(Boolean)) ? 1.0 : 0.0);
   if(locs.u_useSepLut) gl.uniform1f(locs.u_useSepLut, (window.R && R._sepLutFrameGate) ? R._sepLutFrameGate() : 0.0);
   if(locs.u_sepLutN) gl.uniform1f(locs.u_sepLutN, (window._sepLut && window._sepLut.N) || 13);
   if(locs.u_ynN) gl.uniform1f(locs.u_ynN, +(window._spotYN ?? 1.0)); // Yule-Nielsen n for spot NNLS solve-space (1 = linear; measured best with naive deltas)
@@ -1261,8 +1269,8 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   // SENTENCE mode length — set AFTER the atlas ladder above so a lazy rebuild
   // has refreshed window._lettersTextLen (the strip and the length must
   // agree). Gated on the Random/Sentence toggle, not just text presence.
-  if(locs.u_wordLen) gl.uniform1f(locs.u_wordLen,
-    (mode === 'letters' && (window._lettersMode|0) === 1 && window._lettersTextLen) ? window._lettersTextLen : 0);
+  // SENTENCE sub-mode removed — the word-strip path stays dormant at 0.
+  if(locs.u_wordLen) gl.uniform1f(locs.u_wordLen, 0.0);
   // Paper type: 'blank' forces zero texture (kills BOTH the PBR substrate and
   // the legacy procedural/scan path — both scale by u_paperTex). Other types
   // shape the PBR character via u_paperPbrMul (tooth strength, sheen).

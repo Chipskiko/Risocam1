@@ -315,6 +315,12 @@ body.pdf-mode .viewfinder-panel>#gl{
 .ch-dropdown-item.selected .ch-dropdown-name{color:#3d6db5;font-weight:500}
 .ch-dropdown-sep{height:1px;background:var(--border);margin:4px 10px}
 .ch-remove-btn{font-size:16px;color:var(--text-muted,#999);opacity:.35;cursor:pointer;padding:0 2px;line-height:1;flex-shrink:0;transition:opacity .12s}
+/* Per-plate knockout toggle — this ink cuts through the plates below. */
+.ch-ko-btn{font-family:'Space Mono',monospace;font-size:8px;letter-spacing:.5px;color:var(--text-muted,#999);
+  border:1px solid var(--border);border-radius:3px;padding:2px 4px;cursor:pointer;line-height:1;
+  flex-shrink:0;opacity:.5;transition:all .12s;user-select:none}
+.ch-ko-btn:hover{opacity:1;border-color:var(--text)}
+.ch-ko-btn.active{background:var(--text);color:#fff;border-color:var(--text);opacity:1}
 .ch-remove-btn:hover{opacity:.85;color:#c44}
 .ch-add-row{display:flex;align-items:center;gap:5px;padding:2px 0;cursor:pointer;transition:all .12s;margin-left:22px}
 .ch-add-row:hover .ch-add-swatch{border-color:#5b8fd4;color:#5b8fd4}
