@@ -7,6 +7,10 @@ let srcImg=null, camStream=null, camOn=false, videoOn=false, hasSrc=false;
 let misreg=[[0,0],[0,0],[0,0],[0,0]], layerSkews=[0,0,0,0], gl, prog, locs={}, frame=0, frameSeed=Math.random();
 let fpsFrames=0, fpsLast=performance.now();
 let layerAngles=[15,75,0,45];
+// LINES per-plate angle animation: 0 = off, +1 = clockwise, -1 = anticlockwise.
+// Replaces the old single global _lineSpin so each plate can precess
+// independently (or not at all). Default off.
+let layerSpin=[0,0,0,0];
 // Per-channel knockout flag — when true, this layer's ink cuts a hole back
 // to paper, removing layers below where it prints (cutout effect).
 let layerKnockout=[false,false,false,false];

@@ -511,3 +511,10 @@ body.phone-mode.ph-ls.ph-ls-ccw .phone-ui{padding-top:env(safe-area-inset-left,0
 body.phone-mode.ph-ls.ph-ls-cw .phone-ui{padding-top:env(safe-area-inset-right,0)}
 body.phone-mode.ph-ls.ph-ls-ccw .ph-overlay{padding-bottom:calc(env(safe-area-inset-right,8px) + 16px)}
 body.phone-mode.ph-ls.ph-ls-cw .ph-overlay{padding-bottom:calc(env(safe-area-inset-left,8px) + 16px)}
+
+/* LINES per-plate animate: off / clockwise / anticlockwise. */
+.ch-spin-btn{font-size:13px;line-height:1;padding:3px 6px;border:1px solid var(--border);
+  border-radius:3px;background:transparent;color:var(--text-muted,#999);cursor:pointer;
+  opacity:.5;transition:all .12s;user-select:none;flex-shrink:0}
+.ch-spin-btn:hover{opacity:1;border-color:var(--text)}
+.ch-spin-btn.active{background:var(--text);color:#fff;border-color:var(--text);opacity:1}

@@ -1146,7 +1146,7 @@ async function exportSeparations(){
     }
     gl.uniform2f(offLocs[0],misreg[L.ch][0],misreg[L.ch][1]);
     gl.uniform1f(skewLocs[0],layerSkews[L.ch]||0);
-    gl.uniform1f(angLocs[0],(layerAngles[L.ch]||0)*0.01745329 + (R._lineSpinOffset ? R._lineSpinOffset(i) : 0));
+    gl.uniform1f(angLocs[0],(layerAngles[L.ch]||0)*0.01745329 + (R._lineSpinOffset ? R._lineSpinOffset(L.ch) : 0));
     // In Approx mode: u_chan0 = layer index (which NNLS weight to extract)
     // In CMYK mode: u_chan0 = CMYK channel index (C=0, M=1, Y=2, K=3)
     gl.uniform1i(chanLocs[0], cached.sepType===1 ? i : L.ch);

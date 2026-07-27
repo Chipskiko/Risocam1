@@ -1401,7 +1401,7 @@ function setRenderUniforms(dw, dh, scale, isPhone){
       }
       gl.uniform2f(offLocs[i],misreg[L.ch][0],misreg[L.ch][1]);
       gl.uniform1f(skewLocs[i],layerSkews[L.ch]||0);
-      gl.uniform1f(angLocs[i],(layerAngles[L.ch]||0)*0.01745329 + R._lineSpinOffset(i));
+      gl.uniform1f(angLocs[i],(layerAngles[L.ch]||0)*0.01745329 + R._lineSpinOffset(L.ch));
       gl.uniform1i(chanLocs[i],L.ch);
       // Multiply density by visibility flag so user can toggle plates
       // on/off via the channel badges. Hidden plates contribute 0 ink.
@@ -1504,9 +1504,19 @@ function render(){
 // speed is steady at any FPS setting. Exports capture the angles at the
 // moment of export (save.js seps use the same helper for parity).
 const LINE_SPIN_DIR = [1.0, -0.62, 0.45, -0.83]; // per-plate rate multipliers
-R._lineSpinOffset = function(slot){
-  if(!(mode === 'lines' && window._lineSpin)) return 0;
-  return performance.now() * 0.001 * 0.05 * LINE_SPIN_DIR[slot & 3]; // 0.05 rad/s base
+// Per-plate angle precession. `ch` is the CHANNEL index (0-3), which is what
+// layerSpin is keyed on — not the slot position in activeLayers, since plates
+// can be reordered. 0 = off, +1 clockwise, -1 anticlockwise.
+R._lineSpinOffset = function(ch){
+  if(mode !== 'lines') return 0;
+  const dir = (typeof layerSpin !== 'undefined') ? (layerSpin[ch & 3] | 0) : 0;
+  if(!dir) return 0;
+  // Measure from when THIS plate's spin was switched on, not from page load.
+  // Using absolute performance.now() made the angle jump by however long the
+  // tab had been open the instant you enabled it (15deg -> 276deg in testing),
+  // which was invisible until the degree readout started being displayed.
+  const t0 = (window._lineSpinT0 && window._lineSpinT0[ch & 3]) || 0;
+  return (performance.now() - t0) * 0.001 * 0.05 * dir * Math.abs(LINE_SPIN_DIR[ch & 3]);
 };
 R.togglePause=function(){
   window._paused=!window._paused;

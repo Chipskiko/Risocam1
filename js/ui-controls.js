@@ -330,7 +330,13 @@ function buildChannelUI(targetId){
           return `<button class="ch-angle-btn${isOpen?' active':''}" style="border-bottom:2px solid ${accent};min-width:38px" onclick="event.stopPropagation();R.toggleLineCtl(${i},'${axis}')">${label}</button>`;
         };
         html += `<div class="ch-angles"${linkStyle ? linkStyle : ''} style="gap:3px">`;
-        html += btn('angle', aDeg+'°');
+        // Angle readout carries an id so the spin ticker can update the degrees
+        // live without rebuilding the row under the pointer.
+        html += `<button class="ch-angle-btn${open === (i+'_angle') ? ' active' : ''}" style="border-bottom:2px solid ${accent};min-width:38px" onclick="event.stopPropagation();R.toggleLineCtl(${i},'angle')"><span id="lineAngleVal${i}">${aDeg}\u00B0</span></button>`;
+        // Per-plate animate: off -> clockwise -> anticlockwise -> off.
+        const sp = (typeof layerSpin !== 'undefined') ? (layerSpin[i]|0) : 0;
+        const spGlyph = sp === 0 ? '\u21BB' : (sp > 0 ? '\u21BB' : '\u21BA');
+        html += `<button class="ch-spin-btn${sp !== 0 ? ' active' : ''}" onclick="event.stopPropagation();R.cycleLineSpin(${i})" title="Animate this plate's angle — press for clockwise, again for anticlockwise, again for off">${spGlyph}</button>`;
         if(radialish){
           html += btn('x', 'X '+cx+'%');
           html += btn('y', 'Y '+cy+'%');
@@ -794,14 +800,49 @@ function cycleLineRoughness(){
 }
 // ANIMATE: precess each plate's line angle (see R._lineSpinOffset). Needs the
 // animation loop ticking — if FPS is STILL when enabling, bump it to 4.
-function toggleLineSpin(){
-  window._lineSpin = !window._lineSpin;
-  const v = el('lineSpinBtnVal'); if(v) v.textContent = window._lineSpin ? 'On' : 'Off';
-  const b = el('lineSpinBtn'); if(b) b.classList.toggle('active', !!window._lineSpin);
-  if(window._lineSpin && !(cached.grainStatic > 0) && R.setRisoFps) R.setRisoFps(4);
-  R.toast('Angle animation: ' + (window._lineSpin ? 'On' : 'Off'));
+// Per-plate angle animation. Three states, cycled by one button:
+//   off -> clockwise -> anticlockwise -> off
+// Replaces the old single global toggle so plates can precess independently.
+// Same-ink plates stay synced (one physical drum). Needs a frame clock to be
+// running, so it starts one if the sheet is otherwise static.
+function cycleLineSpin(ch){
+  const next = layerSpin[ch] === 0 ? 1 : (layerSpin[ch] === 1 ? -1 : 0);
+  const color = channels[ch];
+  window._lineSpinT0 = window._lineSpinT0 || [0,0,0,0];
+  const now = performance.now();
+  for(let i = 0; i < 4; i++) if(channels[i] === color){ layerSpin[i] = next; window._lineSpinT0[i] = now; }
+  const anySpin = layerSpin.some(v => v !== 0);
+  if(anySpin && !(cached.grainStatic > 0) && R.setRisoFps) R.setRisoFps(4);
+  _syncSpinTicker();
+  buildChannelUI();
+  if(el('phChannelList') && el('phChannelList').children.length) buildChannelUI('phChannelList');
+  R.toast('Plate spin: ' + (next === 0 ? 'Off' : next > 0 ? 'Clockwise' : 'Anticlockwise'));
   markDirty();
 }
+
+// While any plate spins, refresh just the angle LABELS so the degree readout
+// tracks the rotation. Rebuilding the whole channel UI here would tear down
+// the row under the pointer, so this writes textContent only.
+let _spinTicker = 0;
+function _syncSpinTicker(){
+  const anySpin = typeof layerSpin !== 'undefined' && layerSpin.some(v => v !== 0);
+  if(!anySpin){ if(_spinTicker) cancelAnimationFrame(_spinTicker); _spinTicker = 0; return; }
+  if(_spinTicker) return;
+  const tick = () => {
+    if(!layerSpin.some(v => v !== 0) || mode !== 'lines'){ _spinTicker = 0; return; }
+    for(let ch = 0; ch < 4; ch++){
+      const b = el('lineAngleVal' + ch);
+      if(!b) continue;
+      const off = R._lineSpinOffset ? R._lineSpinOffset(ch) : 0;
+      let deg = ((layerAngles[ch] || 0) + off * 57.29578) % 360;
+      if(deg < 0) deg += 360;
+      b.textContent = Math.round(deg) + '\u00B0';
+    }
+    _spinTicker = requestAnimationFrame(tick);
+  };
+  _spinTicker = requestAnimationFrame(tick);
+}
+R._syncSpinTicker = _syncSpinTicker;
 // LIVE dots: PRECOMPUTED loop playback. Toggle-on bakes a loop of N dot
 // layouts once (renderer builds it — projection shared, ~0.3 s per frame,
 // frames publish incrementally so playback starts while later frames still
@@ -2121,7 +2162,7 @@ R.cycleLineWeight = cycleLineWeight;
 R.cycleLineAmount = cycleLineAmount;
 R.cycleLineRoughness = cycleLineRoughness;
 R.cycleLineGrain = cycleLineGrain;
-R.toggleLineSpin = toggleLineSpin;
+R.cycleLineSpin = cycleLineSpin;
 R.toggleStippleLive = toggleStippleLive;
 R.cycleLineWave = cycleLineWave;
 R.cycleLineEdgeThickness = cycleLineEdgeThickness;

@@ -54,7 +54,9 @@ function phReset(){
 
 function phCycleMode(){
   // Same order as the desktop header: GRAIN → RISO → SCREEN → LINES → LETTERS
-  const PH_MODES=['grain','flat','screen','lines','letters','stipple'];
+  // LETTERS and STIPPLE withdrawn from the product (both broken). The code
+  // paths remain so this is a one-line restore; they are simply not offered.
+  const PH_MODES=['grain','flat','screen','lines'];
   const PH_LABELS={grain:'GRAIN', flat:'RISO', screen:'SCREEN', lines:'LINES', letters:'LETTERS', stipple:'STIPPLE'};
   const i=PH_MODES.indexOf(mode);
   mode=PH_MODES[(i+1) % PH_MODES.length];
@@ -441,10 +443,9 @@ function phPopulateOverlay(name){
           <button class="regmark-btn" onclick="R.cycleLineWave();R.phSyncLines()" title="Wave modulation"><span class="regmark-val" id="phLineWaveVal">None</span></button>
           <button class="regmark-btn" onclick="R.cycleLineWeight();R.phSyncLines()" title="Line weight"><span class="regmark-val" id="phLineWeightVal">1×</span></button>
           <button class="regmark-btn" onclick="R.cycleLineRoughness();R.phSyncLines()" title="Edge roughness"><span class="regmark-val" id="phLineRoughVal">Med</span></button>
-          <button class="regmark-btn" onclick="R.toggleLineSpin();R.phSyncLines()" title="Animate — plate angles precess on the FPS clock"><span class="regmark-val" id="phLineSpinVal">Anim Off</span></button>
         </div>
         <div class="regmark-row">
-          <button class="regmark-btn" id="phInkSpreadBtn" onclick="R.cycleInkSpread()" title="Drum Pressure"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="9.5" r="6.6" stroke="currentColor" stroke-width="1.2" fill="none"/><line x1="2" y1="16.6" x2="18" y2="16.6" stroke="currentColor" stroke-width="1"/><circle cx="10" cy="10" r="1" stroke="currentColor" stroke-width="1.2" fill="none"/><line x1="10" y1="11.1" x2="10" y2="15" stroke="currentColor" stroke-width="0.7"/><path d="M8.9,14.2 L10,15.5 L11.1,14.2" fill="currentColor"/></svg><span class="regmark-val" id="phInkSpreadBtnVal">Low</span></button>
+          
           <button class="regmark-btn" id="phGhostingBtn" onclick="R.cycleGhosting()" title="Ghosting"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><path d="M10 2C6.5 2 4 5 4 8v7c0 0 1-1.5 2-1.5s1.5 1.5 2.5 1.5 1.5-1.5 2.5-1.5 1.5 1.5 2.5 1.5S15 14 16 15.5V8c0-3-2.5-6-6-6z" fill="currentColor" opacity="0.7"/><circle cx="8" cy="8" r="1.2" fill="white"/><circle cx="12" cy="8" r="1.2" fill="white"/></svg><span class="regmark-val" id="phGhostingBtnVal">OFF</span></button>
           <button class="regmark-btn active" id="phCropMarksBtn" onclick="R.toggleCropMarks()" title="Crop Marks"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><line x1="1" y1="5" x2="7" y2="5" stroke="currentColor" stroke-width="1.2"/><line x1="5" y1="1" x2="5" y2="7" stroke="currentColor" stroke-width="1.2"/><line x1="13" y1="5" x2="19" y2="5" stroke="currentColor" stroke-width="1.2"/><line x1="15" y1="1" x2="15" y2="7" stroke="currentColor" stroke-width="1.2"/><line x1="1" y1="15" x2="7" y2="15" stroke="currentColor" stroke-width="1.2"/><line x1="5" y1="13" x2="5" y2="19" stroke="currentColor" stroke-width="1.2"/><line x1="13" y1="15" x2="19" y2="15" stroke="currentColor" stroke-width="1.2"/><line x1="15" y1="13" x2="15" y2="19" stroke="currentColor" stroke-width="1.2"/></svg><span class="regmark-val" id="phCropMarksBtnVal">Crop Mark</span></button>
         </div>
