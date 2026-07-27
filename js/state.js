@@ -50,7 +50,7 @@ let cropAspect='fit'; // default FIT — use the source's own aspect, no crop
 let cropRect=[0,0,1,1]; // UV crop: x,y,w,h
 
 const cached={
-  grainSize:1.5, dotGain:12, inkNoise:8, paperTex:12, lpi:43, grainStatic:0, imgBright:0, imgContrast:0, imgSat:0, imgShadows:0,
+  grainSize:1.5, dotGain:12, inkNoise:8, paperTex:12, lpi:25, grainStatic:0, imgBright:0, imgContrast:0, imgSat:0, imgShadows:0,
   sepType:0, // 0=CMYK, 1=Approx (NNLS spot color)
   ucrStr:15, balC:150, balM:155, balY:105, balK:165, tac:280,
   inkOpacity:88, layerDeplete:3, pressVar:100, densFlicker:7,

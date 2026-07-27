@@ -738,7 +738,9 @@ function setScale(s){
 // ids stay stable: 0=lines, 3=concentric, 4=radial, 5=spiral, 6=cross
 // (ids 1/2 are legacy aliases of 0 in the shader).
 const LINE_SHAPE_VALS = [0, 3, 4, 5, 6];
-const LINE_SHAPE_LABELS = {0:'LINES', 3:'CONCENTRIC', 4:'RADIAL', 5:'SPIRAL', 6:'CROSS'};
+// Shape is identified by its icon alone — the names added width without
+// telling you anything the glyph does not.
+const LINE_SHAPE_LABELS = {0:'', 3:'', 4:'', 5:'', 6:''};
 window._lineShape = window._lineShape ?? 0;
 window._lineWave = window._lineWave ?? 0;
 // Legacy state: old wavy/guilloché shape ids become LINES + the matching wave
@@ -770,7 +772,7 @@ function cycleLineWave(){
   markDirty();
 }
 // Line weight: 4 steps — Thin / 1× / Bold / Heavy
-const LINE_WEIGHT_STEPS = [{v:0.6, l:'Thin'}, {v:1.0, l:'1×'}, {v:1.4, l:'Bold'}, {v:1.8, l:'Heavy'}];
+const LINE_WEIGHT_STEPS = [{v:0.6, l:'Low'}, {v:1.0, l:'Med'}, {v:1.4, l:'High'}];
 function cycleLineWeight(){
   // Find current step by closest value, advance
   let i = LINE_WEIGHT_STEPS.findIndex(s => Math.abs(s.v - window._lineWeight) < 0.05);
@@ -794,7 +796,7 @@ function cycleLineAmount(){
   markDirty();
 }
 // Edge roughness: Off / Low / Med / High / Inky
-const LINE_ROUGH_STEPS = [{v:0.0, l:'Off'}, {v:0.25, l:'Low'}, {v:0.5, l:'Med'}, {v:0.75, l:'High'}, {v:1.0, l:'Inky'}];
+const LINE_ROUGH_STEPS = [{v:0.25, l:'Low'}, {v:0.5, l:'Med'}, {v:0.75, l:'High'}];
 function cycleLineRoughness(){
   let i = LINE_ROUGH_STEPS.findIndex(s => Math.abs(s.v - window._lineRoughness) < 0.05);
   if(i < 0) i = 2;
@@ -885,7 +887,7 @@ function toggleStippleLive(){
 }
 // Ink grain within line fills — blends the RISO Grain-Touch blue-noise field
 // into the stroke coverage so line fills read as grainy ink, not flat color.
-const LINE_GRAIN_STEPS = [{v:0.0, l:'Off'}, {v:0.3, l:'Low'}, {v:0.6, l:'Med'}, {v:1.0, l:'High'}];
+const LINE_GRAIN_STEPS = [{v:0.3, l:'Low'}, {v:0.6, l:'Med'}, {v:1.0, l:'High'}];
 function cycleLineGrain(){
   let i = LINE_GRAIN_STEPS.findIndex(s => Math.abs(s.v - (window._lineGrain ?? 0.6)) < 0.05);
   if(i < 0) i = 2;

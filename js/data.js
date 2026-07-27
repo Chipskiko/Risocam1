@@ -170,7 +170,7 @@ const STEP_PRESETS={
   // LINES mode, so the ladder is now 4 steps topping out at the real driver's
   // 43 lpi; the matrix engine + measured tone curve snap to 43 there, and the
   // debug slider still reaches any free value.)
-  lpi:[{v:5,l:'Low'},{v:10,l:'Med'},{v:25,l:'High'},{v:43,l:'Fine'}],
+  lpi:[{v:5,l:'Low'},{v:10,l:'Med'},{v:25,l:'High'}],
   misreg:[{v:0,l:'OFF'},{v:2,l:'Low'},{v:4,l:'Med'},{v:6,l:'Hi'}],
   margin:[{v:0,l:'0'},{v:2,l:'2'},{v:4,l:'4'},{v:6,l:'6'},{v:8,l:'8'},{v:12,l:'12'}],
   ghosting:[{v:0,l:'OFF'},{v:40,l:'Med'},{v:80,l:'High'}],
