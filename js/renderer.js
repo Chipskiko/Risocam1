@@ -63,7 +63,8 @@ R.diag = function(step){
   try {
     const q = new URLSearchParams(location.search);
     const f = window._flags = {};
-    ['safe','noshimmer','noworkers','noamt','nopbr','nowebgpu','minimal','diag','remote','slim','webgpu','grainblue'].forEach(k => { f[k] = q.has(k); });
+    ['safe','noshimmer','noworkers','noamt','nopbr','nowebgpu','minimal','diag','remote','slim','webgpu','grainblue','neutralgate'].forEach(k => { f[k] = q.has(k); });
+    if(f.neutralgate){ window._neutralGate = true; }
     if(f.minimal){ f.safe = f.noshimmer = f.noworkers = f.noamt = f.nopbr = f.nowebgpu = true; }
     if(f.safe){ window._gpuSlow = true; }
     if(f.nopbr){ window._usePaperPBR = false; }
@@ -258,7 +259,7 @@ function initGL(onReady){
    'u_off0','u_off1','u_off2','u_off3',
    'u_angle0','u_angle1','u_angle2','u_angle3','u_screenCell',
    'u_chan0','u_chan1','u_chan2','u_chan3',
-   'u_stampSeed','u_asciiTonePass','u_aMin','u_aDims','u_aPitch','u_wordLen','u_edgeSoft','u_mtxTexel','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineWave','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineGrain','u_inkDissolve','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_covQuant','u_koExclusive','u_useLabResidual','u_useCalChord','u_ynN','u_useSepLut','u_sepLutN','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
+   'u_stampSeed','u_asciiTonePass','u_aMin','u_aDims','u_aPitch','u_wordLen','u_edgeSoft','u_mtxTexel','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineWave','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineGrain','u_inkDissolve','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_covQuant','u_koExclusive','u_uniqueInks','u_useLabResidual','u_useCalChord','u_ynN','u_useSepLut','u_sepLutN','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
    'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_paperShift','u_paperPbrShift','u_paperPbrMul','u_paperOrient','u_scanSwap','u_crop','u_paper',
    'u_paperPBR','u_usePaperPBR','u_paperScaleK',
    'u_lutA0','u_lutA1','u_lutA2','u_lutA3',
@@ -1208,6 +1209,16 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   // Free win since the math was already there. Toggle off only if comparing
   // against legacy renders.
   gl.uniform1f(locs.u_useLabResidual, (window._useLabResidual ?? true) ? 1.0 : 0.0);
+  // Distinct-ink count, gating the neutral duotone bypass in getChannel().
+  // 0 = legacy: bypass always on (current shipped look). Opt in with
+  // ?neutralgate or window._neutralGate=true, which reports the real count so
+  // 4-distinct-ink palettes fall back to toCMYK's K-generation for neutrals.
+  // Duotones/tritones are unaffected either way (count < 4).
+  if(locs.u_uniqueInks){
+    const gateOn = !!(window._neutralGate ?? false);
+    const n = gateOn ? new Set((channels || []).filter(Boolean)).size : 0;
+    gl.uniform1f(locs.u_uniqueInks, n);
+  }
   // T1-B default ON: calibrated chord (2*(p50-paper)) corrects NNLS for real
   // Riso ink response concavity. Inks reach perceptually heavier color at 50%
   // than linear models predict, so naive ink100-paper deltas tell NNLS to use

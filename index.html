@@ -596,6 +596,7 @@ uniform float u_trappingPx;    // canvas-pixel trapping amount — contracts kno
 uniform float u_colorQuant;    // 0=off, else N levels per channel — pre-NNLS posterize (source colour)
 uniform float u_covQuant;      // 0=off, else N steps of per-plate COVERAGE — what actually flattens a halftoned render
 uniform float u_koExclusive;   // 1 = only the strongest plate carries ink at a pixel; the rest are zeroed (true separation knockout)
+uniform float u_uniqueInks;    // count of DISTINCT inks (not filled slots). Gates the neutral duotone bypass: 0 = legacy (bypass always on)
 uniform float u_useLabResidual; // 0=RGB residual, 1=Lab residual in NNLS subset selection
 uniform float u_useCalChord;     // 0=naive delta (ink100-paper), 1=calibrated chord 2*(p50-paper)
 uniform float u_ynN;             // Yule-Nielsen exponent for SPOT NNLS space (1 = legacy linear RGB, ~2 = uncoated stock)
@@ -1204,7 +1205,20 @@ float getChannel(vec4 cmyk, int ch, int totalLayers, vec3 srcRGB){
     }
   }
   float gray = grayness(srcRGB);
-  if(gray > 0.01 && totalLayers > 1){
+  // The duotone bypass below discards the CMYK vector for near-neutral pixels
+  // and gives EVERY plate (1-luminance)*balance. That is right for a 2-3 ink
+  // print (a grey should use both inks, not just the K-ish one) but wrong for
+  // 4 distinct process inks, where toCMYK's K-generation already handles
+  // neutrals. Measured with it on in a 4-ink palette: pure black printed on
+  // all four plates (plate-off deltas C27 M22 Y9 K69), 50% grey rendered at
+  // luminance 33 instead of ~128, and output luminance jumped 45->95 between
+  // saturation 4 and 8 at fixed input luminance.
+  // Gate on DISTINCT inks, not totalLayers: mapProfileToSlots fills all four
+  // slots for every 2-3 colour palette ([A,B,B,A]), so totalLayers is 4 for a
+  // duotone and a layer-count gate would strip the bypass from exactly the
+  // palettes that need it. u_uniqueInks == 0.0 means legacy (bypass always on).
+  bool neutralGated = (u_uniqueInks > 3.5);
+  if(gray > 0.01 && totalLayers > 1 && !neutralGated){
     float lum = dot(srcRGB, vec3(0.299, 0.587, 0.114));
     float ink = 1.0 - lum;
     // Apply balance to duotone coverage (otherwise sliders have no effect on grays)
@@ -3527,7 +3541,7 @@ void main(){
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/riso-amt-webgpu.js?v=6"></script>
-<script src="js/renderer.js?v=193"></script>
+<script src="js/renderer.js?v=194"></script>
 <script src="js/source.js?v=57"></script>
 <script src="js/save.js?v=71"></script>
 <script src="js/webgpu-live.js?v=5"></script>
