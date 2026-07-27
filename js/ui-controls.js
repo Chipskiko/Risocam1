@@ -31,6 +31,17 @@ function pickColor(ch, name){
     // In mono: write to whatever slot the surviving ink is in (not always 0)
     const idx=monoIdx();
     channels[idx]=name;
+  } else if(cached.sepType===1){
+    // SPOT: same-ink slots are ONE logical plate (activeLayers dedupes them,
+    // palettes fill hidden duplicates via mapProfileToSlots). Rewrite the
+    // whole group — writing one slot leaves the hidden twin on the old ink,
+    // so changing a colour silently ADDED a third ink instead.
+    const old=channels[ch];
+    if(old!==null){
+      for(let i=0;i<4;i++) if(channels[i]===old) channels[i]=name;
+    } else {
+      channels[ch]=name;
+    }
   } else {
     channels[ch]=name;
   }
