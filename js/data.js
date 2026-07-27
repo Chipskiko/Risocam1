@@ -160,7 +160,10 @@ function loadPaperTexture(key){
 const CH_NAMES=['C','M','Y','K'];
 
 const STEP_PRESETS={
-  grainSize:[{v:1.5,l:'1200dpi'},{v:3,l:'600dpi'},{v:9,l:'300dpi'}],
+  // dpi is inversely proportional to cell size, so the steps are exact 2x:
+  // 3 -> 300dpi, 1.5 -> 600dpi, 0.75 -> 1200dpi. The old ladder (1.5/3/9)
+  // was 2x then 3x and topped out coarser than anyone wanted.
+  grainSize:[{v:0.75,l:'1200dpi'},{v:1.5,l:'600dpi'},{v:3,l:'300dpi'}],
   // v IS true lines-per-inch (u_screenCell divides by 8.267·lpi — the A4 short
   // edge in inches). Labels are by DENSITY: Low=biggest pop-art dots … Fine=
   // finest. (Was 6 steps ending Fine/Micro — 71/106 were near-identical in

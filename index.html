@@ -166,7 +166,7 @@
           <button class="regmark-btn" id="lineCountBtn" onclick="R.cycleLineCount()" title="Density — multiplier for the number of rings/spokes. 1× = default; >1 = denser, <1 = sparser."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="3" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="10" r="6" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="10" cy="10" r="9" fill="none" stroke="currentColor" stroke-width="1.4"/></svg><span class="regmark-val" id="lineCountBtnVal">1×</span></button>
           <button class="regmark-btn" id="lineEdgeBtn" onclick="R.cycleLineEdgeThickness()" title="Edge thickness — outer rings/spokes get progressively thicker than the ones near the center."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="2.5" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="10" cy="10" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="8.5" fill="none" stroke="currentColor" stroke-width="2.2"/></svg><span class="regmark-val" id="lineEdgeBtnVal">Off</span></button>
         </div>
-        <input type="range" id="grainSize" min="1.5" max="9" value="3" step="0.5" style="display:none"><span id="grainSizeVal" style="display:none">3</span>
+        <input type="range" id="grainSize" min="0.75" max="9" value="1.5" step="0.25" style="display:none"><span id="grainSizeVal" style="display:none">3</span>
         <input type="range" id="lpi" min="5" max="120" value="43" step="1" style="display:none"><span id="lpiVal" style="display:none">43</span>
         <div class="regmark-row">
           <button class="regmark-btn" id="ghostingBtn" onclick="R.cycleGhosting()" title="Ghosting"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><path d="M10 2C6.5 2 4 5 4 8v7c0 0 1-1.5 2-1.5s1.5 1.5 2.5 1.5 1.5-1.5 2.5-1.5 1.5 1.5 2.5 1.5S15 14 16 15.5V8c0-3-2.5-6-6-6z" fill="currentColor" opacity="0.7"/><circle cx="8" cy="8" r="1.2" fill="white"/><circle cx="12" cy="8" r="1.2" fill="white"/></svg><span class="regmark-val" id="ghostingBtnVal">OFF</span></button>
@@ -1291,6 +1291,14 @@ float grainDither(float val, vec2 pix, float scale, float layerOff){
   // 0.8190 = the old value at the 1.5 default, so the default look is
   // unchanged and only the rest of the range starts working.
   float uvScale = max(0.35, scale * 0.8190);
+  // Per-sheet grain. Without this, frameSeed never reaches the noise lookup:
+  // only `pix` moved (misreg/jitter), so every tick resampled the SAME tile a
+  // few pixels over. Measured, two consecutive ticks cross-correlated 0.567 at
+  // a (-4,+2) shift — the grain slid instead of re-rolling, which is what read
+  // as "the grain doesn't change". Offsetting the lookup by a per-seed vector
+  // lands each tick on a different region of the tile, i.e. a fresh sheet.
+  vec2 frameOff = vec2(hash(vec2(u_frameSeed * 3.13, 7.7)),
+                       hash(vec2(u_frameSeed * 5.71, 2.3)));
   float bn;
   if (u_grainBlue > 0.5) {
     // Void-and-Cluster threshold on a GRAIN-CELL lattice.
@@ -1308,14 +1316,14 @@ float grainDither(float val, vec2 pix, float scale, float layerOff){
     // mod BEFORE the divide: cell grows to thousands across a 6x-supersampled
     // export, and a UV of that magnitude quantises badly under mediump (the
     // fallback precision on weaker GPUs).
-    vec2 muv = mod(cell + plateOff, 128.0);
+    vec2 muv = mod(cell + plateOff + floor(frameOff * 128.0), 128.0);
     bn = texture2D(u_bnVC, (muv + 0.5) / 128.0).r;
   } else {
     vec2 nuv = ((pix + fiberDrift) * fiberScale) / (256.0 * uvScale);
-    bn = texture2D(u_noise, fract(nuv + layerOff)).r;
+    bn = texture2D(u_noise, fract(nuv + layerOff + frameOff)).r;
     // Second octave at finer scale — blended in at low grain sizes for detail
     vec2 nuv2 = ((pix + fiberDrift) * fiberScale) / 128.0;
-    float bn2 = texture2D(u_noise, fract(nuv2 + layerOff + 0.5)).r;
+    float bn2 = texture2D(u_noise, fract(nuv2 + layerOff + 0.5 + frameOff)).r;
     float detail = mix(0.3, 0.0, clamp((scale - 0.5) / 2.0, 0.0, 1.0));
     bn = mix(bn, bn * 0.7 + bn2 * 0.3, detail);
   }
@@ -2324,7 +2332,11 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
   // Dither scale: divide coordinates so each dither cell covers `scale`
   // source pixels (chunkier dots). Only applied to GRAIN-mode sub-modes
   // below — SCREEN and LINES have their own size knobs.
-  float dscale = max(u_ditherScale, 1.0);
+  // Grain size (the dpi control) scales the dither sub-modes too — Bayer,
+  // Stucki, JJN, Atkinson and FS previously ignored it entirely and only
+  // responded to u_ditherScale, so changing dpi did nothing in those modes.
+  // /1.5 keeps the 600dpi setting (the old default cell) at exactly 1x.
+  float dscale = max(u_ditherScale, 1.0) * max(0.25, adjustedGrain / 1.5);
   vec2 sRpx = jitRpx / dscale;
   vec2 sPix = jitPix / dscale;
   // Mode dispatch — SCREEN and LINES override the dither sub-modes because
@@ -3578,7 +3590,7 @@ void main(){
 <!-- mp4-muxer for proper MP4 (H.264) output via WebCodecs in Chrome/Edge -->
 <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.min.js"></script>
 <script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
-<script src="js/data.js?v=18"></script>
+<script src="js/data.js?v=19"></script>
 <script src="js/state.js?v=17"></script>
 <script src="js/undo.js?v=11"></script>
 <script src="js/compare.js?v=6"></script>
