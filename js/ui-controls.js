@@ -1039,10 +1039,14 @@ const DITHER_MODE_STEPS = [
   {v:7, l:'Grain Touch'}, // JS AMT pre-pass: Floyd-Steinberg + ht5 matrix + measured tone curve (Ghidra-confirmed RISO MZ9 algorithm)
   {v:5, l:'Bayer 4'},   // ordered 4×4 matrix (visually distinct from grain)
   {v:6, l:'Bayer 8'},   // ordered 8×8 matrix (finer)
-  {v:3, l:'Atkinson'},  // 6-neighbor diffuse (parallel approximation)
-  {v:4, l:'F-S'},       // 4-neighbor Floyd-Steinberg (parallel approximation)
-  {v:1, l:'Stucki'},    // 6-neighbor wide-kernel diffuse
-  {v:2, l:'JJN'},       // 9-neighbor widest-kernel diffuse
+  // Removed: Atkinson / F-S / Stucki / JJN. All four were the same shader
+  // trick — a weighted average of a few noise-texture samples, then a
+  // threshold — which is a mild low-pass of one field and cannot express
+  // what actually distinguishes these algorithms (sequential error
+  // propagation, impossible in a fragment shader). Measured pairwise
+  // difference among them was 3.6-7.7, against ~34 between genuinely
+  // distinct modes. Real Floyd-Steinberg does exist in this app: it is
+  // RISO / Grain Touch, which runs true serpentine FS on the CPU worker.
 ];
 // Dither cell scale — bigger = chunkier dots. Only affects error-diffusion +
 // Bayer modes (grain has its own size knob via grainSize).
