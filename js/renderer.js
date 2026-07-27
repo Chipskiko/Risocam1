@@ -63,7 +63,7 @@ R.diag = function(step){
   try {
     const q = new URLSearchParams(location.search);
     const f = window._flags = {};
-    ['safe','noshimmer','noworkers','noamt','nopbr','nowebgpu','minimal','diag','remote','slim','webgpu'].forEach(k => { f[k] = q.has(k); });
+    ['safe','noshimmer','noworkers','noamt','nopbr','nowebgpu','minimal','diag','remote','slim','webgpu','grainblue'].forEach(k => { f[k] = q.has(k); });
     if(f.minimal){ f.safe = f.noshimmer = f.noworkers = f.noamt = f.nopbr = f.nowebgpu = true; }
     if(f.safe){ window._gpuSlow = true; }
     if(f.nopbr){ window._usePaperPBR = false; }
@@ -282,7 +282,7 @@ function initGL(onReady){
    'u_driverLUT','u_useDriverLUT',
    'u_ht5Matrix',
    'u_amtMaster0','u_amtMaster1','u_amtMaster2','u_amtMaster3','u_useAmt','u_liveSource',
-   'u_amtTexel','u_amtSuperSample','u_amtInkSpread','u_amtCrisp','u_amtJitter',
+   'u_amtTexel','u_amtSuperSample','u_amtInkSpread','u_amtCrisp','u_amtJitter','u_grainBlue',
    'u_bnVC','u_risoGamma','u_risoGrainScale','u_risoDebugBaseline',
    // T3-F: pre-baked per-ink coverage→color LUT texture
    'u_calLutTex','u_useCalLutTex'
@@ -1274,6 +1274,16 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   // Set per-frame so a SEPS export (which forces it off) can't leave it stuck.
   if(locs.u_usePaperPBR) gl.uniform1f(locs.u_usePaperPBR, (window._usePaperPBR ?? true) ? 1.0 : 0.0);
   if(locs.u_paperScaleK) gl.uniform1f(locs.u_paperScaleK, cached.paperScale || 1);
+  // GRAIN threshold source — OPT-IN via ?grainblue (or window._grainBlue).
+  // The V&C mask measures 2.5x less low-frequency energy (i.e. visibly less
+  // clumping) than the legacy u_noise field, which despite its generator's
+  // name is spectrally almost white. But NEAREST cell sampling also has a
+  // different transfer curve than LINEAR-interpolated sampling, so it shifts
+  // tone (measured: up to -27 of 255 in the highlights). That is a LOOK
+  // change, not just a quality one, so it stays off until it is either
+  // tone-corrected or deliberately adopted.
+  if(locs.u_grainBlue) gl.uniform1f(locs.u_grainBlue,
+    (window._grainBlue ?? !!(window._flags && window._flags.grainblue)) ? 1.0 : 0.0);
   // Exports swap the stochastic AMT taps for the deterministic ring — at
   // export resolution the per-pixel hash reads as speckle on dot edges.
   if(locs.u_amtJitter) gl.uniform1f(locs.u_amtJitter, _saving ? 0.0 : 1.0);
@@ -1626,6 +1636,13 @@ function _renderInner(){
         frameSeed = Math.random(); window._stampSeed = ((window._stampSeed || 17) + 1.0) % 1021.0;
         R.newMisreg();
       }
+    } else if(window._pinSeed !== undefined){
+      // Bench mode (lab.html): hold the seed so repeated renders of an
+      // unchanged state are pixel-identical. Without this the STILL re-roll
+      // below puts ~20/255 of per-pixel churn under every A/B comparison,
+      // which is larger than most of the effects worth measuring.
+      frame++;
+      frameSeed = window._pinSeed;
     } else {
       frame++;
       frameSeed = Math.random(); window._stampSeed = ((window._stampSeed || 17) + 1.0) % 1021.0;

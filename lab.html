@@ -208,8 +208,25 @@ async function boot(){
     lock: () => {
       cached.grainStatic = 0;
       window._lineSpin = 0;
+      // STILL mode re-rolls frameSeed + misregistration on EVERY dirty
+      // render by design ("every adjustment is a fresh print"). Measured,
+      // that put ~20/255 of churn between two identical renders — larger
+      // than most effects worth testing. _pinSeed suppresses the re-roll.
+      window._pinSeed = 0.4242;
       try { frameSeed = 0.4242; } catch(e){}
       return 1;
+    },
+    repeatability: () => {
+      // Self-test: two renders of an unchanged state must be identical.
+      markDirty(); R.render();
+      const W=gl.drawingBufferWidth, H=gl.drawingBufferHeight;
+      const a=new Uint8Array(W*H*4), b=new Uint8Array(W*H*4);
+      gl.readPixels(0,0,W,H,gl.RGBA,gl.UNSIGNED_BYTE,a);
+      markDirty(); R.render();
+      gl.readPixels(0,0,W,H,gl.RGBA,gl.UNSIGNED_BYTE,b);
+      let s=0,n=0;
+      for(let i=0;i<a.length;i+=4){ s+=(Math.abs(a[i]-b[i])+Math.abs(a[i+1]-b[i+1])+Math.abs(a[i+2]-b[i+2]))/3; n++; }
+      return s/n;
     },
     setMode: (m) => { R.setMode(m); return 1; },
     setProfile: (n) => { const p = R.PROFILES.find(x => x.name === n); if(p) R.applyProf(p); return !!p; },

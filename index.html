@@ -492,6 +492,7 @@ uniform float u_liveSource;    // 1.0 = camera/video (use real-time GPU grain-to
 uniform vec2 u_amtTexel;       // 1.0 / master_resolution — for stochastic supersampling in RISO mode
 uniform float u_amtSuperSample; // sample radius multiplier (in master texels). 0 = single-sample, 1.5 = good default.
 uniform float u_amtJitter;      // 1 = stochastic taps (live grain-touch), 0 = deterministic ring (exports: no hash speckle on dot edges)
+uniform float u_grainBlue;      // GRAIN threshold source: 1 = Void-and-Cluster blue noise (even particle spacing), 0 = legacy u_noise (white-ish, clumps)
 uniform float u_amtInkSpread;   // (D) ink-spread radius in master texels. >0 widens the master-sampling
                                 //     footprint so soft round-dot edges emerge on the GPU instead of from
                                 //     a per-channel CPU Gaussian blur. 0 = spread already baked in (CPU path).
@@ -1228,13 +1229,34 @@ float grainDither(float val, vec2 pix, float scale, float layerOff){
   vec2 fiberDrift = vec2(0.0, (driftNoise - 0.5) * 2.0 * u_simNoise);
   // Limit UV scaling so noise never gets blocky (max 1.8× coarser)
   float uvScale = mix(1.0, 1.8, clamp((scale - 0.5) / 3.5, 0.0, 1.0));
-  vec2 nuv = ((pix + fiberDrift) * fiberScale) / (256.0 * uvScale);
-  float bn = texture2D(u_noise, fract(nuv + layerOff)).r;
-  // Second octave at finer scale — blended in at low grain sizes for detail
-  vec2 nuv2 = ((pix + fiberDrift) * fiberScale) / 128.0;
-  float bn2 = texture2D(u_noise, fract(nuv2 + layerOff + 0.5)).r;
-  float detail = mix(0.3, 0.0, clamp((scale - 0.5) / 2.0, 0.0, 1.0));
-  bn = mix(bn, bn * 0.7 + bn2 * 0.3, detail);
+  float bn;
+  if (u_grainBlue > 0.5) {
+    // Void-and-Cluster threshold on a GRAIN-CELL lattice.
+    // u_noise is named "blue" but measures ~white (hi/lo power ratio 1.6 vs
+    // 89 for the real V&C mask), and its low-frequency energy is what makes
+    // grain clump instead of spacing evenly. The V&C mask only keeps its
+    // spectrum sampled 1:1 with NEAREST, so quantise position to the cell and
+    // take exactly one texel per cell — scaling the mask with LINEAR would
+    // put the low frequencies straight back in. Cell size tracks uvScale so
+    // particle SIZE is unchanged and only the spectrum differs.
+    vec2 cell = floor((pix + fiberDrift) * fiberScale / max(uvScale, 0.5));
+    // Decorrelate the four plates by shifting into a different region of the
+    // tile rather than by adding white noise on top.
+    vec2 plateOff = vec2(floor(layerOff * 37.0), floor(layerOff * 61.0));
+    // mod BEFORE the divide: cell grows to thousands across a 6x-supersampled
+    // export, and a UV of that magnitude quantises badly under mediump (the
+    // fallback precision on weaker GPUs).
+    vec2 muv = mod(cell + plateOff, 128.0);
+    bn = texture2D(u_bnVC, (muv + 0.5) / 128.0).r;
+  } else {
+    vec2 nuv = ((pix + fiberDrift) * fiberScale) / (256.0 * uvScale);
+    bn = texture2D(u_noise, fract(nuv + layerOff)).r;
+    // Second octave at finer scale — blended in at low grain sizes for detail
+    vec2 nuv2 = ((pix + fiberDrift) * fiberScale) / 128.0;
+    float bn2 = texture2D(u_noise, fract(nuv2 + layerOff + 0.5)).r;
+    float detail = mix(0.3, 0.0, clamp((scale - 0.5) / 2.0, 0.0, 1.0));
+    bn = mix(bn, bn * 0.7 + bn2 * 0.3, detail);
+  }
 
   // Slow continuous time drift — always same gentle speed
   float drift = u_time * 0.008;
@@ -1255,6 +1277,12 @@ float grainDither(float val, vec2 pix, float scale, float layerOff){
   coverage -= hole * 0.08 * darkMask * u_simNoise;
   coverage = clamp(coverage, 0.0, 1.0);
 
+  // Deliberately IDENTICAL downstream for both paths. Taking the mask as the
+  // threshold directly is spectrally purer, but it also swaps the threshold
+  // DISTRIBUTION (0.75*U + 0.25*U is trapezoidal, the bare mask is uniform),
+  // and that shows up as a tone change: measured, it crushed 60-85% input to
+  // a flat plateau. Two variables at once. Holding the mix fixed keeps the
+  // transfer curve where it was, so this change is only ever about spectrum.
   float thr = fract(bn * 0.75 + h * 0.25);
   // Edge widens with grain size — merges particles for larger grain feel
   float edge = mix(0.04, 0.14, clamp((scale - 0.5) / 3.5, 0.0, 1.0));
@@ -3496,7 +3524,7 @@ void main(){
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/riso-amt-webgpu.js?v=6"></script>
-<script src="js/renderer.js?v=183"></script>
+<script src="js/renderer.js?v=186"></script>
 <script src="js/source.js?v=57"></script>
 <script src="js/save.js?v=68"></script>
 <script src="js/webgpu-live.js?v=5"></script>
