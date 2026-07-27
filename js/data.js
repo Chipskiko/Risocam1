@@ -160,7 +160,7 @@ function loadPaperTexture(key){
 const CH_NAMES=['C','M','Y','K'];
 
 const STEP_PRESETS={
-  grainSize:[{v:1.5,l:'600dpi'},{v:3,l:'300dpi'},{v:9,l:'100dpi'}],
+  grainSize:[{v:1.5,l:'1200dpi'},{v:3,l:'600dpi'},{v:9,l:'300dpi'}],
   // v IS true lines-per-inch (u_screenCell divides by 8.267·lpi — the A4 short
   // edge in inches). Labels are by DENSITY: Low=biggest pop-art dots … Fine=
   // finest. (Was 6 steps ending Fine/Micro — 71/106 were near-identical in
