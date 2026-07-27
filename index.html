@@ -1263,8 +1263,15 @@ float grainDither(float val, vec2 pix, float scale, float layerOff){
   // (and dial-able when we add an intensity slider).
   float driftNoise = texture2D(u_noise, fract(vec2(pix.x * 0.0004, 0.3 + layerOff))).r;
   vec2 fiberDrift = vec2(0.0, (driftNoise - 0.5) * 2.0 * u_simNoise);
-  // Limit UV scaling so noise never gets blocky (max 1.8× coarser)
-  float uvScale = mix(1.0, 1.8, clamp((scale - 0.5) / 3.5, 0.0, 1.0));
+  // Grain cell size, PROPORTIONAL to the control.
+  // Was mix(1.0, 1.8, clamp((scale - 0.5)/3.5)) — which compressed the whole
+  // control into a 1.8x range AND saturated at scale 4, so the 100dpi preset
+  // (scale 9) rendered identically to scale 4 and the top of the range was
+  // dead. Measured across the full 1.5 -> 9 range that produced only a 5-12%
+  // change in grain autocorrelation, for labels promising 6x.
+  // 0.8190 = the old value at the 1.5 default, so the default look is
+  // unchanged and only the rest of the range starts working.
+  float uvScale = max(0.35, scale * 0.8190);
   float bn;
   if (u_grainBlue > 0.5) {
     // Void-and-Cluster threshold on a GRAIN-CELL lattice.
