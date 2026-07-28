@@ -1,0 +1,67 @@
+# RISO/CAM — working notes
+
+## Measurement protocol (MANDATORY for any pixel measurement)
+
+Before measuring anything about grain, dither, banding, anisotropy, coverage or
+tone, set up the substrate first:
+
+- **Blank paper texture** (no PBR substrate)
+- **Pure White paper colour**
+- `?pin=1` / `window._pinSeed` for a deterministic frame
+- Flat synthetic source (solid fill), never the sample image, when isolating
+  dither structure from image content
+
+This is not cosmetic. `getCoverage()` multiplies ink by `pf` (paper fibre), and
+`paperEffect()` adds spatial structure — so on textured paper you are partly
+measuring the paper, not the thing you think you are measuring. Paper colour
+also offsets every luminance reading and every Murray-Davies endpoint.
+
+Same protocol the SEP-LUT baselines use ("Blank tex + Pure White paper").
+
+### Things that have produced false findings in this repo
+
+- **Sampling the wrong region.** Whole-image autocorrelation hid grain
+  anisotropy (source structure dominated); a flat patch showed 4.19. Measure
+  inside a flat field.
+- **Coverage-confounded run lengths.** Mean ink run length at 77% coverage is
+  ~4.3px for a *perfectly random* field. Always compare against the
+  coverage-matched random baseline `1/(1-c)`, or measure at low coverage where
+  dots are isolated.
+- **Single-seed differences.** Grain is stochastic; several "findings" this
+  repo has recorded were inside one standard deviation. Use multiple seeds and
+  report a spread before believing an effect.
+- **Directional terms that aren't the grain.** `pressX` in `getCoverage`
+  depends only on `rpx.x`, so it is constant down each column and produces
+  VERTICAL banding; `drumBand`/`pressY` depend only on `rpx.y` and produce
+  horizontal banding. All are gated by `u_pressVar * u_simNoise`. Zero them
+  before attributing directional structure to the dither.
+- **Live state drift.** Test scripts that mutate `cached.layerDens` /
+  `layerVisible` and restore imperfectly have produced wrong "defaults".
+  Re-read state at measurement time rather than trusting a saved copy.
+
+## Deploy
+
+Every JS change needs a forward-only `?v=N` bump in index.html AND a `sw.js`
+CACHE bump. Deploy is per-file curl to the Neocities API; the key lives in
+`../deploy-neocities.sh` and must never be echoed.
+
+`node tools/build-wgsl.mjs` regenerates `js/gen/shaders-wgsl.js` and doubles as
+a GLSL compile validator — run it after any shader edit.
+
+## Open: the coverage transfer defect
+
+TAC normalisation in the duotone path cancels `ink`:
+
+    duoCov = ink·bal · tac/(ink·totalBal) = bal·tac/totalBal   → CONSTANT
+
+so every pixel above `tac/totalBal` (= 2.80/5.75 = 48.7%) gets identical
+coverage. Confirmed twice: measured flatline starts at requested 50%, and its
+value matches `1.65×2.80/5.75 = 0.803`. This is the shadow crush and the reason
+"black can't get darker".
+
+Fix must keep TAC's ink limit while staying monotonic in `ink` — a soft
+limiter such as `totalOut = tac·(1 − exp(−total/tac))`, not exact
+normalisation. Two naive attempts failed: inverting the downstream
+gamma/S-curve made it worse (it boosts into the limiter), and replacing
+`ink·bal` with `pow(ink, 1/bal)` broke the cancellation and inverted the curve
+(coverage FELL from 74.7% to 44.5% as input darkened).
