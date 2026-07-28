@@ -1158,6 +1158,48 @@ float grayness(vec3 rgb){
 }
 
 // ─── Inner channel extraction (normal color separation) ───
+// ─── Soft-knee TAC ───
+// The old hard TAC was `if(total > u_tac) raw *= u_tac/total`, and in the
+// duotone/neutral paths where every channel is proportional to the SAME
+// scalar ink, the ink cancels exactly: duoCov = ink·bal·tac/(ink·totalBal)
+// = bal·tac/totalBal, a CONSTANT. Every pixel above tac/totalBal (= 48.7%
+// requested at the shipped bal/tac) rendered identical coverage — measured
+// as the shadow flatline: requested 50/62/75/87/100% all delivered ~86%,
+// and greys 0/64/128 rendered indistinguishable.
+// Soft knee keeps TAC's job (total ink approaches u_tac asymptotically,
+// never exceeds) while staying strictly monotonic in ink: identity below
+// the knee (0.8·tac — most tones bit-identical to legacy), exponential
+// approach above it. C1-continuous at the knee (slope 1). At ink=1 the
+// duotone path lands on bal·tac/totalBal — exactly the legacy flat value —
+// so the deepest blacks keep their shipped density and only the crushed
+// range between the knee and black regains gradation.
+float softTacScale(float total){
+  float knee = 0.8 * u_tac;
+  if(total <= knee || total <= 1e-4) return 1.0;
+  float range = max(u_tac - knee, 1e-4);
+  float limited = knee + range * (1.0 - exp(-(total - knee) / range));
+  return limited / total;
+}
+
+// Per-channel soft ceiling, ENDPOINT-ANCHORED. Legacy behaviour at both
+// clamp sites was min(x, ceilingC): identity, then dead flat — the shadow
+// flatline. A strictly rising curve that still ENDS on the same ceiling is
+// the only shape that restores gradation without moving the endpoints:
+// identity below 0.85·C (lights and mids bit-identical to legacy), then an
+// exponential ease that reaches C EXACTLY at x = xMax (the largest value
+// this channel can ask for, raw=1). Full-coverage channels therefore print
+// the same solid they always did — an earlier cap that only approached the
+// ceiling asymptotically measurably desaturated solid red (blue channel
+// 14 -> 61) because Y never reached 1.0 again.
+float softCeil(float x, float xMax, float c){
+  float k = 0.85 * c;
+  if(x <= k) return max(x, 0.0);
+  float xm = max(xMax, k + 1e-3);
+  float tau = max((xm - k) * 0.45, 1e-4);
+  float norm = 1.0 - exp(-(xm - k) / tau);
+  return k + (c - k) * (1.0 - exp(-(x - k) / tau)) / norm;
+}
+
 float getChannelInner(vec4 cmyk, int ch, int totalLayers){
   float raw;
   if(totalLayers == 1){
@@ -1172,9 +1214,9 @@ float getChannelInner(vec4 cmyk, int ch, int totalLayers){
   // 4-layer CMYK: apply balance + TAC (matches v8 architecture)
   raw = ch==0?cmyk.x:(ch==1?cmyk.y:(ch==2?cmyk.z:cmyk.w));
   float balance = ch==0 ? u_cmykBal.x : (ch==1 ? u_cmykBal.y : (ch==2 ? u_cmykBal.z : u_cmykBal.w));
-  raw *= balance;
+  raw = softCeil(raw * balance, balance, 1.0);
   float total = cmyk.x + cmyk.y + cmyk.z + cmyk.w;
-  if(total > u_tac) raw *= u_tac / total;
+  raw *= softTacScale(total);
   return clamp(raw, 0.0, 1.0);
 }
 
@@ -1194,11 +1236,12 @@ float getChannel(vec4 cmyk, int ch, int totalLayers, vec3 srcRGB){
       float lum = dot(srcRGB, vec3(0.299, 0.587, 0.114));
       float ink = 1.0 - lum;
       float balance = ch==0 ? u_cmykBal.x : (ch==1 ? u_cmykBal.y : (ch==2 ? u_cmykBal.z : u_cmykBal.w));
-      float neutralCov = ink * balance;
-      // TAC limit
-      float totalBal = u_cmykBal.x + u_cmykBal.y + u_cmykBal.z + u_cmykBal.w;
-      float totalInk = ink * totalBal;
-      if(totalInk > u_tac) neutralCov *= u_tac / totalInk;
+      // TAC is absorbed into the per-channel ceiling: legacy's flat value was
+      // exactly bal*tac/totalBal (the ink cancelled out of the hard divide),
+      // so that constant IS the endpoint the curve must land on at ink=1.
+      float totalBalN = u_cmykBal.x + u_cmykBal.y + u_cmykBal.z + u_cmykBal.w;
+      float ceilN = min(balance * u_tac / max(totalBalN, 1e-3), 1.0);
+      float neutralCov = softCeil(ink * balance, balance, ceilN);
       neutralCov = clamp(neutralCov, 0.0, 1.0);
       float normalCov = getChannelInner(cmyk, ch, totalLayers);
       return mix(normalCov, neutralCov, gray);
@@ -1223,11 +1266,16 @@ float getChannel(vec4 cmyk, int ch, int totalLayers, vec3 srcRGB){
     float ink = 1.0 - lum;
     // Apply balance to duotone coverage (otherwise sliders have no effect on grays)
     float balance = ch==0 ? u_cmykBal.x : (ch==1 ? u_cmykBal.y : (ch==2 ? u_cmykBal.z : u_cmykBal.w));
-    float duoCov = ink * balance;
-    // Apply TAC to duotone path too
+    // TAC absorbed into the per-channel ceiling. Legacy was duoCov*tac/total
+    // with total = ink*totalBal, where ink CANCELS: every tone above 48.7%
+    // requested rendered the identical constant bal*tac/totalBal = 0.803 (K)
+    // — the measured shadow flatline (greys 0/64/128 indistinguishable).
+    // softCeil rises monotonically THROUGH that range and lands on the same
+    // constant at ink=1, so pure black keeps its shipped density while the
+    // crushed shadows regain ordering. u_tac still steers the ceiling.
     float totalBal = u_cmykBal.x + u_cmykBal.y + u_cmykBal.z + u_cmykBal.w;
-    float totalDuo = ink * totalBal;
-    if(totalDuo > u_tac) duoCov *= u_tac / totalDuo;
+    float duoCeil = min(balance * u_tac / max(totalBal, 1e-3), 1.0);
+    float duoCov = softCeil(ink * balance, balance, duoCeil);
     duoCov = clamp(duoCov, 0.0, 1.0);
     float normalCov = getChannelInner(cmyk, ch, totalLayers);
     return mix(normalCov, duoCov, gray);
