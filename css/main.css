@@ -46,7 +46,19 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 /* Layout: two-column wide, single-column narrow */
 .app-container{max-width:1200px;margin:0 auto;padding:20px;display:grid;grid-template-columns:1fr 340px;gap:20px;height:calc(100vh - 56px);align-items:start;overflow:hidden}
 @media(max-width:1000px){.app-container{grid-template-columns:1fr 280px;gap:14px;padding:14px}}
-@media(max-width:900px){.app-container{grid-template-columns:1fr;padding:12px;gap:12px}}
+@media(max-width:900px){
+  /* Stacked layout: the container is a fixed-height grid with overflow:hidden,
+     so everything below the canvas (paper, profiles, plates, settings) was
+     simply CLIPPED — no way to reach it. Make the container itself the
+     scroller and pin the viewfinder (canvas + slider strip) sticky at its
+     top: toolbar and main view stay put, panels scroll beneath them.
+     left-col becomes display:contents so the viewfinder's sticky range is
+     the FULL scroll length — as a left-col child it would get pushed away
+     as soon as profiles scrolled past (sticky is bounded by its parent). */
+  .app-container{grid-template-columns:1fr;padding:12px;gap:12px;overflow-y:auto;-webkit-overflow-scrolling:touch;align-items:start}
+  .viewfinder-panel>#gl{max-height:52vh}
+  .controls-panel{overflow:visible;min-height:0}
+}
 @media(max-width:600px){.app-container{padding:8px;gap:8px}
   .image-controls{flex-wrap:nowrap}
   .aspect-row{flex-wrap:wrap}
@@ -60,7 +72,11 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 }
 .left-col{display:flex;flex-direction:column;gap:12px;min-width:0}
 .viewfinder-wrap{z-index:10}
-@media(max-width:900px){.viewfinder-wrap{position:static}}
+@media(max-width:900px){
+  /* AFTER the .left-col base rule by source order, or display:flex wins. */
+  .left-col{display:contents}
+  .viewfinder-wrap{position:sticky;top:0;z-index:30;background:var(--bg);padding-bottom:4px}
+}
 @media(max-width:600px){
   .image-controls{gap:4px;padding:5px 6px;flex-wrap:nowrap}
   .img-slider{min-width:30px}
