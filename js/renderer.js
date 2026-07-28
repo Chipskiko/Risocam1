@@ -589,6 +589,45 @@ function initGL(onReady){
   // horizontal band wherever the biased mask rows landed.
   var BN_SIZE = 128;
   var bnVCBytes = genVoidClusterMask(BN_SIZE);
+  // ─── V&C tone recal: quantile-match the white path's threshold CDF ───
+  // The white grain path samples u_noise with LINEAR filtering, so each
+  // threshold is a bilinear mix of 4 uniform bytes — a distribution
+  // concentrated toward mid-grey, NOT uniform. The V&C mask's ranks ARE
+  // uniform, so with identical downstream math the V&C path printed far
+  // more dots per tone (measured 19.7% coverage where white delivered
+  // 8.2%; the "-27 of 255 in the highlights" noted at the u_grainBlue
+  // write below is the same defect). Remapping every rank through the
+  // inverse CDF of the actual bilinear-sampled white distribution gives
+  // V&C the SAME threshold distribution — hence the same tone at every
+  // input — while keeping its blue-noise spatial ordering (the lut is
+  // monotone, so cell ranks never reorder). Deterministic: fixed LCG seed,
+  // and genBlueNoise is a pure integer hash of position.
+  (function remapVCToWhiteCDF(){
+    var wn = genBlueNoise(256);        // the exact bytes u_noise holds
+    var HB = 2048, hist = new Float64Array(HB);
+    var seed = 987654321;
+    var rnd = function(){ seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF; return seed / 0x7FFFFFFF; };
+    var S = 200000;
+    for(var si = 0; si < S; si++){
+      var fx = rnd() * 256, fy = rnd() * 256;
+      var x0 = Math.floor(fx), y0 = Math.floor(fy);
+      var tx = fx - x0, ty = fy - y0;
+      var x1 = (x0 + 1) & 255, y1 = (y0 + 1) & 255;
+      x0 &= 255; y0 &= 255;
+      var v = wn[y0*256+x0]*(1-tx)*(1-ty) + wn[y0*256+x1]*tx*(1-ty)
+            + wn[y1*256+x0]*(1-tx)*ty     + wn[y1*256+x1]*tx*ty;
+      hist[Math.min(HB-1, Math.floor(v / 255 * HB))]++;
+    }
+    var cdf = new Float64Array(HB), acc = 0;
+    for(var hb = 0; hb < HB; hb++){ acc += hist[hb]; cdf[hb] = acc / S; }
+    var lut = new Uint8Array(256), hb2 = 0;
+    for(var r = 0; r < 256; r++){
+      var q = (r + 0.5) / 256;
+      while(hb2 < HB-1 && cdf[hb2] < q) hb2++;
+      lut[r] = Math.round((hb2 + 0.5) / HB * 255);
+    }
+    for(var mi = 0; mi < bnVCBytes.length; mi++) bnVCBytes[mi] = lut[bnVCBytes[mi]];
+  })();
   var bnVCRGBA = new Uint8Array(BN_SIZE*BN_SIZE*4);
   for(var bi = 0; bi < BN_SIZE*BN_SIZE; bi++){
     bnVCRGBA[bi*4] = bnVCBytes[bi];
