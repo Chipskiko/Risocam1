@@ -131,6 +131,7 @@
           <div id="screenPrimary" style="display:none;gap:6px">
             <button class="regmark-btn active" id="lpiBtnScreen" onclick="R.cycleLpi()" title="Lines Per Inch"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><g transform="rotate(45 10 10)"><circle cx="5" cy="5" r="1.5" fill="currentColor"/><circle cx="13" cy="5" r="1.5" fill="currentColor"/><circle cx="5" cy="13" r="1.5" fill="currentColor"/><circle cx="13" cy="13" r="1.5" fill="currentColor"/><circle cx="9" cy="9" r="2" fill="currentColor"/></g></svg><span class="regmark-val" id="lpiBtnVal">High</span></button>
             <button class="regmark-btn" id="stampShapeBtn" onclick="R.cycleStampShape()" title="Halftone stamp shape — replaces the round dot with a custom shape (square, diamond, plus, star). For letterform stamps use the LETTERS mode."><span class="regmark-icon" id="stampShapeIcon" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px"></span><span class="regmark-val" id="stampShapeBtnVal">Circle</span></button>
+            <span style="display:inline-flex;align-items:center;gap:4px;margin-left:4px" title="Dot spacing — scales the halftone cell pitch (100% = the LPI preset's native pitch)"><span style="font-size:8px;letter-spacing:1px;opacity:0.5;white-space:nowrap">SPACING</span><input type="range" id="dotSpacing" min="50" max="250" value="100" step="5" style="width:70px" oninput="R.setDotSpacing(this.value)"><span class="slider-value" id="dotSpacingVal">100%</span></span>
             
           </div>
           <!-- LETTERS: letter density + text + charset/font (screen engine, glyph stamp) -->
@@ -598,6 +599,7 @@ uniform float u_colorQuant;    // 0=off, else N levels per channel — pre-NNLS 
 uniform float u_covQuant;      // 0=off, else N steps of per-plate COVERAGE — what actually flattens a halftoned render
 uniform float u_koExclusive;   // 1 = only the strongest plate carries ink at a pixel; the rest are zeroed (true separation knockout)
 uniform float u_uniqueInks;    // count of DISTINCT inks (not filled slots). Gates the neutral duotone bypass: 0 = legacy (bypass always on)
+uniform float u_screenLin;     // 1 = SCREEN mode skips the grain-physics tone lifts (per-ink gamma + S-curve); the halftone matrix IS the tone reproduction
 uniform float u_useLabResidual; // 0=RGB residual, 1=Lab residual in NNLS subset selection
 uniform float u_useCalChord;     // 0=naive delta (ink100-paper), 1=calibrated chord 2*(p50-paper)
 uniform float u_ynN;             // Yule-Nielsen exponent for SPOT NNLS space (1 = legacy linear RGB, ~2 = uncoated stock)
@@ -2032,15 +2034,19 @@ float getCoverage(vec4 cmyk, vec2 rpx, int idx, int ch, float noise1, float dens
   float ink = getChannel(cmyk, ch, u_layers, srcRGB);
   ink *= dens * 0.01;
 
-  // Per-ink gamma: shapes digital values → coverage mapping (from v8)
-  // Blend toward linear (1.0) by 45% — LUT handles ink-on-paper appearance
+  // Per-ink gamma + S-curve: grain-physics tone shaping (from v8). In SCREEN
+  // mode with ?screenlin these are SKIPPED: the halftone matrix already IS
+  // the tone reproduction (with its own measured TRC), and this extra lift
+  // stack is why 50% grey delivered 91% ink — dots read as bloated blobs and
+  // the connected-checkerboard midtone geometry never showed (coverage never
+  // sat near 50%).
+  bool screenLin = (u_mode == 1 && u_screenLin > 0.5);
   float calGamma = mix(inkGamma, 1.0, 0.45);
-  ink = pow(clamp(ink, 0.0, 1.0), calGamma);
+  if(!screenLin) ink = pow(clamp(ink, 0.0, 1.0), calGamma);
 
-  // Gentle S-curve: adds midtone contrast (matched to v8)
   float tc = clamp(ink, 0.0, 1.0);
   float curved = tc * tc * (3.0 - 2.0 * tc);
-  ink = mix(tc, curved, 0.15);
+  if(!screenLin) ink = mix(tc, curved, 0.15);
 
   // Dot gain — halved since LUT swatch data already includes physical dot gain
   float inkAbsorb = mix(0.9, 1.2, float(idx) / 3.0);
@@ -2861,9 +2867,15 @@ float asciiCov(vec2 suv, vec2 srpx, int idx, vec2 boxHalf){
   // continuous while pinning paper-white to exactly zero.
   ink = max(0.0, ink - 0.02) / 0.98;
   float ig = idx == 0 ? u_inkGamma0 : (idx == 1 ? u_inkGamma1 : (idx == 2 ? u_inkGamma2 : u_inkGamma3));
-  ink = pow(clamp(ink, 0.0, 1.0), mix(ig, 1.0, 0.45));
+  // Same gamma + S-curve lift pair as getCoverage, duplicated here for the
+  // anchor/cell-tone bakes — and therefore gated by the SAME ?screenlin skip,
+  // or the flag would only affect the per-fragment path (measured: cellTone
+  // path 90.7% ink with the flag on either way, while the per-fragment path
+  // moved 86.8 -> 80.5).
+  bool screenLin = (u_mode == 1 && u_screenLin > 0.5);
+  if(!screenLin) ink = pow(clamp(ink, 0.0, 1.0), mix(ig, 1.0, 0.45));
   float tc = clamp(ink, 0.0, 1.0);
-  return mix(tc, tc * tc * (3.0 - 2.0 * tc), 0.15);
+  return screenLin ? tc : mix(tc, tc * tc * (3.0 - 2.0 * tc), 0.15);
 }
 
 // 3x3 quadrant layout of the ASCII anchor-bake texture (prepass pass 1):
@@ -3610,9 +3622,9 @@ void main(){
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/riso-amt-webgpu.js?v=6"></script>
 <script src="js/gen/bnvc256.js?v=1"></script>
-<script src="js/renderer.js?v=196"></script>
+<script src="js/renderer.js?v=197"></script>
 <script src="js/source.js?v=57"></script>
-<script src="js/save.js?v=71"></script>
+<script src="js/save.js?v=72"></script>
 <script src="js/webgpu-live.js?v=5"></script>
 <script src="js/ui-controls.js?v=79"></script>
 <script src="js/ui-paper.js?v=14"></script>

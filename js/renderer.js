@@ -63,7 +63,7 @@ R.diag = function(step){
   try {
     const q = new URLSearchParams(location.search);
     const f = window._flags = {};
-    ['safe','noshimmer','noworkers','noamt','nopbr','nowebgpu','minimal','diag','remote','slim','webgpu','grainblue','grainwhite','neutralgate'].forEach(k => { f[k] = q.has(k); });
+    ['safe','noshimmer','noworkers','noamt','nopbr','nowebgpu','minimal','diag','remote','slim','webgpu','grainblue','grainwhite','neutralgate','screenlin'].forEach(k => { f[k] = q.has(k); });
     if(f.neutralgate){ window._neutralGate = true; }
     if(f.minimal){ f.safe = f.noshimmer = f.noworkers = f.noamt = f.nopbr = f.nowebgpu = true; }
     if(f.safe){ window._gpuSlow = true; }
@@ -259,7 +259,7 @@ function initGL(onReady){
    'u_off0','u_off1','u_off2','u_off3',
    'u_angle0','u_angle1','u_angle2','u_angle3','u_screenCell',
    'u_chan0','u_chan1','u_chan2','u_chan3',
-   'u_stampSeed','u_asciiTonePass','u_aMin','u_aDims','u_aPitch','u_wordLen','u_edgeSoft','u_mtxTexel','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineWave','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineGrain','u_inkDissolve','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_covQuant','u_koExclusive','u_uniqueInks','u_useLabResidual','u_useCalChord','u_ynN','u_useSepLut','u_sepLutN','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
+   'u_stampSeed','u_asciiTonePass','u_aMin','u_aDims','u_aPitch','u_wordLen','u_edgeSoft','u_mtxTexel','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineWave','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineGrain','u_inkDissolve','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_covQuant','u_koExclusive','u_uniqueInks','u_screenLin','u_useLabResidual','u_useCalChord','u_ynN','u_useSepLut','u_sepLutN','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
    'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_paperShift','u_paperPbrShift','u_paperPbrMul','u_paperOrient','u_scanSwap','u_crop','u_paper',
    'u_paperPBR','u_usePaperPBR','u_paperScaleK',
    'u_lutA0','u_lutA1','u_lutA2','u_lutA3',
@@ -914,6 +914,14 @@ function _recoverGLState(){
 // the driver preemption points. Output is bit-identical — the fragment
 // shader depends only on gl_FragCoord + uniforms, never on band boundaries.
 // Small buffers (≤ one band) take the plain single-draw path.
+R.setDotSpacing = function(v){
+  window._dotSpacing = Math.max(0.5, Math.min(2.5, (parseFloat(v)||100)/100));
+  var el = document.getElementById('dotSpacingVal');
+  if(el) el.textContent = Math.round(window._dotSpacing*100) + '%';
+  try { markDirty(); } catch(e){}
+  scheduleRender();
+};
+
 R.drawFullscreenTiled = function(w, h){
   const BAND_PX = 1 << 21;                                   // ~2.1 MP per band
   const bandH = Math.max(64, Math.floor(BAND_PX / Math.max(1, w)) & ~1);
@@ -1270,6 +1278,7 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   // ?neutralgate or window._neutralGate=true, which reports the real count so
   // 4-distinct-ink palettes fall back to toCMYK's K-generation for neutrals.
   // Duotones/tritones are unaffected either way (count < 4).
+  if(locs.u_screenLin) gl.uniform1f(locs.u_screenLin, (window._screenLin ?? !!(window._flags && window._flags.screenlin)) ? 1.0 : 0.0);
   if(locs.u_uniqueInks){
     const gateOn = !!(window._neutralGate ?? false);
     const n = gateOn ? new Set((channels || []).filter(Boolean)).size : 0;
@@ -1439,7 +1448,7 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   // (its "Screen 40" preset measures 38.6 lpi), so free pitch IS authentic.
   // Only the threshold-matrix family + measured tone curve snap to the
   // nearest stored frequency (43/71/106) in the unit-8 bind above.
-  gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(dw,dh)/(8.267*cached.lpi)));
+  gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(dw,dh)/(8.267*cached.lpi))*(window._dotSpacing||1));
   gl.uniform3fv(locs.u_paperColor,cached.paperColor);
   gl.uniform3f(locs.u_paper, 0.910, 0.912, 0.908);
   gl.uniform1f(locs.u_showCropMarks, cached.showCropMarks ? 1.0 : 0.0);
@@ -3578,7 +3587,7 @@ function _runTonePrepass(dw, dh){
       // u_aMin/u_aDims). Pitch floors at the dot cell and rises if the lattice
       // would overflow 1018/side (texture = 2x2 quadrants, 2048 GL-safe) —
       // at that density cells are ~2px and per-cell tone is invisible anyway.
-      const cellBase = Math.max(1.5, Math.min(dw, dh) / (8.267 * cached.lpi)); // free pitch (matches u_screenCell)
+      const cellBase = Math.max(1.5, Math.min(dw, dh) / (8.267 * cached.lpi)) * (window._dotSpacing || 1); // free pitch (matches u_screenCell incl. spacing)
       for(let li = 0; li < 4; li++){
         const ang = (layerAngles[li] || 0) * 0.01745329;
         const ca = Math.cos(ang), sa = Math.sin(ang);

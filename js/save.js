@@ -1007,7 +1007,7 @@ async function exportSeparations(){
   gl.uniform1f(locs.u_postSat,cached.postSat||0);
   // Dot pitch follows the LPI control freely (match live path); only the
   // matrix/TRC choice snaps to 43/71/106 in the unit-8 bind below.
-  gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(rw,rh)/(8.267*cached.lpi)));
+  gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(rw,rh)/(8.267*cached.lpi))*(window._dotSpacing||1));
   gl.uniform1f(locs.u_ucrStr, cached.ucrStr * 0.01);
   gl.uniform4f(locs.u_cmykBal, cached.balC*0.01, cached.balM*0.01, cached.balY*0.01, cached.balK*0.01);
   gl.uniform1f(locs.u_tac, cached.tac * 0.01);
