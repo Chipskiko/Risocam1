@@ -1608,6 +1608,28 @@ float screenDither(float val, vec2 pix, float cellPx, float angle, float lidx){
     return mix(dotInk, holeInk, blend);
   }
 
+  // ── Euclidean composite dot (stamp 6) — the Photoshop/PostScript screen ──
+  // One spot function per cell, thresholded: round ink dots in highlights,
+  // square-ish by the midtone, EXACT diamond checkerboard at 50% (diagonal
+  // neighbours connect corner-to-corner), then round white holes to solid.
+  // Deliberately NOT area-linear — thresholding brightness against this spot
+  // IS the classic look (Photoshop Bitmap>Halftone Screen behaves the same).
+  if(u_stampShape == 6){
+    float v = clamp(val, 0.0, 1.0);
+    if(v <= 0.001) return 0.0;
+    if(v >= 0.999) return 1.0;
+    vec2 q2 = centered * 2.0;                    // -1..1 across the cell
+    float au = abs(q2.x), av = abs(q2.y);
+    float spot = (au + av <= 1.0)
+      ? 1.0 - (au*au + av*av)                    // round dot, centre out
+      : (au-1.0)*(au-1.0) + (av-1.0)*(av-1.0) - 1.0;  // round hole, corner in
+    float T = 1.0 - 2.0 * v;
+    // AA in spot units (|d spot/d cellPos| tops out ~4). Kept narrow so the
+    // hard 1-bit crunch of the reference look survives at print cell sizes.
+    float e2 = edge * 4.0;
+    return smoothstep(T - e2, T + e2, spot);
+  }
+
   vec2 cellID = floor(rp / cellPx);
 
   // Per-cell hash roughness + angular wobble — DECORATIVE shapes only (the
@@ -1701,8 +1723,20 @@ float cellTone(vec2 pix, float angle, int idx){
 // The RISO matrix engine is confined to the CIRCLE stamp — circles are the
 // faithful screen; the other stamp shapes stay stylized/procedural.
 float screenEngine(float val, vec2 pix, float cellPx, float angle, float lidx){
-  return (u_screenType > 0.5 && u_stampShape == 0) ? screenMatrix(val, pix, cellPx, angle)
-                              : screenDither(val, pix, cellPx, angle, lidx);
+  // Matrix engine only for FINE screens. The driver matrix is 6x6 texels per
+  // cell — faithful when a cell prints a few dots wide, but at coarse pitches
+  // each texel spans many pixels and the discrete hole-growth shapes render
+  // as blocky arches (user-reported: "really bad resolution issue"). The
+  // analytic engine resolves round dots/holes at any zoom, so coarse screens
+  // switch to it. Gate on CELLS ACROSS THE IMAGE (resolution-independent:
+  // cellPx scales with u_res, so min(res)/cellPx is the same in preview and
+  // export — a pixel-size gate would flip engines between the two). 120
+  // cells splits the presets: High/Med/Fine stay matrix, Huge/Poster and
+  // SPACING-widened screens go analytic.
+  bool mtx = (u_screenType > 0.5 && u_stampShape == 0
+              && min(u_res.x, u_res.y) / max(cellPx, 0.01) >= 120.0);
+  return mtx ? screenMatrix(val, pix, cellPx, angle)
+             : screenDither(val, pix, cellPx, angle, lidx);
 }
 float screenSampled(float val, vec2 pix, float cellPx, float angle, float lidx){
   float e = 0.375; // sub-pixel offsets (rotated-grid 4-rooks)

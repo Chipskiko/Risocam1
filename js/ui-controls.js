@@ -1015,6 +1015,8 @@ const SHAPE_ICONS_STAMP = [
   '<svg width="20" height="20" viewBox="0 0 20 20"><polygon points="10,2 12.5,7.5 18,8.5 14,12.5 15,18 10,15 5,18 6,12.5 2,8.5 7.5,7.5" fill="currentColor"/></svg>',
   // ASCII map (random letters incl. Georgian)
   '<svg width="20" height="20" viewBox="0 0 20 20"><text x="10" y="15" text-anchor="middle" font-size="13" font-weight="bold" font-family="monospace" fill="currentColor">a\u10ef</text></svg>',
+  // Halftone (Euclidean composite: dots -> checkerboard -> holes)
+  '<svg width="20" height="20" viewBox="0 0 20 20"><circle cx="5" cy="5" r="1.6" fill="currentColor"/><rect x="8.2" y="3.2" width="3.6" height="3.6" fill="currentColor"/><circle cx="15" cy="5" r="2.2" fill="currentColor"/><rect x="3" y="8.9" width="4.2" height="4.2" fill="currentColor"/><rect x="8.6" y="8.6" width="2.8" height="2.8" fill="currentColor"/><rect x="13" y="8.9" width="4.2" height="4.2" fill="currentColor"/><circle cx="5" cy="15" r="2.2" fill="currentColor"/><rect x="8.2" y="13.2" width="3.6" height="3.6" fill="currentColor"/><circle cx="15" cy="15" r="1.6" fill="currentColor"/></svg>',
 ];
 function refreshShapeIcons(){
   const lineIcon = el('lineShapeIcon');
@@ -1049,13 +1051,18 @@ const resSteps=[6]; // always max
 // ASCII (shape 5) moved out of the screen cycle — it is now the top-level
 // LETTERS mode. The shader index 5 still exists; letters mode forces it at
 // the uniform uploads (renderer.js/save.js) without touching _stampShape.
-const STAMP_SHAPES = ['Circle', 'Square', 'Diamond', 'Plus', 'Star'];
+const STAMP_SHAPES = ['Circle', 'Square', 'Diamond', 'Plus', 'Star', 'Halftone'];
+// Raw shader ids per cycle position. NOT contiguous: id 5 is the LETTERS
+// glyph stamp (mode-driven, split out of this cycler), so the Halftone
+// (Euclidean composite dot) stamp is id 6.
+const STAMP_IDS = [0, 1, 2, 3, 4, 6];
 window._stampShape = window._stampShape ?? 0;
-// Legacy state (saved sessions/undo) may still hold 5 — snap into the cycle.
-if((window._stampShape|0) >= STAMP_SHAPES.length) window._stampShape = 0;
+// Legacy/unknown state (saved sessions/undo) — snap into the cycle.
+if(STAMP_IDS.indexOf(window._stampShape|0) < 0) window._stampShape = 0;
 function cycleStampShape(){
-  window._stampShape = (window._stampShape + 1) % STAMP_SHAPES.length;
-  const lbl = STAMP_SHAPES[window._stampShape];
+  const pos = STAMP_IDS.indexOf(window._stampShape|0);
+  window._stampShape = STAMP_IDS[(pos + 1) % STAMP_IDS.length];
+  const lbl = STAMP_SHAPES[STAMP_IDS.indexOf(window._stampShape)];
   const v = el('stampShapeBtnVal'); if(v) v.textContent = lbl;
   const pv = el('phStampShapeBtnVal'); if(pv) pv.textContent = lbl;
   R.toast('Stamp: ' + lbl);
