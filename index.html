@@ -1731,7 +1731,16 @@ float screenEngine(float val, vec2 pix, float cellPx, float angle, float lidx){
   // lightens exactly as physically fewer same-size dots per area must.
   // sp < 1 tightens the lattice and grows coverage symmetrically.
   float sp = max(u_dotSpacing, 0.01);
-  if(u_mode == 1) val = clamp(val / (sp * sp), 0.0, 1.0);
+  // Shadow saturation (user report): a flat 1/sp^2 cap meant pure black could
+  // never exceed 25% coverage at 200% spacing — but real prints halftone the
+  // TONES while solid areas stay solid ink. Fade the compensation out through
+  // the shadows: constant-size dots across the tonal range, rejoining the
+  // uncompensated curve near black so solids saturate. The resulting steep
+  // shadow ramp is also true to life — screen prints bridge to solid early.
+  if(u_mode == 1){
+    float vc = clamp(val / (sp * sp), 0.0, 1.0);
+    val = mix(vc, clamp(val, 0.0, 1.0), smoothstep(0.75, 0.97, val));
+  }
   // Matrix engine only for FINE screens. The driver matrix is 6x6 texels per
   // cell — faithful when a cell prints a few dots wide, but at coarse pitches
   // each texel spans many pixels and the discrete hole-growth shapes render
