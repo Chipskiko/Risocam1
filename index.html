@@ -1739,6 +1739,14 @@ float screenEngine(float val, vec2 pix, float cellPx, float angle, float lidx){
   // shadow ramp is also true to life — screen prints bridge to solid early.
   if(u_mode == 1){
     float vc = clamp(val / (sp * sp), 0.0, 1.0);
+    // Tightening (sp < 1): uncapped, val/sp^2 blows past 1.0 and mid tones
+    // merge into solid blobs — clustering read as "bigger dots" (user
+    // report). A 0.72 cap (just under the touch point) still measured 87%
+    // ink — circles that near touching read as merged chains, not dots.
+    // Cap at 0.50: the densest packing that still reads as SEPARATE dots
+    // (checkerboard density); true blacks still saturate via the shadow
+    // blend below. Tones under the cap keep exact constant dot size.
+    if(sp < 1.0) vc = min(vc, 0.50);
     val = mix(vc, clamp(val, 0.0, 1.0), smoothstep(0.75, 0.97, val));
   }
   // Matrix engine only for FINE screens. The driver matrix is 6x6 texels per
