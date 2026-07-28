@@ -65,3 +65,14 @@ normalisation. Two naive attempts failed: inverting the downstream
 gamma/S-curve made it worse (it boosts into the limiter), and replacing
 `ink·bal` with `pow(ink, 1/bal)` broke the cancellation and inverted the curve
 (coverage FELL from 74.7% to 44.5% as input darkened).
+
+## Resolved: vertical banding in grain mode (2026-07-28)
+
+Was lattice-stride aliasing: grain lives in rpx-space, and wherever the
+rpx→screen-pixel stride lands near a simple ratio the interpolation phase
+slips coherently down every column (11.5px stripes at stride 0.91, 3.25px at
+1.04 — the period MOVING with u_resScale/canvas geometry is what identified
+resampling as the cause). Fixed in grainDither by a per-cell-row hashed phase
+offset (±half a cell, seed-free): decorrelates the beat between rows, column
+peak collapsed 1.48 → 0.2-0.3 (noise floor), tone unchanged. Preview and
+export render at different strides, so pre-fix they banded DIFFERENTLY.

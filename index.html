@@ -1313,6 +1313,24 @@ float grainDither(float val, vec2 pix, float scale, float layerOff){
   // lands each tick on a different region of the tile, i.e. a fresh sheet.
   vec2 frameOff = vec2(hash(vec2(u_frameSeed * 3.13, 7.7)),
                        hash(vec2(u_frameSeed * 5.71, 2.3)));
+  // ─── Vertical-banding fix: per-row lattice phase jitter ───
+  // MEASURED: the grain lattice beats against the screen pixel grid wherever
+  // the rpx→pixel stride sits near a simple ratio, and the interpolation
+  // phase then slips coherently down every column — a single sharp
+  // column-mean frequency (11.5px at stride 0.91, 3.25px at stride 1.04;
+  // the peak MOVED with u_resScale/canvas geometry, which is what pinned
+  // the cause to resampling rather than to the noise content, the paper,
+  // pressVar, fiberScale or the dither type — all tested, all innocent).
+  // Shifting each CELL-ROW of the lattice horizontally by a static hashed
+  // phase (±half a cell) decorrelates the beat between rows, so the
+  // column-coherent stripe collapses into broadband grain. Cell size, tone
+  // transfer and per-sheet reseed are untouched — same noise, same
+  // statistics, only the row phases differ. Hash is seed-free so stills
+  // stay deterministic under _pinSeed.
+  float bandRowQ = max(uvScale, 0.5);
+  float bandRow = floor(((pix.y + fiberDrift.y) * fiberScale.y) / bandRowQ);
+  float bandJit = (hash(vec2(bandRow * 0.731, layerOff * 13.0 + 4.7)) - 0.5) * bandRowQ;
+  vec2 gp = (pix + fiberDrift) * fiberScale + vec2(bandJit, 0.0);
   float bn;
   if (u_grainBlue > 0.5) {
     // Void-and-Cluster threshold on a GRAIN-CELL lattice.
@@ -1323,7 +1341,7 @@ float grainDither(float val, vec2 pix, float scale, float layerOff){
     // take exactly one texel per cell — scaling the mask with LINEAR would
     // put the low frequencies straight back in. Cell size tracks uvScale so
     // particle SIZE is unchanged and only the spectrum differs.
-    vec2 cell = floor((pix + fiberDrift) * fiberScale / max(uvScale, 0.5));
+    vec2 cell = floor(gp / max(uvScale, 0.5));
     // Decorrelate the four plates by shifting into a different region of the
     // tile rather than by adding white noise on top.
     vec2 plateOff = vec2(floor(layerOff * 37.0), floor(layerOff * 61.0));
@@ -1333,10 +1351,10 @@ float grainDither(float val, vec2 pix, float scale, float layerOff){
     vec2 muv = mod(cell + plateOff + floor(frameOff * 128.0), 128.0);
     bn = texture2D(u_bnVC, (muv + 0.5) / 128.0).r;
   } else {
-    vec2 nuv = ((pix + fiberDrift) * fiberScale) / (256.0 * uvScale);
+    vec2 nuv = gp / (256.0 * uvScale);
     bn = texture2D(u_noise, fract(nuv + layerOff + frameOff)).r;
     // Second octave at finer scale — blended in at low grain sizes for detail
-    vec2 nuv2 = ((pix + fiberDrift) * fiberScale) / 128.0;
+    vec2 nuv2 = gp / 128.0;
     float bn2 = texture2D(u_noise, fract(nuv2 + layerOff + 0.5 + frameOff)).r;
     float detail = mix(0.3, 0.0, clamp((scale - 0.5) / 2.0, 0.0, 1.0));
     bn = mix(bn, bn * 0.7 + bn2 * 0.3, detail);
