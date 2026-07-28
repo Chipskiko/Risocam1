@@ -82,7 +82,12 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 @media(max-width:900px){
   /* AFTER the .left-col base rule by source order, or display:flex wins. */
   .left-col{display:contents}
-  .viewfinder-wrap{position:sticky;top:0;z-index:30;background:var(--bg);padding-bottom:4px}
+  /* Only the CANVAS pins. The wrap also holds the B/C/S slider strip, and
+     with the wrap sticky that strip stayed pinned too (user: it should
+     scroll). Flatten the wrap so the panel and the strip are separate grid
+     items: the panel sticks against the scrolling container for the full
+     scroll length, the strip scrolls away with the rest. */
+  .viewfinder-wrap{display:contents}
 }
 @media(max-width:600px){
   .image-controls{gap:4px;padding:5px 6px;flex-wrap:nowrap}
@@ -541,3 +546,11 @@ body.phone-mode.ph-ls.ph-ls-cw .ph-overlay{padding-bottom:calc(env(safe-area-ins
   opacity:.5;transition:all .12s;user-select:none;flex-shrink:0}
 .ch-spin-btn:hover{opacity:1;border-color:var(--text)}
 .ch-spin-btn.active{background:var(--text);color:#fff;border-color:var(--text);opacity:1}
+
+/* ≤900 sticky canvas — APPENDED at end of file: the base .viewfinder-panel
+   rule (position:relative, background:transparent, line ~136) is later in
+   source than the media block up top and silently wins at equal specificity.
+   Keep this block last. */
+@media(max-width:900px){
+  .viewfinder-panel{position:sticky;top:0;z-index:30;background:var(--bg)}
+}
