@@ -63,7 +63,7 @@ R.diag = function(step){
   try {
     const q = new URLSearchParams(location.search);
     const f = window._flags = {};
-    ['safe','noshimmer','noworkers','noamt','nopbr','nowebgpu','minimal','diag','remote','slim','webgpu','grainblue','neutralgate'].forEach(k => { f[k] = q.has(k); });
+    ['safe','noshimmer','noworkers','noamt','nopbr','nowebgpu','minimal','diag','remote','slim','webgpu','grainblue','grainwhite','neutralgate'].forEach(k => { f[k] = q.has(k); });
     if(f.neutralgate){ window._neutralGate = true; }
     if(f.minimal){ f.safe = f.noshimmer = f.noworkers = f.noamt = f.nopbr = f.nowebgpu = true; }
     if(f.safe){ window._gpuSlow = true; }
@@ -284,7 +284,7 @@ function initGL(onReady){
    'u_ht5Matrix',
    'u_amtMaster0','u_amtMaster1','u_amtMaster2','u_amtMaster3','u_useAmt','u_liveSource',
    'u_amtTexel','u_amtSuperSample','u_amtInkSpread','u_amtCrisp','u_amtJitter','u_grainBlue',
-   'u_bnVC','u_risoGamma','u_risoGrainScale','u_risoDebugBaseline',
+   'u_bnVC','u_bnSize','u_risoGamma','u_risoGrainScale','u_risoDebugBaseline',
    // T3-F: pre-baked per-ink coverage→color LUT texture
    'u_calLutTex','u_useCalLutTex'
   ].forEach(n=>{locs[n]=gl.getUniformLocation(prog,n);});
@@ -587,8 +587,24 @@ function initGL(onReady){
   // 128 chosen over 64 to halve per-row variance — at 64 some rows had ~15% bias
   // (e.g. row 61 avg=147, row 62 avg=107 of 256), producing a visible 4-canvas-px
   // horizontal band wherever the biased mask rows landed.
-  var BN_SIZE = 128;
-  var bnVCBytes = genVoidClusterMask(BN_SIZE);
+  // Baked 256x256 mask (tools/build-vc-mask.mjs) when the generated file is
+  // loaded; runtime 128x128 generation as the fallback. 256 at runtime is not
+  // an option — the generator is O(N^2) full-array scans (~10s offline).
+  // The baked bytes are already tone-remapped, so the CDF remap below only
+  // runs for the fallback path. u_bnSize carries the size to the shader.
+  var BN_SIZE = 128, bnVCBytes = null, _bnBaked = false;
+  if(typeof window._BNVC256 === 'string'){
+    try {
+      var _raw = atob(window._BNVC256);
+      if(_raw.length === 256*256){
+        BN_SIZE = 256;
+        bnVCBytes = new Uint8Array(256*256);
+        for(var _bi = 0; _bi < _raw.length; _bi++) bnVCBytes[_bi] = _raw.charCodeAt(_bi);
+        _bnBaked = true;
+      }
+    } catch(e) {}
+  }
+  if(!bnVCBytes) bnVCBytes = genVoidClusterMask(BN_SIZE);
   // ─── V&C tone recal: quantile-match the white path's threshold CDF ───
   // The white grain path samples u_noise with LINEAR filtering, so each
   // threshold is a bilinear mix of 4 uniform bytes — a distribution
@@ -602,7 +618,7 @@ function initGL(onReady){
   // input — while keeping its blue-noise spatial ordering (the lut is
   // monotone, so cell ranks never reorder). Deterministic: fixed LCG seed,
   // and genBlueNoise is a pure integer hash of position.
-  (function remapVCToWhiteCDF(){
+  if(!_bnBaked) (function remapVCToWhiteCDF(){
     var wn = genBlueNoise(256);        // the exact bytes u_noise holds
     var HB = 2048, hist = new Float64Array(HB);
     var seed = 987654321;
@@ -642,6 +658,7 @@ function initGL(onReady){
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   if(locs.u_bnVC) gl.uniform1i(locs.u_bnVC, 13);
+  if(locs.u_bnSize) gl.uniform1f(locs.u_bnSize, BN_SIZE);
   window._bnVCTex = bnVCTex;
   if(locs.u_risoGamma) gl.uniform1f(locs.u_risoGamma, 1.5);
   // Default = 0.25: each dot covers ~4 canvas pixels, giving the visible
@@ -1357,8 +1374,12 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   // tone (measured: up to -27 of 255 in the highlights). That is a LOOK
   // change, not just a quality one, so it stays off until it is either
   // tone-corrected or deliberately adopted.
+  // DEFAULT ON since the tone recal (task 55): the mask now matches the
+  // white path's threshold CDF (measured max ramp delta 0.5-1.0/100), so
+  // the flip changes dot ARRANGEMENT (anti-clustered, riso-like) and not
+  // tone. ?grainwhite reverts to the legacy white-noise grain.
   if(locs.u_grainBlue) gl.uniform1f(locs.u_grainBlue,
-    (window._grainBlue ?? !!(window._flags && window._flags.grainblue)) ? 1.0 : 0.0);
+    (window._grainBlue ?? !(window._flags && window._flags.grainwhite)) ? 1.0 : 0.0);
   // Exports swap the stochastic AMT taps for the deterministic ring — at
   // export resolution the per-pixel hash reads as speckle on dot edges.
   if(locs.u_amtJitter) gl.uniform1f(locs.u_amtJitter, _saving ? 0.0 : 1.0);

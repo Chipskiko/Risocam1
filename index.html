@@ -501,7 +501,8 @@ uniform float u_amtCrisp;       // STIPPLE masters: threshold half-width for the
                                 //     round dots at any zoom; w sets edge feel (0.08 razor, 0.30 soft riso).
 // GPU Grain Touch path — replaces JS AMT pre-pass with a per-fragment V&C
 // blue-noise threshold + density-gamma. ~60fps on phone GPUs vs ~5fps for JS FS.
-uniform sampler2D u_bnVC;        // 64×64 Void-and-Cluster blue-noise threshold mask, REPEAT + NEAREST
+uniform sampler2D u_bnVC;
+uniform float u_bnSize;        // V&C mask side length (256 baked / 128 runtime fallback)        // 64×64 Void-and-Cluster blue-noise threshold mask, REPEAT + NEAREST
 uniform float u_risoGamma;       // density gamma (>1 boosts midtones; default 1.5)
 uniform float u_risoGrainScale;  // mask cells per canvas pixel (1.0 = finest, 0.5 = chunky)
 uniform float u_risoDebugBaseline; // 1.0 = bypass shear+gamma+smoothstep, show RAW step(threshold,val) V&C
@@ -1396,8 +1397,9 @@ float grainDither(float val, vec2 pix, float scale, float layerOff){
     // mod BEFORE the divide: cell grows to thousands across a 6x-supersampled
     // export, and a UV of that magnitude quantises badly under mediump (the
     // fallback precision on weaker GPUs).
-    vec2 muv = mod(cell + plateOff + floor(frameOff * 128.0), 128.0);
-    bn = texture2D(u_bnVC, (muv + 0.5) / 128.0).r;
+    float bsz = max(u_bnSize, 128.0);
+    vec2 muv = mod(cell + plateOff + floor(frameOff * bsz), bsz);
+    bn = texture2D(u_bnVC, (muv + 0.5) / bsz).r;
   } else {
     vec2 nuv = gp / (256.0 * uvScale);
     bn = texture2D(u_noise, fract(nuv + layerOff + frameOff)).r;
@@ -3607,7 +3609,8 @@ void main(){
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/riso-amt-webgpu.js?v=6"></script>
-<script src="js/renderer.js?v=195"></script>
+<script src="js/gen/bnvc256.js?v=1"></script>
+<script src="js/renderer.js?v=196"></script>
 <script src="js/source.js?v=57"></script>
 <script src="js/save.js?v=71"></script>
 <script src="js/webgpu-live.js?v=5"></script>

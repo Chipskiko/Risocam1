@@ -39,6 +39,15 @@ Same protocol the SEP-LUT baselines use ("Blank tex + Pure White paper").
   `layerVisible` and restore imperfectly have produced wrong "defaults".
   Re-read state at measurement time rather than trusting a saved copy.
 
+## Grain engine (since 2026-07-28)
+
+V&C blue-noise is the DEFAULT grain engine: baked 256x256 void-and-cluster
+mask (js/gen/bnvc256.js, regenerate with `node tools/build-vc-mask.mjs`),
+tone-remapped to the white path's bilinear threshold CDF so the flip changed
+dot arrangement, not tone (measured max ramp delta 0.3/100). `?grainwhite`
+reverts to legacy white-noise grain. Runtime falls back to 128x128 generation
+if the baked file is missing (u_bnSize tells the shader which).
+
 ## Deploy
 
 Every JS change needs a forward-only `?v=N` bump in index.html AND a `sw.js`
