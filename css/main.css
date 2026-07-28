@@ -1,4 +1,4 @@
-:root{--bg:#f5f0e8;--text:#1a1a1a;--text-muted:#6b6560;--accent:#d2515e;--border:#d0c8b8;--shadow:rgba(0,0,0,0.08)}
+:root{--bg:#ffffff;--text:#1a1a1a;--text-muted:#6b6560;--accent:#d2515e;--border:#d0c8b8;--shadow:rgba(0,0,0,0.08)}
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);height:100%;overflow:hidden;overscroll-behavior:none;-webkit-tap-highlight-color:transparent}
 /* Standalone PWA: hide status bar area, hide exit button */

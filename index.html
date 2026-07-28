@@ -14,7 +14,7 @@
 <title>RISO/CAM</title>
 <link rel="manifest" href="manifest.json">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/main.css?v=34">
+<link rel="stylesheet" href="css/main.css?v=35">
 <!-- Styles extracted to css/main.css -->
 <script data-goatcounter="https://chipskiko.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </head>
@@ -78,7 +78,7 @@
     <span class="paper-compact-label">PAPER</span>
     <div id="paperColorGrid" style="display:flex;gap:4px;flex-wrap:wrap"></div>
     <div class="header-cycle paper-type-box"><span class="header-cycle-val" id="paperTypeBtn" onclick="R.cyclePaperTex()" style="cursor:pointer">Standard</span></div>
-    <div class="header-cycle" title="Paper texture scale — higher zooms the fibers out"><span class="header-cycle-val" id="paperScaleBtn" onclick="R.cyclePaperScale()" style="cursor:pointer;min-width:18px">1&times;</span></div>
+    <div class="header-cycle" title="Paper texture scale — higher zooms the fibers out"><span class="header-cycle-val" id="paperScaleBtn" onclick="R.cyclePaperScale()" style="cursor:pointer;min-width:18px">3&times;</span></div>
     <div id="paperTexGrid" style="display:none"></div>
     <input type="range" id="paperTex" min="0" max="25" value="12" step="1" style="display:none"><span class="slider-value" id="paperTexVal" style="display:none">12</span>
     <div class="controls-sep"></div>
@@ -3674,7 +3674,7 @@ void main(){
 <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.min.js"></script>
 <script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
 <script src="js/data.js?v=20"></script>
-<script src="js/state.js?v=20"></script>
+<script src="js/state.js?v=21"></script>
 <script src="js/undo.js?v=11"></script>
 <script src="js/compare.js?v=6"></script>
 <script src="js/riso-amt.js?v=24"></script>
@@ -3688,7 +3688,7 @@ void main(){
 <script src="js/webgpu-live.js?v=5"></script>
 <script src="js/ui-controls.js?v=79"></script>
 <script src="js/ui-paper.js?v=14"></script>
-<script src="js/phone.js?v=30"></script>
+<script src="js/phone.js?v=31"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL
      service workers, and even the attempt makes the browser print a CSP-violation report
      that no .catch can silence. Offline caching works where CSP allows (e.g. localhost).

@@ -45,7 +45,7 @@ let textKnockout=false;
 // plate misregistration. Same UX/labels as Spectrolite. 0 = no trap.
 let trappingPx=0;
 let resScale=6; // always max resolution
-let curPaperColor=0;
+let curPaperColor=8; // Pure White default
 let cropAspect='fit'; // default FIT — use the source's own aspect, no crop
 let cropRect=[0,0,1,1]; // UV crop: x,y,w,h
 
@@ -56,7 +56,7 @@ const cached={
   inkOpacity:88, layerDeplete:3, pressVar:100, densFlicker:7,
   tonalGamma:100, dotMin:15, opacityCap:45,
   inkRGB:[[0,0,0],[0,0,0],[0,0,0],[0,0,0]],
-  paperColor:[0.96,0.94,0.91],
+  paperColor:[1,1,1], // Pure White default
   layerDens:[88,88,88,88],
   showCropMarks:false,
   ghosting:0,
@@ -65,7 +65,7 @@ const cached={
   skew:0,
   postExposure:0, postContrast:0, postSat:0,
   warmCool:0, // -50..50 — channel mixer warm/cool bias
-  paperScale:1, // 1×/2×/3× — paper texture zoom-out (higher = finer fibers)
+  paperScale:3, // 1×/2×/3× — paper texture zoom-out (higher = finer fibers). Default 3× (finest)
 };
 let needsAspectUpdate=true;
 let videoFrameReady=false;

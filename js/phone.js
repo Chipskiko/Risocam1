@@ -603,7 +603,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   skewLocs=[locs.u_skew0,locs.u_skew1,locs.u_skew2,locs.u_skew3];
 
   R.applyProf(PROFILES[0]);
-  R.setPaperColor(0);
+  R.setPaperColor(8); // Pure White default (boot overrides the state.js initial, so set it HERE)
 
   // Check for imported image from bark beetle tool
   const importData = localStorage.getItem('risocam_import');
