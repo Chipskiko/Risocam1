@@ -55,7 +55,14 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
      left-col becomes display:contents so the viewfinder's sticky range is
      the FULL scroll length — as a left-col child it would get pushed away
      as soon as profiles scrolled past (sticky is bounded by its parent). */
-  .app-container{grid-template-columns:1fr;padding:12px;gap:12px;overflow-y:auto;-webkit-overflow-scrolling:touch;align-items:start}
+  /* minmax(0,1fr): a bare 1fr column cannot shrink below its widest item's
+     intrinsic min-content (the plate row's angle-chip strip is ~658px), so at
+     narrow widths EVERY stacked panel pinned to 680px and clipped off the
+     right edge. minmax(0,...) lets the column track the viewport; the rows
+     below then wrap instead of overflowing. */
+  .app-container{grid-template-columns:minmax(0,1fr);padding:12px;gap:12px;overflow-y:auto;-webkit-overflow-scrolling:touch;align-items:start}
+  .controls-panel,.channel-list,.ch-slot,.ch-mono-row,.paper-compact{min-width:0}
+  .ch-angles{flex-wrap:wrap;justify-content:flex-end;min-width:0}
   .viewfinder-panel>#gl{max-height:52vh}
   .controls-panel{overflow:visible;min-height:0}
 }

@@ -14,7 +14,7 @@
 <title>RISO/CAM</title>
 <link rel="manifest" href="manifest.json">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/main.css?v=33">
+<link rel="stylesheet" href="css/main.css?v=34">
 <!-- Styles extracted to css/main.css -->
 <script data-goatcounter="https://chipskiko.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </head>
@@ -600,6 +600,7 @@ uniform float u_covQuant;      // 0=off, else N steps of per-plate COVERAGE — 
 uniform float u_koExclusive;   // 1 = only the strongest plate carries ink at a pixel; the rest are zeroed (true separation knockout)
 uniform float u_uniqueInks;    // count of DISTINCT inks (not filled slots). Gates the neutral duotone bypass: 0 = legacy (bypass always on)
 uniform float u_screenLin;     // 1 = SCREEN mode skips the grain-physics tone lifts (per-ink gamma + S-curve); the halftone matrix IS the tone reproduction
+uniform float u_dotSpacing;    // SPACING slider raw multiplier (1 = native pitch). Screen engines divide coverage by sp^2 so the ABSOLUTE dot size stays constant and only the gaps grow
 uniform float u_useLabResidual; // 0=RGB residual, 1=Lab residual in NNLS subset selection
 uniform float u_useCalChord;     // 0=naive delta (ink100-paper), 1=calibrated chord 2*(p50-paper)
 uniform float u_ynN;             // Yule-Nielsen exponent for SPOT NNLS space (1 = legacy linear RGB, ~2 = uncoated stock)
@@ -1723,6 +1724,14 @@ float cellTone(vec2 pix, float angle, int idx){
 // The RISO matrix engine is confined to the CIRCLE stamp — circles are the
 // faithful screen; the other stamp shapes stay stylized/procedural.
 float screenEngine(float val, vec2 pix, float cellPx, float angle, float lidx){
+  // SPACING semantics (user request): the slider widens the SPACE BETWEEN
+  // dots, not the dots. The pitch multiplier alone scales dot and gap
+  // together (dot size is coverage x cell area), so compensate coverage by
+  // 1/sp^2: absolute dot area stays constant, the lattice spreads, and tone
+  // lightens exactly as physically fewer same-size dots per area must.
+  // sp < 1 tightens the lattice and grows coverage symmetrically.
+  float sp = max(u_dotSpacing, 0.01);
+  if(u_mode == 1) val = clamp(val / (sp * sp), 0.0, 1.0);
   // Matrix engine only for FINE screens. The driver matrix is 6x6 texels per
   // cell — faithful when a cell prints a few dots wide, but at coarse pitches
   // each texel spans many pixels and the discrete hole-growth shapes render
@@ -3656,9 +3665,9 @@ void main(){
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/riso-amt-webgpu.js?v=6"></script>
 <script src="js/gen/bnvc256.js?v=1"></script>
-<script src="js/renderer.js?v=197"></script>
+<script src="js/renderer.js?v=198"></script>
 <script src="js/source.js?v=57"></script>
-<script src="js/save.js?v=72"></script>
+<script src="js/save.js?v=73"></script>
 <script src="js/webgpu-live.js?v=5"></script>
 <script src="js/ui-controls.js?v=79"></script>
 <script src="js/ui-paper.js?v=14"></script>
