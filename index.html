@@ -2350,6 +2350,38 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
       // are both linear, so sampling the binary master over a wider area ==
       // sampling the blurred master). 8 taps (vs the old 4) keep the wider
       // footprint smooth. With u_amtInkSpread = 0 this reduces to the old radius.
+      // ─── ROUND-DOT PATH (coarse masters) ───
+      // When a master texel spans >= ~1.8 output pixels the averaged taps
+      // resolve as SQUARE cells (user report). Render the union of analytic
+      // DISCS instead: each ON texel is a circle of radius ~0.55-0.75 texel
+      // (ink spread widens it), combined with max() — a true metaball union,
+      // so isolated dots are perfectly round at any zoom and FS worms become
+      // chains of linked circles, exactly like ink. Below the gate the discs
+      // are sub-pixel and the averaging path is smoother — keep it.
+      float pxPerTexel = u_res.x * u_amtTexel.x;
+      if(pxPerTexel >= 1.8){
+        vec2 tc = uv_riso / u_amtTexel;            // position in texel units
+        vec2 tBase = floor(tc - 0.5);
+        float rDot = mix(0.50, 0.78, clamp(u_amtInkSpread, 0.0, 1.0));
+        float aa = 0.75 / pxPerTexel;              // ~0.75 output px of edge AA
+        float ink = 0.0;
+        for(int ny = 0; ny <= 2; ny++){
+          for(int nx = 0; nx <= 2; nx++){
+            vec2 cell = tBase + vec2(float(nx), float(ny));
+            vec2 cUV = (cell + 0.5) * u_amtTexel;  // texel-centre sample = the bit
+            float v;
+            if(idx == 0)      v = texture2D(u_amtMaster0, cUV).r;
+            else if(idx == 1) v = texture2D(u_amtMaster1, cUV).r;
+            else if(idx == 2) v = texture2D(u_amtMaster2, cUV).r;
+            else              v = texture2D(u_amtMaster3, cUV).r;
+            if(v > 0.5){
+              float d = length(tc - (cell + 0.5));
+              ink = max(ink, smoothstep(rDot + aa, rDot - aa, d));
+            }
+          }
+        }
+        return ink;
+      }
       float total = 0.0;
       vec2 radius = u_amtTexel * (u_amtSuperSample + u_amtInkSpread);
       for(int s = 0; s < 8; s++){
