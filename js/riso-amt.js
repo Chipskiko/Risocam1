@@ -339,20 +339,23 @@ function _runFsDriver(dens, W, H, serpentine, globalRowOffset) {
     const goingRight = !serpentine || ((y + gy0) & 1) === 0;
     if (goingRight) {
       for (let x = 0; x < W; x++) {
-        const pInv = dens[row + x];
+        // SOLID FLOOD, ramped: a binary force-fire at dens>=192 drew visible
+        // CONTOUR LINES wherever a smooth coverage field crossed the
+        // threshold (one side floods to 100%, the other dithers at ~74% — a
+        // 26-point density cliff; the user's 'weird blotches'). Instead the
+        // top of the density range stretches so 192 maps to 255: FS floods
+        // NATURALLY at 255 (base >= 255 always fires, error stays 0 — which
+        // also gives solids clean edges with no warm-up fringe), and duty
+        // ramps continuously across 180..192 instead of stepping.
+        const p0 = dens[row + x];
+        const pInv = p0 > 180 ? (p0 >= 192 ? 255 : 180 + (((p0 - 180) * 25) >> 2)) : p0;
         // Env clamp at 192: see original notes — keeps coverageScale > 1.6
         // monotonic (tent envelope would otherwise reject ink past the band).
         const ditherAdj = (TBA[cc] * TC[pInv > 192 ? 192 : pInv]) >> 8;
         if (++cc === TA_LEN) cc = 0;
         const base = (errCur[x + 1] >> 8) + pInv;
         let newErr;
-        // SOLID FLOOD: source-solid pixels (dens >= 192 post-tone-curve; the
-        // solid peak is ~198) always burn. FS warm-up at the first rows/cols
-        // of a solid region left a pinhole fringe hugging every edge (present
-        // in the pre-damping baseline too — measured on the Node harness);
-        // real masters burn every dot at solid input, and paper texture on
-        // solids comes from the PBR sheet at composite, not master holes.
-        if (pInv >= 192 || base + ditherAdj > 254) {
+        if (base + ditherAdj > 254) {
           bits[(row + x) >> 3] |= 1 << (7 - (x & 7));
           newErr = base - 255;
         } else {
@@ -371,12 +374,13 @@ function _runFsDriver(dens, W, H, serpentine, globalRowOffset) {
       }
     } else {
       for (let x = W - 1; x >= 0; x--) {
-        const pInv = dens[row + x];
+        const p0 = dens[row + x];   // ramped solid flood — see L->R note
+        const pInv = p0 > 180 ? (p0 >= 192 ? 255 : 180 + (((p0 - 180) * 25) >> 2)) : p0;
         const ditherAdj = (TBA[cc] * TC[pInv > 192 ? 192 : pInv]) >> 8;
         if (++cc === TA_LEN) cc = 0;
         const base = (errCur[x + 1] >> 8) + pInv;
         let newErr;
-        if (pInv >= 192 || base + ditherAdj > 254) {   // SOLID FLOOD (see L->R note)
+        if (base + ditherAdj > 254) {
           bits[(row + x) >> 3] |= 1 << (7 - (x & 7));
           newErr = base - 255;
         } else {
