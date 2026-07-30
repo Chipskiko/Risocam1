@@ -1394,9 +1394,13 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   // tone. ?grainwhite reverts to the legacy white-noise grain.
   if(locs.u_grainBlue) gl.uniform1f(locs.u_grainBlue,
     (window._grainBlue ?? !(window._flags && window._flags.grainwhite)) ? 1.0 : 0.0);
-  // Exports swap the stochastic AMT taps for the deterministic ring — at
-  // export resolution the per-pixel hash reads as speckle on dot edges.
-  if(locs.u_amtJitter) gl.uniform1f(locs.u_amtJitter, _saving ? 0.0 : 1.0);
+  // Deterministic ring taps for EXPORTS and for STATIC sources in preview —
+  // the per-pixel hash taps dissolve dot edges into speckle (user report:
+  // 'RISO mode looks like noise, not dots that would print'). Stochastic
+  // taps remain only for LIVE sources (camera/video), where they mask
+  // temporal aliasing between master rebuilds. Also makes preview match
+  // the export exactly for stills.
+  if(locs.u_amtJitter) gl.uniform1f(locs.u_amtJitter, (_saving || !(camOn || videoOn)) ? 0.0 : 1.0);
   // Live source (camera/video): RISO mode uses the real-time GPU grain-touch
   // fallback. Static sources show smooth tone while the FS master builds.
   if(locs.u_liveSource) gl.uniform1f(locs.u_liveSource, (camOn || videoOn) ? 1.0 : 0.0);

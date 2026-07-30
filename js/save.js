@@ -56,7 +56,14 @@ async function raiseMasterForExport(finalLongEdge){
   // clamp any raise straight back, so don't burn time re-baking.
   if(window._gpuSlow || window._gpuSoftware) return null;
   const cur = window._amtScanDpi || ((R.isPhone && R.isPhone()) ? 150 : 300);
+  // The dpi button is the DOT SIZE control: honoring it is what makes RISO
+  // exports show visible thermal dots (150dpi -> ~2.6px dots on a 6400px
+  // export). The old unconditional raise pushed the master to ~1 dot per
+  // export pixel, which read as pixel speckle, not riso dots (user report),
+  // and silently ignored the user's chosen density. Only raise when the
+  // master would be BELOW the preview default (i.e. never chosen).
   const need = Math.min(600, Math.ceil(finalLongEdge / A3_LONG_IN));
+  if(window._amtScanDpi) return null;   // explicit user choice — honor it
   if(need <= cur) return null;
   window._amtScanDpi = need;
   if(R.invalidateAmt) R.invalidateAmt();
