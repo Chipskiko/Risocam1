@@ -14,7 +14,7 @@
 <title>RISO/CAM</title>
 <link rel="manifest" href="manifest.json">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/main.css?v=36">
+<link rel="stylesheet" href="css/main.css?v=37">
 <!-- Styles extracted to css/main.css -->
 <script data-goatcounter="https://chipskiko.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </head>
@@ -1218,7 +1218,10 @@ float getChannelInner(vec4 cmyk, int ch, int totalLayers){
   // 4-layer CMYK: apply balance + TAC (matches v8 architecture)
   raw = ch==0?cmyk.x:(ch==1?cmyk.y:(ch==2?cmyk.z:cmyk.w));
   float balance = ch==0 ? u_cmykBal.x : (ch==1 ? u_cmykBal.y : (ch==2 ? u_cmykBal.z : u_cmykBal.w));
-  raw = softCeil(raw * balance, balance, 1.0);
+  // Ceiling = min(balance, 1): anchoring at a flat 1.0 made any balance in
+  // (0.85, 1.0) still reach FULL coverage at solid input — the slider's
+  // lighten range silently died there (review finding).
+  raw = softCeil(raw * balance, balance, min(balance, 1.0));
   float total = cmyk.x + cmyk.y + cmyk.z + cmyk.w;
   raw *= softTacScale(total);
   return clamp(raw, 0.0, 1.0);
@@ -1732,7 +1735,10 @@ float screenEngine(float val, vec2 pix, float cellPx, float angle, float lidx){
   // 1/sp^2: absolute dot area stays constant, the lattice spreads, and tone
   // lightens exactly as physically fewer same-size dots per area must.
   // sp < 1 tightens the lattice and grows coverage symmetrically.
-  float sp = max(u_dotSpacing, 0.01);
+  // 0 = uniform never written (fresh program that skipped setRenderUniforms):
+  // treat as neutral 1.0. The old max(sp, 0.01) floor turned that case into
+  // val*10000 -> solid-ink screens.
+  float sp = (u_dotSpacing <= 0.0) ? 1.0 : u_dotSpacing;
   // Shadow saturation (user report): a flat 1/sp^2 cap meant pure black could
   // never exceed 25% coverage at 200% spacing — but real prints halftone the
   // TONES while solid areas stay solid ink. Fade the compensation out through
@@ -1748,7 +1754,7 @@ float screenEngine(float val, vec2 pix, float cellPx, float angle, float lidx){
     // Cap at 0.50: the densest packing that still reads as SEPARATE dots
     // (checkerboard density); true blacks still saturate via the shadow
     // blend below. Tones under the cap keep exact constant dot size.
-    if(sp < 1.0) vc = min(vc, 0.50);
+    if(sp < 1.0 && u_stampShape != 6) vc = min(vc, 0.50); // Halftone stamp's spot function handles >=0.5 itself (holes); the cap posterized its midtones
     val = mix(vc, clamp(val, 0.0, 1.0), smoothstep(0.75, 0.97, val));
   }
   // Matrix engine only for FINE screens. The driver matrix is 6x6 texels per
@@ -2095,12 +2101,15 @@ float getCoverage(vec4 cmyk, vec2 rpx, int idx, int ch, float noise1, float dens
   if(dens < 0.5) return 0.0; // density slider at 0 = no ink at all
   float ink;
   if(u_sepType == 2){
-    // RGB separation: plate idx carries the INVERSE of that RGB channel —
-    // the classic riso RGB workflow (white = no ink, pure red = full ink on
-    // the green + blue plates). Slot 3 stays empty in this mode.
-    ink = (idx == 0) ? (1.0 - srcRGB.r)
-        : (idx == 1) ? (1.0 - srcRGB.g)
-        : (idx == 2) ? (1.0 - srcRGB.b) : 0.0;
+    // RGB separation keyed on the SLOT id carried in u_chanN (ch), NOT the
+    // layer position idx: the separations export renders every plate through
+    // block 0 (idx always 0) selecting the plate via u_chan0, and drag-
+    // reordering changes print position while the R/G/B badges stay
+    // slot-bound — idx-keying exported N identical red plates and silently
+    // reassigned channels on reorder (review finding).
+    ink = (ch == 0) ? (1.0 - srcRGB.r)
+        : (ch == 1) ? (1.0 - srcRGB.g)
+        : (ch == 2) ? (1.0 - srcRGB.b) : 0.0;
   } else {
     ink = getChannel(cmyk, ch, u_layers, srcRGB);
   }
@@ -2369,10 +2378,13 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
       // chains of linked circles, exactly like ink. Below the gate the discs
       // are sub-pixel and the averaging path is smoother — keep it.
       float pxPerTexel = u_res.x * u_amtTexel.x;
-      if(pxPerTexel >= 1.8){
+      // FS masters only (u_amtCrisp is 0 for FS, >0 for stipple): stipple's
+      // masters are clean AA'd vector discs with their own edge control, and
+      // at export scale the jittered-disc re-render scalloped them.
+      if(pxPerTexel >= 1.8 && u_amtCrisp <= 0.0){
         vec2 tc = uv_riso / u_amtTexel;            // position in texel units
         vec2 tBase = floor(tc - 0.5);
-        float rDot = mix(0.50, 0.78, clamp(u_amtInkSpread, 0.0, 1.0));
+        float rDot = mix(0.50, 0.72, clamp(u_amtInkSpread, 0.0, 1.0)); // 0.72 cap: jittered reach (1.12r + 0.19) stays inside the 3x3 fetch window at any spread
         float aa = 0.75 / pxPerTexel;              // ~0.75 output px of edge AA
         float ink = 0.0;
         for(int ny = 0; ny <= 2; ny++){
@@ -2964,10 +2976,11 @@ float asciiCov(vec2 suv, vec2 srpx, int idx, vec2 boxHalf){
   src = adjustRGB(src, srpx);
   float ink;
   if(u_sepType == 2){
-    // RGB separation (see getCoverage): inverse channel per plate slot.
-    ink = (idx == 0) ? (1.0 - src.r)
-        : (idx == 1) ? (1.0 - src.g)
-        : (idx == 2) ? (1.0 - src.b) : 0.0;
+    // RGB separation (see getCoverage): keyed on the slot id in u_chanN.
+    int chR = idx == 0 ? u_chan0 : (idx == 1 ? u_chan1 : (idx == 2 ? u_chan2 : u_chan3));
+    ink = (chR == 0) ? (1.0 - src.r)
+        : (chR == 1) ? (1.0 - src.g)
+        : (chR == 2) ? (1.0 - src.b) : 0.0;
   } else if(u_sepType == 1){
     vec4 w = koExclusive(nnlsDecompose(u_layers, u_paperColor, src, u_ink0, u_ink1, u_ink2, u_ink3));
     ink = idx == 0 ? w.x : (idx == 1 ? w.y : (idx == 2 ? w.z : w.w));
@@ -2990,7 +3003,7 @@ float asciiCov(vec2 suv, vec2 srpx, int idx, vec2 boxHalf){
   // or the flag would only affect the per-fragment path (measured: cellTone
   // path 90.7% ink with the flag on either way, while the per-fragment path
   // moved 86.8 -> 80.5).
-  bool screenLin = (u_mode == 1 && u_screenLin > 0.5);
+  bool screenLin = (u_mode == 1 && u_screenLin > 0.5 && u_sepType != 1); // SPOT's per-fragment path keeps the lifts, so the bake must too
   if(!screenLin) ink = pow(clamp(ink, 0.0, 1.0), mix(ig, 1.0, 0.45));
   float tc = clamp(ink, 0.0, 1.0);
   return screenLin ? tc : mix(tc, tc * tc * (3.0 - 2.0 * tc), 0.15);
@@ -3735,16 +3748,16 @@ void main(){
 <script src="js/state.js?v=21"></script>
 <script src="js/undo.js?v=11"></script>
 <script src="js/compare.js?v=6"></script>
-<script src="js/riso-amt.js?v=26"></script>
+<script src="js/riso-amt.js?v=27"></script>
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/riso-amt-webgpu.js?v=6"></script>
 <script src="js/gen/bnvc256.js?v=2"></script>
-<script src="js/renderer.js?v=204"></script>
+<script src="js/renderer.js?v=205"></script>
 <script src="js/source.js?v=57"></script>
-<script src="js/save.js?v=74"></script>
-<script src="js/webgpu-live.js?v=5"></script>
-<script src="js/ui-controls.js?v=80"></script>
+<script src="js/save.js?v=75"></script>
+<script src="js/webgpu-live.js?v=6"></script>
+<script src="js/ui-controls.js?v=81"></script>
 <script src="js/ui-paper.js?v=14"></script>
 <script src="js/phone.js?v=32"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL

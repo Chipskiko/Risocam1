@@ -59,11 +59,14 @@ async function raiseMasterForExport(finalLongEdge){
   // The dpi button is the DOT SIZE control: honoring it is what makes RISO
   // exports show visible thermal dots (150dpi -> ~2.6px dots on a 6400px
   // export). The old unconditional raise pushed the master to ~1 dot per
-  // export pixel, which read as pixel speckle, not riso dots (user report),
-  // and silently ignored the user's chosen density. Only raise when the
-  // master would be BELOW the preview default (i.e. never chosen).
+  // export pixel, which read as pixel speckle, not riso dots (user report).
+  // Gate on the EXPLICIT-CHOICE FLAG, not value presence: the post-export
+  // restore writes the resolved default back into _amtScanDpi, and a
+  // value-presence gate then treated it as a user choice — permanently
+  // disabling the raise after the first export of the session (review
+  // finding), and skewing the dpi button's cycle start.
   const need = Math.min(600, Math.ceil(finalLongEdge / A3_LONG_IN));
-  if(window._amtScanDpi) return null;   // explicit user choice — honor it
+  if(window._amtDpiUserSet) return null;   // user picked a density — honor it
   if(need <= cur) return null;
   window._amtScanDpi = need;
   if(R.invalidateAmt) R.invalidateAmt();
@@ -162,7 +165,7 @@ async function saveHiRes(format){
   else{saveW=Math.round(baseSize*saveScale/3);saveH=Math.round(baseSize/ar*saveScale/3);}
   // Halftone modes: ensure enough pixels per cell (dots 12px, lines 6px)
   if(mode!=='grain'&&cached.lpi>0){
-    const minShort=Math.ceil(exportPxPerCell()*8.267*cached.lpi);
+    const minShort=Math.ceil(exportPxPerCell()*8.267*cached.lpi/(window._dotSpacing||1)); // spacing<1 shrinks cells -> proportionally more px to keep the per-cell floor
     if(Math.min(saveW,saveH)<minShort){const s=minShort/Math.min(saveW,saveH);saveW=Math.round(saveW*s);saveH=Math.round(saveH*s);}
   }
   // Grain mode: ensure minimum 4000px short side for fine grain detail
@@ -955,7 +958,7 @@ async function exportSeparations(){
   else{dw=Math.round(baseSize*saveScale/3);dh=Math.round(baseSize/ar*saveScale/3);}
   // Halftone modes: cell-quality minimum (dots 12px, lines 6px per cell)
   if(mode!=='grain'&&cached.lpi>0){
-    const minShort=Math.ceil(exportPxPerCell()*8.267*cached.lpi);
+    const minShort=Math.ceil(exportPxPerCell()*8.267*cached.lpi/(window._dotSpacing||1)); // spacing<1 shrinks cells -> proportionally more px to keep the per-cell floor
     if(Math.min(dw,dh)<minShort){const s=minShort/Math.min(dw,dh);dw=Math.round(dw*s);dh=Math.round(dh*s);}
   }
   // Cap at GPU max texture size
@@ -1014,7 +1017,7 @@ async function exportSeparations(){
   gl.uniform1f(locs.u_postSat,cached.postSat||0);
   // Dot pitch follows the LPI control freely (match live path); only the
   // matrix/TRC choice snaps to 43/71/106 in the unit-8 bind below.
-  gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(rw,rh)/(8.267*cached.lpi))*(window._dotSpacing||1));
+  gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(rw,rh)/(8.267*cached.lpi)*(mode==='screen'?(window._dotSpacing||1):1))); // spacing is screen-scoped (see renderer)
   if(locs.u_dotSpacing) gl.uniform1f(locs.u_dotSpacing, window._dotSpacing || 1);
   gl.uniform1f(locs.u_ucrStr, cached.ucrStr * 0.01);
   gl.uniform4f(locs.u_cmykBal, cached.balC*0.01, cached.balM*0.01, cached.balY*0.01, cached.balK*0.01);
@@ -1383,7 +1386,7 @@ async function savePdf(){
         // Sizing parity with saveHiRes: halftone modes need enough pixels per
         // cell for round dots; grain needs a 4000px short side for detail.
         if(mode!=='grain'&&cached.lpi>0){
-          const minShort=Math.ceil(exportPxPerCell()*8.267*cached.lpi);
+          const minShort=Math.ceil(exportPxPerCell()*8.267*cached.lpi/(window._dotSpacing||1)); // spacing<1 shrinks cells -> proportionally more px to keep the per-cell floor
           if(Math.min(rasterW,rasterH)<minShort){const s=minShort/Math.min(rasterW,rasterH);rasterW=Math.round(rasterW*s);rasterH=Math.round(rasterH*s);}
         }
         if(mode==='grain'&&Math.min(rasterW,rasterH)<4000){const s=4000/Math.min(rasterW,rasterH);rasterW=Math.round(rasterW*s);rasterH=Math.round(rasterH*s);}

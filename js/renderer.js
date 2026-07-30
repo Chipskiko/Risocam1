@@ -1464,7 +1464,10 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   // (its "Screen 40" preset measures 38.6 lpi), so free pitch IS authentic.
   // Only the threshold-matrix family + measured tone curve snap to the
   // nearest stored frequency (43/71/106) in the unit-8 bind above.
-  gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(dw,dh)/(8.267*cached.lpi))*(window._dotSpacing||1));
+  // SPACING applies to SCREEN only: u_screenCell is also the LINES pitch and
+  // the LETTERS lattice, and the slider (screen panel) kept silently
+  // rescaling those after a mode switch (review finding).
+  gl.uniform1f(locs.u_screenCell,Math.max(1.5,Math.min(dw,dh)/(8.267*cached.lpi)*(mode==='screen'?(window._dotSpacing||1):1)));
   gl.uniform3fv(locs.u_paperColor,cached.paperColor);
   gl.uniform3f(locs.u_paper, 0.910, 0.912, 0.908);
   gl.uniform1f(locs.u_showCropMarks, cached.showCropMarks ? 1.0 : 0.0);
@@ -2537,7 +2540,7 @@ function _initAmtWorker(){
   _amtWorkerReady = (async () => {
     let blobUrl;
     try {
-      blobUrl = await _buildWorkerBlobUrl('js/riso-amt-worker.js?v=6');
+      blobUrl = await _buildWorkerBlobUrl('js/riso-amt-worker.js?v=7');
     } catch (e) {
       console.warn('[RisoAmt] worker blob build failed, falling back to sync:', e);
       _amtWorkerPool = [];
@@ -2824,7 +2827,7 @@ async function _runAmtPrepassImpl(){
   // of the directional difference — A/B before finals. WebGL2-only (the
   // strided upload needs UNPACK_ROW_LENGTH). Falls back to the CPU band path
   // on any failure.
-  if (window._amtWebGPU && window.RisoAmtGPU && (window._amtMasterFmt || {}).channels === 1) {
+  if (window._amtWebGPU && window.RisoAmtGPU && (window._amtMasterFmt || {}).channels === 1 && cached.sepType !== 2) { // GPU prepass carries only ink/paper chords — RGB extraction needs the CPU path
     try {
       const okGpu = await window.RisoAmtGPU.ready();
       if (okGpu) {
@@ -3511,6 +3514,7 @@ R.setRisoParams = function(opts){
   let fsAffected = false;
   const gpuSpread = (window._gpuInkSpread ?? true);
   if(typeof opts.dpi === 'number'){
+    window._amtDpiUserSet = true;   // an explicit density choice (UI button / debug slider)
     window._amtScanDpi = Math.max(50, Math.min(1200, opts.dpi|0));
     fsAffected = true;
   }
@@ -3614,7 +3618,7 @@ function _runTonePrepass(dw, dh){
       // u_aMin/u_aDims). Pitch floors at the dot cell and rises if the lattice
       // would overflow 1018/side (texture = 2x2 quadrants, 2048 GL-safe) —
       // at that density cells are ~2px and per-cell tone is invisible anyway.
-      const cellBase = Math.max(1.5, Math.min(dw, dh) / (8.267 * cached.lpi)) * (window._dotSpacing || 1); // free pitch (matches u_screenCell incl. spacing)
+      const cellBase = Math.max(1.5, Math.min(dw, dh) / (8.267 * cached.lpi) * (window._dotSpacing || 1)); // free pitch (matches u_screenCell incl. spacing; clamp OUTSIDE the multiply so sp<1 can't yield sub-1.5px cells)
       for(let li = 0; li < 4; li++){
         const ang = (layerAngles[li] || 0) * 0.01745329;
         const ca = Math.cos(ang), sa = Math.sin(ang);

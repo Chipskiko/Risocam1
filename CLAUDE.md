@@ -63,7 +63,10 @@ CACHE bump. Deploy is per-file curl to the Neocities API; the key lives in
 `../deploy-neocities.sh` and must never be echoed.
 
 `node tools/build-wgsl.mjs` regenerates `js/gen/shaders-wgsl.js` and doubles as
-a GLSL compile validator — run it after any shader edit.
+a GLSL compile validator — run it after any shader edit. When the generated
+file changes, ALSO bump its `?v=` pin inside `js/webgpu-live.js` (it fetches
+the file itself; a stale cached copy fails the sha check and silently
+disables the WebGPU path) and webgpu-live.js's own pin in index.html.
 
 ## Open: the coverage transfer defect
 

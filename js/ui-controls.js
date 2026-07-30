@@ -14,6 +14,10 @@ function togglePicker(ch){
 
 // Mono detection: all channels set to the same ink
 function isMono(){
+  // RGB sep is never mono: slots are fixed channel extractions, and one ink
+  // across all three is a legitimate triple-exposure — the MONO row hid the
+  // per-plate controls while three plates kept rendering (review finding).
+  if(cached.sepType===2) return false;
   const active=channels.filter(c=>c!==null);
   return active.length>=1 && new Set(active).size===1;
 }
@@ -536,7 +540,15 @@ function saveProfCreator(){
 
 function applyProf(p){
   activeProf=p;
-  channels=mapProfileToSlots(p.colors);
+  // RGB sep: slots are fixed channel extractions (R/G/B + empty 4th), so a
+  // palette recolors the three plates instead of refilling 4 CMYK slots —
+  // mapProfileToSlots would leave a phantom ink in slot 3.
+  if(cached.sepType===2){
+    channels=[p.colors[0]||'Bright Red', p.colors[1]||p.colors[0]||'Green',
+              p.colors[2]||p.colors[0]||'Blue', null];
+  } else {
+    channels=mapProfileToSlots(p.colors);
+  }
   // Apply density presets if profile has them
   if(p.dens){
     for(let i=0;i<4;i++) cached.layerDens[i]=p.dens[i]||88;
@@ -578,6 +590,10 @@ function channelsMatchProfile(p){
 }
 
 function updateUI(){
+  // Sep-mode buttons follow cached.sepType — undo/restore assigns it
+  // directly and previously left stale active classes (review finding).
+  const _sb=[['sepCmyk',0],['sepRgb',2],['sepApprox',1],['phSepCmyk',0],['phSepRgb',2],['phSepApprox',1]];
+  for(const [id,v] of _sb){const b=el(id); if(b) b.classList.toggle('active',cached.sepType===v);}
   // Profiles — derive the active pill from actual channel state
   const all=allProfiles();
   const matchIdx=all.findIndex(channelsMatchProfile);
@@ -747,6 +763,13 @@ function setSepType(t){
     onChannelsChanged();
     buildChannelUI();
     if(el('phChannelList')&&el('phChannelList').children.length) buildChannelUI('phChannelList');
+  }
+  // RISO/flat masters bake the SEPARATION into the CPU prepass — switching
+  // sep mode without a re-bake leaves the old separation's masters rendering
+  // (stale-look bug, same family as the sepType-less ghosts).
+  if(entering && (window._mode==='flat'||window._mode==='stipple')){
+    if(R.invalidateAmt) R.invalidateAmt();
+    if(R.runMasterPrepass) setTimeout(R.runMasterPrepass, 0);
   }
   // Show/hide CMYK tuning (only relevant in CMYK mode)
   updateUI();

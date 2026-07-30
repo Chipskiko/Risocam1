@@ -63,8 +63,6 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
   .app-container{grid-template-columns:minmax(0,1fr);padding:12px;gap:12px;overflow-y:auto;-webkit-overflow-scrolling:touch;align-items:start}
   .controls-panel,.channel-list,.ch-slot,.ch-mono-row,.paper-compact{min-width:0}
   .ch-angles{flex-wrap:wrap;justify-content:flex-end;min-width:0}
-  .viewfinder-panel>#gl{max-height:52vh}
-  .controls-panel{overflow:visible;min-height:0}
 }
 @media(max-width:600px){.app-container{padding:8px;gap:8px}
   .image-controls{flex-wrap:nowrap}
@@ -553,4 +551,12 @@ body.phone-mode.ph-ls.ph-ls-cw .ph-overlay{padding-bottom:calc(env(safe-area-ins
    Keep this block last. */
 @media(max-width:900px){
   .viewfinder-panel{position:sticky;top:0;z-index:30;background:var(--bg)}
+  /* These two must ALSO live down here: the base #gl (75vh) and pdf-mode
+     (65vh/min-400px) height rules are later in source than the top media
+     block and win at equal specificity — the 52vh cap up there was dead
+     (third instance of the source-order trap in this file). The pdf-mode
+     cap keeps the sticky panel from occluding the whole scrollport in
+     short windows. */
+  .viewfinder-panel>#gl{max-height:52vh}
+  body.pdf-mode .viewfinder-panel{height:52vh!important;min-height:220px}
 }
