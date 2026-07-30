@@ -378,7 +378,7 @@ function phPopulateOverlay(name){
   if(name==='channels'){
     const body=el('phChannelsBody');
     if(!body.dataset.built){
-      body.innerHTML='<div style="display:flex;gap:0;margin:4px 12px 6px"><button class="header-mode-btn '+(cached.sepType===0?'active':'')+'" id="phSepCmyk" onclick="R.setSepType(0)">CMYK</button><button class="header-mode-btn '+(cached.sepType===1?'active':'')+'" id="phSepApprox" onclick="R.setSepType(1)">SPOT</button></div><div class="channel-list" id="phChannelList"></div>';
+      body.innerHTML='<div style="display:flex;gap:0;margin:4px 12px 6px"><button class="header-mode-btn '+(cached.sepType===0?'active':'')+'" id="phSepCmyk" onclick="R.setSepType(0)">CMYK</button><button class="header-mode-btn '+(cached.sepType===2?'active':'')+'" id="phSepRgb" onclick="R.setSepType(2)">RGB</button><button class="header-mode-btn '+(cached.sepType===1?'active':'')+'" id="phSepApprox" onclick="R.setSepType(1)">SPOT</button></div><div class="channel-list" id="phChannelList"></div>';
       body.dataset.built='1';
     }
     R.buildChannelUI('phChannelList');

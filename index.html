@@ -95,7 +95,7 @@
   <div class="controls-panel">
     <!-- Channels -->
     <div class="control-section ctrl-group" data-ctrl="channels">
-      <div class="section-header ctrl-group__title">PLATES <span class="count" id="layerCount">4</span><span style="margin-left:auto;display:flex;gap:6px;align-items:center"><button class="header-mode-btn ctrl-toggle" id="pdfModeBtn" onclick="R.togglePdfMode()" title="PDF mode — route vector text to a single plate (avoids letterforms smearing across multiple plates from misregistration). Only available when source is a PDF." style="padding:2px 6px;font-size:9px;display:none">PDF</button><button class="header-mode-btn ctrl-toggle" id="lockAnglesBtn" onclick="R.lockCmykAngles()" title="Snap all four plate angles to the standard CMYK rosette default: C=15° M=75° Y=0° K=45° (only relevant in SCREEN / LINES modes)" style="padding:2px 6px;font-size:9px;display:none">DEFAULT</button><span style="display:flex;gap:0"><button class="header-mode-btn ctrl-toggle active" id="sepCmyk" onclick="R.setSepType(0)">CMYK</button><button class="header-mode-btn ctrl-toggle" id="sepApprox" onclick="R.setSepType(1)">SPOT</button></span></span></div>
+      <div class="section-header ctrl-group__title">PLATES <span class="count" id="layerCount">4</span><span style="margin-left:auto;display:flex;gap:6px;align-items:center"><button class="header-mode-btn ctrl-toggle" id="pdfModeBtn" onclick="R.togglePdfMode()" title="PDF mode — route vector text to a single plate (avoids letterforms smearing across multiple plates from misregistration). Only available when source is a PDF." style="padding:2px 6px;font-size:9px;display:none">PDF</button><button class="header-mode-btn ctrl-toggle" id="lockAnglesBtn" onclick="R.lockCmykAngles()" title="Snap all four plate angles to the standard CMYK rosette default: C=15° M=75° Y=0° K=45° (only relevant in SCREEN / LINES modes)" style="padding:2px 6px;font-size:9px;display:none">DEFAULT</button><span style="display:flex;gap:0"><button class="header-mode-btn ctrl-toggle active" id="sepCmyk" onclick="R.setSepType(0)">CMYK</button><button class="header-mode-btn ctrl-toggle" id="sepRgb" onclick="R.setSepType(2)" title="RGB separation — each plate carries the INVERSE of one RGB channel (classic riso RGB workflow: overprints reconstruct the image with an inverted, saturated cast)">RGB</button><button class="header-mode-btn ctrl-toggle" id="sepApprox" onclick="R.setSepType(1)">SPOT</button></span></span></div>
       <div class="channel-list" id="channelList"></div>
       <!-- Text channel row — visible only in PDF mode. Color choice MUST
            come from the currently-active channels (max 4 inks total cap)
@@ -2093,7 +2093,17 @@ float trimCorner(vec2 uv, vec2 corner, vec2 dir, float armLenH, float armLenV, f
 // The grain/halftone texture is applied separately in main() as a visual effect.
 float getCoverage(vec4 cmyk, vec2 rpx, int idx, int ch, float noise1, float dens, float pf, vec3 srcRGB, float inkGamma){
   if(dens < 0.5) return 0.0; // density slider at 0 = no ink at all
-  float ink = getChannel(cmyk, ch, u_layers, srcRGB);
+  float ink;
+  if(u_sepType == 2){
+    // RGB separation: plate idx carries the INVERSE of that RGB channel —
+    // the classic riso RGB workflow (white = no ink, pure red = full ink on
+    // the green + blue plates). Slot 3 stays empty in this mode.
+    ink = (idx == 0) ? (1.0 - srcRGB.r)
+        : (idx == 1) ? (1.0 - srcRGB.g)
+        : (idx == 2) ? (1.0 - srcRGB.b) : 0.0;
+  } else {
+    ink = getChannel(cmyk, ch, u_layers, srcRGB);
+  }
   ink *= dens * 0.01;
 
   // Per-ink gamma + S-curve: grain-physics tone shaping (from v8). In SCREEN
@@ -2953,7 +2963,12 @@ float asciiCov(vec2 suv, vec2 srpx, int idx, vec2 boxHalf){
   }
   src = adjustRGB(src, srpx);
   float ink;
-  if(u_sepType == 1){
+  if(u_sepType == 2){
+    // RGB separation (see getCoverage): inverse channel per plate slot.
+    ink = (idx == 0) ? (1.0 - src.r)
+        : (idx == 1) ? (1.0 - src.g)
+        : (idx == 2) ? (1.0 - src.b) : 0.0;
+  } else if(u_sepType == 1){
     vec4 w = koExclusive(nnlsDecompose(u_layers, u_paperColor, src, u_ink0, u_ink1, u_ink2, u_ink3));
     ink = idx == 0 ? w.x : (idx == 1 ? w.y : (idx == 2 ? w.z : w.w));
   } else {
@@ -3725,13 +3740,13 @@ void main(){
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/riso-amt-webgpu.js?v=6"></script>
 <script src="js/gen/bnvc256.js?v=2"></script>
-<script src="js/renderer.js?v=203"></script>
+<script src="js/renderer.js?v=204"></script>
 <script src="js/source.js?v=57"></script>
 <script src="js/save.js?v=74"></script>
 <script src="js/webgpu-live.js?v=5"></script>
-<script src="js/ui-controls.js?v=79"></script>
+<script src="js/ui-controls.js?v=80"></script>
 <script src="js/ui-paper.js?v=14"></script>
-<script src="js/phone.js?v=31"></script>
+<script src="js/phone.js?v=32"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL
      service workers, and even the attempt makes the browser print a CSP-violation report
      that no .catch can silence. Offline caching works where CSP allows (e.g. localhost).

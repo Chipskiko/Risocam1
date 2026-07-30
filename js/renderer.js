@@ -2912,10 +2912,16 @@ async function _runAmtPrepassImpl(){
       channelMeta.push(null);
       continue;
     }
-    const key = Math.round(IR) + ',' + Math.round(IG) + ',' + Math.round(IB);
+    // RGB sep mode: the target is the INVERSE of this slot's RGB channel,
+    // not the ink-chord projection — key per CHANNEL (two slots sharing an
+    // ink must still extract different channels).
+    const isRgbSep = (cached.sepType === 2);
+    const key = isRgbSep ? ('rgb' + chIdx)
+                         : (Math.round(IR) + ',' + Math.round(IG) + ',' + Math.round(IB));
     let p = projByKey.get(key);
     if(!p){
-      p = { buf: new Uint8Array(W * H), dr, dg, db, inv: 1 / dLen2 };
+      p = { buf: new Uint8Array(W * H), dr, dg, db, inv: 1 / dLen2,
+            rgbCh: isRgbSep ? Math.min(chIdx, 2) : -1 };
       projByKey.set(key, p);
       projJobs.push(p);
     }
@@ -2932,7 +2938,12 @@ async function _runAmtPrepassImpl(){
       const vr = src[i] - PR, vg = src[i+1] - PG, vb = src[i+2] - PB;
       for(let k = 0; k < nj; k++){
         const p = projJobs[k];
-        let t = (vr*p.dr + vg*p.dg + vb*p.db) * p.inv;
+        let t;
+        if(p.rgbCh >= 0){
+          t = 1 - src[i + p.rgbCh] / 255;      // RGB sep: inverse channel
+        } else {
+          t = (vr*p.dr + vg*p.dg + vb*p.db) * p.inv;
+        }
         if(t < 0) t = 0; else if(t > 1) t = 1;
         // Master burn floor (same knee as the GPU decision paths): sub-2%
         // coverage doesn't burn — kills sensor-noise speckle on blank paper

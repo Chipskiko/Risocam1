@@ -279,14 +279,18 @@ function buildChannelUI(targetId){
   }
 
   // ─── Multi-layer mode: individual rows with drag handles ───
-  const isSpot=cached.sepType===1;
+  // RGB sep renders spot-STYLE rows (swatch + slider, no CMYK badges) but
+  // with R/G/B slot labels, NO ink dedupe (each slot is a distinct channel
+  // extraction even when two share an ink), and no remove/add (fixed 3).
+  const isRgbSep=cached.sepType===2;
+  const isSpot=cached.sepType===1||isRgbSep;
   const seenSpot=new Set();
   let spotNum=0;
   for(let pos=0;pos<4;pos++){
     const i=layerOrder[pos]; // actual CMYK channel index
     const name=channels[i];
     if(isSpot){
-      if(name===null || seenSpot.has(name)) continue; // show only unique inks in spot mode
+      if(name===null || (!isRgbSep && seenSpot.has(name))) continue;
       seenSpot.add(name);
     }
     spotNum++;
@@ -294,7 +298,7 @@ function buildChannelUI(targetId){
     const hex=rc?rc.hex:'#ccc';
     const isOpen=openPicker===i;
     const m=CH_META[i];
-    const badgeLabel=isSpot?spotNum:m.badge;
+    const badgeLabel=isRgbSep?(['R','G','B','–'][i]):(isSpot?spotNum:m.badge);
     const badgeCls=isSpot?'ch-badge-spot':m.cls;
     const isWhite=name==='White';
     const dens=Math.round(cached.layerDens[i]);
@@ -303,7 +307,7 @@ function buildChannelUI(targetId){
     const isLinked=i in linkedColor;
 
     const uniqueCount=new Set(channels.filter(c=>c!==null)).size;
-    const canRemove=isSpot && uniqueCount>1;
+    const canRemove=isSpot && !isRgbSep && uniqueCount>1;
     let html=`<div class="ch-slot${layerVisible[i]?'':' layer-hidden'}" data-ch="${i}" data-pos="${pos}">`;
     // Compact row: [drag] [badge] [color-btn] [density slider] [remove btn] [angle buttons]
     html+=`<div class="ch-row">
@@ -393,8 +397,8 @@ function buildChannelUI(targetId){
     }
     list.insertAdjacentHTML('beforeend',html);
   }
-  // Add spot channel button (only in spot mode, max 4 unique)
-  if(isSpot){
+  // Add spot channel button (only in spot mode, max 4 unique; RGB is fixed 3)
+  if(isSpot && !isRgbSep){
     const uniqueCount=new Set(channels.filter(c=>c!==null)).size;
     if(uniqueCount<4){
       list.insertAdjacentHTML('beforeend',`<div class="ch-add-row" onclick="R.addSpotChannel()"><div class="ch-add-swatch">+</div><span class="ch-add-label">ADD COLOR</span></div>`);
@@ -724,14 +728,26 @@ function setMode(m){
   markDirty();
 }
 function setSepType(t){
+  const entering = cached.sepType !== t;
   cached.sepType=t;
-  const cBtn=el('sepCmyk'),aBtn=el('sepApprox');
+  const cBtn=el('sepCmyk'),aBtn=el('sepApprox'),rBtn=el('sepRgb');
   if(cBtn) cBtn.classList.toggle('active',t===0);
   if(aBtn) aBtn.classList.toggle('active',t===1);
+  if(rBtn) rBtn.classList.toggle('active',t===2);
   // Phone buttons
-  const pc=el('phSepCmyk'),pa=el('phSepApprox');
+  const pc=el('phSepCmyk'),pa=el('phSepApprox'),pr=el('phSepRgb');
   if(pc) pc.classList.toggle('active',t===0);
   if(pa) pa.classList.toggle('active',t===1);
+  if(pr) pr.classList.toggle('active',t===2);
+  // RGB mode is 3 fixed extractions (R/G/B by slot); seed matching inks.
+  // The inks stay user-editable — only the CHANNEL each slot extracts is
+  // fixed. Leaving RGB keeps the inks (pick a palette to reset).
+  if(t===2 && entering){
+    channels=['Bright Red','Green','Blue',null];
+    onChannelsChanged();
+    buildChannelUI();
+    if(el('phChannelList')&&el('phChannelList').children.length) buildChannelUI('phChannelList');
+  }
   // Show/hide CMYK tuning (only relevant in CMYK mode)
   updateUI();
   markDirty();
