@@ -1227,14 +1227,13 @@ function _buildGlyphAtlas(){
   console.log('[glyphAtlas] built:', glyphs.length, 'glyphs (georgian ' + (glyphs.some(g => georgian.indexOf(g.ch) >= 0) ? 'OK' : 'unavailable — latin/symbol fallback') + ')');
 }
 
-// RISO dot reconstruction half-width for FS masters (u_amtCrisp). The 8-tap
-// ring + LINEAR sampling of the blurred 1-bit master gives a smooth coverage
-// field; re-thresholding it through smoothstep(0.5 +- CRISP) turns square
-// master texels into ROUND organic dots and rounds the serpentine-FS edge
-// comb (the 2-row sawtooth at hard edges) into ink-like scallops. 0.30 =
-// the 'soft organic riso dot' end of the documented 0.08..0.30 range.
-// Stipple keeps its own value; 0 would be the old square-texel look.
-var RISO_DOT_CRISP = 0.30;
+// RISO FS crisp re-threshold: OFF. Round dots now come from the analytic
+// union-of-discs path in the shader (active when a master texel spans
+// >=1.8 output px), which returns BEFORE the crisp stage — so crisp only
+// ever ran on the sub-pixel-texel averaging path, where re-thresholding a
+// smooth mid-grey coverage field binarised it into patchy light/dark
+// BLOTCHES (user report). Stipple still sets its own crisp value.
+var RISO_DOT_CRISP = 0.0;
 function setRenderUniforms(dw, dh, scale, isPhone){
   const layers=activeLayers();
   const nLayers=layers.length;

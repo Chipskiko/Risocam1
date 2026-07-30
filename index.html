@@ -2375,8 +2375,17 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
             else if(idx == 2) v = texture2D(u_amtMaster2, cUV).r;
             else              v = texture2D(u_amtMaster3, cUV).r;
             if(v > 0.5){
-              float d = length(tc - (cell + 0.5));
-              ink = max(ink, smoothstep(rDot + aa, rDot - aa, d));
+              // Per-dot placement + size jitter (deterministic hash of the
+              // cell and plate): thermal dots sit on the head's grid, but on
+              // paper the ink wicks each one slightly off-centre and no two
+              // spread identically — without this the enlarged discs read as
+              // a synthetic square lattice (user report). ±0.19 texel of
+              // drift and ±12% radius keep neighbours within the 3x3 reach.
+              vec2 jit = vec2(hash(cell * 1.7 + float(idx) * 3.1),
+                              hash(cell * 2.3 + 7.0 + float(idx))) - 0.5;
+              float rj = rDot * (0.88 + 0.24 * hash(cell * 3.7 + float(idx) * 5.0));
+              float d = length(tc - (cell + 0.5 + jit * 0.38));
+              ink = max(ink, smoothstep(rj + aa, rj - aa, d));
             }
           }
         }
@@ -3716,7 +3725,7 @@ void main(){
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/riso-amt-webgpu.js?v=6"></script>
 <script src="js/gen/bnvc256.js?v=2"></script>
-<script src="js/renderer.js?v=201"></script>
+<script src="js/renderer.js?v=202"></script>
 <script src="js/source.js?v=57"></script>
 <script src="js/save.js?v=74"></script>
 <script src="js/webgpu-live.js?v=5"></script>
