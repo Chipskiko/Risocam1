@@ -573,7 +573,7 @@ function initGL(onReady){
   // master texels → averages the dot-stochastic noise into a smooth halftone.
   if(locs.u_amtTexel) gl.uniform2f(locs.u_amtTexel, 1/1241, 1/931);  // placeholder
   if(locs.u_amtSuperSample) gl.uniform1f(locs.u_amtSuperSample, 1.5);
-  if(locs.u_amtCrisp) gl.uniform1f(locs.u_amtCrisp, 0.0);
+  if(locs.u_amtCrisp) gl.uniform1f(locs.u_amtCrisp, RISO_DOT_CRISP);
   if(locs.u_amtJitter) gl.uniform1f(locs.u_amtJitter, 1.0);
   // (D) GPU ink-spread radius in master texels. 0 = no spread (CPU blur path).
   // Set per-prepass from the ink-spread slider; default seeded here.
@@ -1227,6 +1227,14 @@ function _buildGlyphAtlas(){
   console.log('[glyphAtlas] built:', glyphs.length, 'glyphs (georgian ' + (glyphs.some(g => georgian.indexOf(g.ch) >= 0) ? 'OK' : 'unavailable — latin/symbol fallback') + ')');
 }
 
+// RISO dot reconstruction half-width for FS masters (u_amtCrisp). The 8-tap
+// ring + LINEAR sampling of the blurred 1-bit master gives a smooth coverage
+// field; re-thresholding it through smoothstep(0.5 +- CRISP) turns square
+// master texels into ROUND organic dots and rounds the serpentine-FS edge
+// comb (the 2-row sawtooth at hard edges) into ink-like scallops. 0.30 =
+// the 'soft organic riso dot' end of the documented 0.08..0.30 range.
+// Stipple keeps its own value; 0 would be the old square-texel look.
+var RISO_DOT_CRISP = 0.30;
 function setRenderUniforms(dw, dh, scale, isPhone){
   const layers=activeLayers();
   const nLayers=layers.length;
@@ -2845,7 +2853,7 @@ async function _runAmtPrepassImpl(){
           if (locs.u_amtTexel) gl.uniform2f(locs.u_amtTexel, 1.0 / W, 1.0 / H);
           if (locs.u_amtInkSpread) gl.uniform1f(locs.u_amtInkSpread, (window._gpuInkSpread ?? true) ? inkSpreadG : 0.0);
           if (locs.u_amtSuperSample) gl.uniform1f(locs.u_amtSuperSample, 1.5); // FS masters need the grain-touch footprint (stipple lowers it)
-          if (locs.u_amtCrisp) gl.uniform1f(locs.u_amtCrisp, 0.0);
+          if (locs.u_amtCrisp) gl.uniform1f(locs.u_amtCrisp, RISO_DOT_CRISP);
           const D = window.RisoAmt.DEFAULTS;
           const res = await window.RisoAmtGPU.runChannelsFromRGBA(src, W, H, chans, {
             coverageScale: _runOpts.coverageScale,
@@ -2960,7 +2968,7 @@ async function _runAmtPrepassImpl(){
   if(locs.u_amtTexel) gl.uniform2f(locs.u_amtTexel, 1.0 / W, 1.0 / H);
   if(locs.u_amtInkSpread) gl.uniform1f(locs.u_amtInkSpread, gpuSpread ? inkSpread : 0.0);
   if(locs.u_amtSuperSample) gl.uniform1f(locs.u_amtSuperSample, 1.5); // FS masters need the grain-touch footprint (stipple lowers it)
-  if(locs.u_amtCrisp) gl.uniform1f(locs.u_amtCrisp, 0.0);
+  if(locs.u_amtCrisp) gl.uniform1f(locs.u_amtCrisp, RISO_DOT_CRISP);
 
   // (#3) BAND-PARALLEL FS: each channel splits into K horizontal bands that
   // dither concurrently across the pool, so all cores work even on a 1-2 color
