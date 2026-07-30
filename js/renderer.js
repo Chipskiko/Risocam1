@@ -2538,7 +2538,7 @@ function _initAmtWorker(){
   _amtWorkerReady = (async () => {
     let blobUrl;
     try {
-      blobUrl = await _buildWorkerBlobUrl('js/riso-amt-worker.js?v=4');
+      blobUrl = await _buildWorkerBlobUrl('js/riso-amt-worker.js?v=5');
     } catch (e) {
       console.warn('[RisoAmt] worker blob build failed, falling back to sync:', e);
       _amtWorkerPool = [];
@@ -2849,7 +2849,7 @@ async function _runAmtPrepassImpl(){
         }
         if (chans.length) {
           // Shader sampling params (normally set just before the CPU dispatch).
-          const inkSpreadG = window._inkSpread != null ? window._inkSpread : 0.5;
+          const inkSpreadG = window._inkSpread != null ? window._inkSpread : 0.7;
           if (locs.u_amtTexel) gl.uniform2f(locs.u_amtTexel, 1.0 / W, 1.0 / H);
           if (locs.u_amtInkSpread) gl.uniform1f(locs.u_amtInkSpread, (window._gpuInkSpread ?? true) ? inkSpreadG : 0.0);
           if (locs.u_amtSuperSample) gl.uniform1f(locs.u_amtSuperSample, 1.5); // FS masters need the grain-touch footprint (stipple lowers it)
@@ -2960,7 +2960,7 @@ async function _runAmtPrepassImpl(){
   //     master textures stay binary (NEAREST), preserving FS character.
   const tProj = performance.now() - tProj0;
   const gpuSpread = (window._gpuInkSpread ?? true);
-  const inkSpread = window._inkSpread != null ? window._inkSpread : 0.5;
+  const inkSpread = window._inkSpread != null ? window._inkSpread : 0.7;
   const sigma = gpuSpread ? 0 : inkSpread;
   const tPar0 = performance.now();
   // Tell the shader the master texel size + ink-spread radius (in texels) so
@@ -3530,7 +3530,7 @@ R.setRisoParams = function(opts){
   }
   return {
     dpi: window._amtScanDpi || 150,
-    inkSpread: window._inkSpread != null ? window._inkSpread : 0.5,
+    inkSpread: window._inkSpread != null ? window._inkSpread : 0.7,
     maxCoverage: window._riso_maxCoverage != null ? window._riso_maxCoverage : 1.7,
     thresholdNoise: window._riso_thresholdNoise != null ? window._riso_thresholdNoise : 0.0
   };

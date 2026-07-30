@@ -317,8 +317,25 @@ function _runFsDriver(dens, W, H, serpentine, globalRowOffset) {
   let errNext = new Int32Array(W + 2);
   // Column counter continues as if rows 0..gy0-1 were already scanned.
   let cc = (gy0 * W) % TA_LEN;
+  // EDGE-DAMPED carries: serpentine FS at a hard density edge oscillates —
+  // error piles into the boundary column, flows down a row, and the reversed
+  // row shoves it back, leaving a 2-row comb of dots hugging the edge. On a
+  // real print (600 dpi) the comb is ±42 µm and ink bleed swallows it; at the
+  // user-selected coarse dot sizes it scales up into a visible sawtooth that
+  // real riso edges don't show.
+  // DIRECTION-AWARE: only carries toward a much LIGHTER neighbour are
+  // quartered — the pile-up direction (error trapped on the light side of
+  // the wall is what resonates into the comb). Carries INTO darker regions
+  // stay full: they are the diffusion warm-up that lets a solid region hit
+  // its duty cycle immediately — symmetric damping starved it and left a
+  // pinhole fringe inside solid blacks (measured on the Node harness,
+  // scratchpad fs-edge-test.mjs). Interior carries (the texture the driver
+  // tables were byte-matched against) are untouched.
+  const EDGE_T = 96;
   for (let y = 0; y < H; y++) {
     const row = y * W;
+    const rowD = row + W;                 // next row base (may be past end)
+    const hasDown = y + 1 < H;
     const goingRight = !serpentine || ((y + gy0) & 1) === 0;
     if (goingRight) {
       for (let x = 0; x < W; x++) {
@@ -329,17 +346,27 @@ function _runFsDriver(dens, W, H, serpentine, globalRowOffset) {
         if (++cc === TA_LEN) cc = 0;
         const base = (errCur[x + 1] >> 8) + pInv;
         let newErr;
-        if (base + ditherAdj > 254) {
+        // SOLID FLOOD: source-solid pixels (dens >= 192 post-tone-curve; the
+        // solid peak is ~198) always burn. FS warm-up at the first rows/cols
+        // of a solid region left a pinhole fringe hugging every edge (present
+        // in the pre-damping baseline too — measured on the Node harness);
+        // real masters burn every dot at solid input, and paper texture on
+        // solids comes from the PBR sheet at composite, not master holes.
+        if (pInv >= 192 || base + ditherAdj > 254) {
           bits[(row + x) >> 3] |= 1 << (7 - (x & 7));
           newErr = base - 255;
         } else {
           newErr = base;
         }
         if (newErr !== 0) {
-          errCur[x + 2]  += newErr * 112;   // ×7/16 (right)
-          errNext[x]     += newErr * 48;    // ×3/16 (below-left)
-          errNext[x + 1] += newErr * 80;    // ×5/16 (below)
-          errNext[x + 2] += newErr * 16;    // ×1/16 (below-right)
+          const eR  = (x + 1 < W  && (pInv - dens[row + x + 1]) > EDGE_T) ? 28 : 112;
+          const eBL = (hasDown && x > 0     && (pInv - dens[rowD + x - 1]) > EDGE_T) ? 12 : 48;
+          const eB  = (hasDown              && (pInv - dens[rowD + x])     > EDGE_T) ? 20 : 80;
+          const eBR = (hasDown && x + 1 < W && (pInv - dens[rowD + x + 1]) > EDGE_T) ? 4  : 16;
+          errCur[x + 2]  += newErr * eR;    // ×7/16 (right)
+          errNext[x]     += newErr * eBL;   // ×3/16 (below-left)
+          errNext[x + 1] += newErr * eB;    // ×5/16 (below)
+          errNext[x + 2] += newErr * eBR;   // ×1/16 (below-right)
         }
       }
     } else {
@@ -349,17 +376,21 @@ function _runFsDriver(dens, W, H, serpentine, globalRowOffset) {
         if (++cc === TA_LEN) cc = 0;
         const base = (errCur[x + 1] >> 8) + pInv;
         let newErr;
-        if (base + ditherAdj > 254) {
+        if (pInv >= 192 || base + ditherAdj > 254) {   // SOLID FLOOD (see L->R note)
           bits[(row + x) >> 3] |= 1 << (7 - (x & 7));
           newErr = base - 255;
         } else {
           newErr = base;
         }
         if (newErr !== 0) {
-          errCur[x]      += newErr * 112;   // ×7/16 (left — reversed row)
-          errNext[x + 2] += newErr * 48;    // ×3/16 (below-right)
-          errNext[x + 1] += newErr * 80;    // ×5/16 (below)
-          errNext[x]     += newErr * 16;    // ×1/16 (below-left)
+          const eL  = (x > 0     && (pInv - dens[row + x - 1]) > EDGE_T) ? 28 : 112;
+          const eBR = (hasDown && x + 1 < W && (pInv - dens[rowD + x + 1]) > EDGE_T) ? 12 : 48;
+          const eB  = (hasDown              && (pInv - dens[rowD + x])     > EDGE_T) ? 20 : 80;
+          const eBL = (hasDown && x > 0     && (pInv - dens[rowD + x - 1]) > EDGE_T) ? 4  : 16;
+          errCur[x]      += newErr * eL;    // ×7/16 (left — reversed row)
+          errNext[x + 2] += newErr * eBR;   // ×3/16 (below-right)
+          errNext[x + 1] += newErr * eB;    // ×5/16 (below)
+          errNext[x]     += newErr * eBL;   // ×1/16 (below-left)
         }
       }
     }
