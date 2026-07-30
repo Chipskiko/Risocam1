@@ -1511,14 +1511,16 @@ float risoMatrixDither(float val, vec2 pix, int idx){
   if(u_useAmt > 0.5){
     // DEBUG BASELINE: bypass shear, gamma, smoothstep — raw V&C step
     if(u_risoDebugBaseline > 0.5){
-      vec2 bnUV_raw = pix / 128.0;
-      float thr_raw = texture2D(u_bnVC, bnUV_raw).r;
+      vec2 bnUV_raw = pix / max(u_bnSize, 128.0);
+      float thr_raw = texture2D(u_bnVC, bnUV_raw).g;   // G = raw uniform ranks
       return step(thr_raw, val);
     }
     // GPU Grain Touch: V&C blue-noise threshold + density gamma.
-    // 128 = renderer.js BN_SIZE — keep in sync.
-    vec2 bnUV = pix * u_risoGrainScale / 128.0;
-    float threshold = texture2D(u_bnVC, bnUV).r;
+    // u_bnSize follows the uploaded mask (256 baked / 128 fallback); G holds
+    // the RAW uniform ranks this path's gamma was calibrated against — the
+    // R channel is CDF-remapped for the grain engine and reads as noise here.
+    vec2 bnUV = pix * u_risoGrainScale / max(u_bnSize, 128.0);
+    float threshold = texture2D(u_bnVC, bnUV).g;
     float density = pow(max(val, 0.0001), 1.0 / max(u_risoGamma, 0.1));
     return step(threshold, density);
   }
@@ -2210,8 +2212,8 @@ float getCoverageApprox(float weight, vec2 rpx, int idx, float noise1, float den
 // 60fps. Used as the RISO-mode fallback for LIVE sources (camera/video), where
 // the CPU master is too slow to rebuild per frame.
 float gpuGrainTouch(float val, vec2 pix){
-  vec2 bnUV = pix * u_risoGrainScale / 128.0;       // 128 = BN_SIZE (renderer.js)
-  float threshold = texture2D(u_bnVC, bnUV).r;
+  vec2 bnUV = pix * u_risoGrainScale / max(u_bnSize, 128.0);
+  float threshold = texture2D(u_bnVC, bnUV).g;      // G = raw uniform ranks
   float density = pow(clamp(val, 0.0, 1.0), 1.0 / max(u_risoGamma, 0.1));
   return step(threshold, density);
 }
@@ -2260,7 +2262,7 @@ float g_dissolveThr = -1.0;
 float dissolveInk(float d, vec2 uv){
   if(u_inkDissolve < 0.005) return d;
   if(g_dissolveThr < 0.0){
-    float bn = texture2D(u_bnVC, uv * REF * 0.35 / 128.0).r;   // REPEAT+NEAREST
+    float bn = texture2D(u_bnVC, uv * REF * 0.35 / max(u_bnSize, 128.0)).g;   // REPEAT+NEAREST, raw ranks
     float h = 0.14; // map mean — neutral when the PBR sheet is off
     if(u_usePaperPBR > 0.5) h = texture2D(u_paperPBR, paperPbrUV(uv)).r;
     // Peaks (h above mean) pull the threshold DOWN → ink catches there first.
@@ -3681,8 +3683,8 @@ void main(){
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/riso-amt-webgpu.js?v=6"></script>
-<script src="js/gen/bnvc256.js?v=1"></script>
-<script src="js/renderer.js?v=198"></script>
+<script src="js/gen/bnvc256.js?v=2"></script>
+<script src="js/renderer.js?v=199"></script>
 <script src="js/source.js?v=57"></script>
 <script src="js/save.js?v=73"></script>
 <script src="js/webgpu-live.js?v=5"></script>

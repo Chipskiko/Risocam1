@@ -43,10 +43,18 @@ Same protocol the SEP-LUT baselines use ("Blank tex + Pure White paper").
 
 V&C blue-noise is the DEFAULT grain engine: baked 256x256 void-and-cluster
 mask (js/gen/bnvc256.js, regenerate with `node tools/build-vc-mask.mjs`),
-tone-remapped to the white path's bilinear threshold CDF so the flip changed
-dot arrangement, not tone (measured max ramp delta 0.3/100). `?grainwhite`
-reverts to legacy white-noise grain. Runtime falls back to 128x128 generation
-if the baked file is missing (u_bnSize tells the shader which).
+`?grainwhite` reverts to legacy white-noise grain. Runtime falls back to
+128x128 generation if the baked file is missing (u_bnSize tells the shader).
+
+The mask texture is DUAL-CHANNEL and the bake is RAW ranks:
+- R = white-CDF-remapped ranks — grain engine only (tone parity with the
+  white path, measured max ramp delta 0.3/100). Remap applied at runtime.
+- G = raw uniform ranks — the RISO/flat paths (risoMatrixDither,
+  gpuGrainTouch, dissolveInk) threshold against these; their density-gamma
+  calibration assumes uniform. Shipping remapped bytes in all channels once
+  broke RISO grain-touch into nondeterministic-looking noise (regression,
+  same day). Any new u_bnVC consumer must pick its channel deliberately and
+  divide by u_bnSize, never a hardcoded 128.
 
 ## Deploy
 

@@ -618,7 +618,7 @@ function initGL(onReady){
   // input — while keeping its blue-noise spatial ordering (the lut is
   // monotone, so cell ranks never reorder). Deterministic: fixed LCG seed,
   // and genBlueNoise is a pure integer hash of position.
-  if(!_bnBaked) (function remapVCToWhiteCDF(){
+  var _bnRemapLut = (function buildWhiteCDFLut(){
     var wn = genBlueNoise(256);        // the exact bytes u_noise holds
     var HB = 2048, hist = new Float64Array(HB);
     var seed = 987654321;
@@ -642,11 +642,15 @@ function initGL(onReady){
       while(hb2 < HB-1 && cdf[hb2] < q) hb2++;
       lut[r] = Math.round((hb2 + 0.5) / HB * 255);
     }
-    for(var mi = 0; mi < bnVCBytes.length; mi++) bnVCBytes[mi] = lut[bnVCBytes[mi]];
+    return lut;
   })();
+  // DUAL-CHANNEL: R = white-CDF-remapped ranks (grain engine tone parity),
+  // G = RAW uniform ranks (risoMatrixDither / gpuGrainTouch / dissolveInk —
+  // their density-gamma calibration assumes uniform thresholds; shipping the
+  // remapped bytes in every channel broke RISO grain-touch into noise).
   var bnVCRGBA = new Uint8Array(BN_SIZE*BN_SIZE*4);
   for(var bi = 0; bi < BN_SIZE*BN_SIZE; bi++){
-    bnVCRGBA[bi*4] = bnVCBytes[bi];
+    bnVCRGBA[bi*4] = _bnRemapLut[bnVCBytes[bi]];
     bnVCRGBA[bi*4+1] = bnVCBytes[bi];
     bnVCRGBA[bi*4+2] = bnVCBytes[bi];
     bnVCRGBA[bi*4+3] = 255;
