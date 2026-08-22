@@ -175,6 +175,13 @@ function cycleAspect(){
 let paperOrient='landscape'; // 'landscape' or 'portrait'
 
 // Phone mode detection — state-based, not screen-size
+// RISO master density default. ONE value: the UI label, the cycle button,
+// the prepass and the export raise all used to fall back separately (150 in
+// the UI, 300 in the prepass on desktop) — the button said 150dpi while the
+// master was baked at 300 (measured: 4962 texels across A3 = 300 dpi).
+// Presence of this value does NOT mean 'user chose it': the export raise
+// gates on _amtDpiUserSet, which only explicit choices set.
+window._amtScanDpi = window._amtScanDpi || 150;
 let phoneActive=false;
 function isPhone(){return phoneActive;}
 

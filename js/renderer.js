@@ -2781,7 +2781,7 @@ async function _runAmtPrepassImpl(){
   // along soft edges. 300 dpi puts the ladders at/below display-pixel scale
   // (the grain-touch supersample melts the rest) at ~4× bake cost — still
   // well under a second on the worker pool. Phones keep 150 (CPU + memory).
-  let scanDpi = window._amtScanDpi || ((window.R && R.isPhone && R.isPhone()) ? 150 : 300);
+  let scanDpi = window._amtScanDpi || 150;
   if(window._gpuSlow) scanDpi = Math.min(scanDpi, 150); // GPU safe mode: half-res masters (phone parity)
   const A3_LONG_INCHES = 16.54;
   const targetMaxEdge = Math.round(scanDpi * A3_LONG_INCHES);

@@ -55,7 +55,7 @@ async function raiseMasterForExport(finalLongEdge){
   // GPU safe mode deliberately pins masters at 150 dpi; the prepass would
   // clamp any raise straight back, so don't burn time re-baking.
   if(window._gpuSlow || window._gpuSoftware) return null;
-  const cur = window._amtScanDpi || ((R.isPhone && R.isPhone()) ? 150 : 300);
+  const cur = window._amtScanDpi || 150;
   // The dpi button is the DOT SIZE control: honoring it is what makes RISO
   // exports show visible thermal dots (150dpi -> ~2.6px dots on a 6400px
   // export). The old unconditional raise pushed the master to ~1 dot per

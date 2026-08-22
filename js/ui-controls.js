@@ -1415,6 +1415,7 @@ function cycleColorQuant(){
   i = (i + 1) % COLOR_QUANT_STEPS.length;
   window._colorQuant = COLOR_QUANT_STEPS[i].v;
   const v = el('posterizeBtnVal'); if(v) v.textContent = COLOR_QUANT_STEPS[i].l;
+  const pv = el('phPosterizeBtnVal'); if(pv) pv.textContent = COLOR_QUANT_STEPS[i].l;
   const b = el('posterizeBtn'); if(b) b.classList.toggle('active', window._colorQuant > 0);
   R.toast('Posterize: ' + (window._colorQuant ? COLOR_QUANT_STEPS[i].l + ' levels' : 'Off'));
   // Source quantisation changes the separation itself, so RISO/stipple masters
@@ -1746,6 +1747,7 @@ function cycleAmtDpi() {
   const next = AMT_DPI_STEPS[(idx + 1) % AMT_DPI_STEPS.length];
   R.setRisoParams({ dpi: next });
   const lbl = el('amtDpiBtnVal'); if (lbl) lbl.textContent = next + 'dpi';
+  const plbl = el('phAmtDpiBtnVal'); if (plbl) plbl.textContent = next + 'dpi';
   // Keep the debug slider in sync if it exists
   const dbg = el('risoDpi'); if (dbg) { dbg.value = next; const dv = el('risoDpiVal'); if (dv) dv.textContent = next; }
 }
