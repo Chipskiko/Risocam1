@@ -1659,6 +1659,17 @@ function _renderInner(){
     }
   }
   const isPhoneNow=phoneActive;
+  // Phone top bar: after an upload there was no way back to the camera (the
+  // flip button is camera-only). Show CAMERA when no live camera is running,
+  // the flip button when one is. Dirty frames follow every source change,
+  // so syncing here needs no hooks in the upload/camera paths.
+  if(isPhoneNow){
+    const _cb=document.getElementById('phCamBtn'), _fb=document.getElementById('phSwitchCam');
+    const wantCam = camOn ? 'none' : '';
+    if(_cb && _cb.style.display!==wantCam) _cb.style.display=wantCam;
+    const wantFlip = camOn ? '' : 'none';
+    if(_fb && _fb.style.display!==wantFlip) _fb.style.display=wantFlip;
+  }
   // PHONE FIT: on phone the print area is the WHOLE buffer (u_printArea is
   // uniform margins), so the canvas box and buffer must carry the image's
   // aspect or the full-source crop is stretched to the viewfinder's shape.

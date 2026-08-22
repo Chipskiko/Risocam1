@@ -439,13 +439,13 @@ function phPopulateOverlay(name){
           <div id="phFlatSettings" style="display:${mode==='flat'?'block':'none'}"><button class="regmark-btn active" id="phAmtDpiBtn" onclick="R.cycleAmtDpi()" title="Master density"><span class="regmark-val" id="phAmtDpiBtnVal">${(window._amtScanDpi||150)}dpi</span></button></div>
           <div id="phScreenSettings" style="display:${(mode==='screen'||mode==='lines'||mode==='letters')?'flex':'none'};gap:6px;flex-wrap:wrap"><button class="regmark-btn active" id="phLpiBtn" onclick="R.cycleLpi()"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="5" cy="5" r="1.5" fill="currentColor"/><circle cx="13" cy="5" r="1.5" fill="currentColor"/><circle cx="5" cy="13" r="1.5" fill="currentColor"/><circle cx="13" cy="13" r="1.5" fill="currentColor"/><circle cx="9" cy="9" r="2" fill="currentColor"/></svg><span class="regmark-val" id="phLpiBtnVal">High</span></button><button class="regmark-btn" id="phStampShapeBtn" style="display:${mode==='screen'?'':'none'}" onclick="R.cycleStampShape()" title="Halftone stamp shape"><span class="regmark-icon" id="phStampShapeIcon" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px"></span><span class="regmark-val" id="phStampShapeBtnVal">Circle</span></button><button class="regmark-btn" id="phAsciiCharsetBtn" style="display:none" onclick="R.cycleAsciiCharset()" title="ASCII charset — Latin / Georgian / mixed"><span class="regmark-val" id="phAsciiCharsetVal">ABC</span></button><button class="regmark-btn" id="phAsciiFontBtn" style="display:none" onclick="R.asciiFontClick()" title="ASCII font — upload TTF/OTF/WOFF; tap again to reset"><span class="regmark-val" id="phAsciiFontVal">Aa</span></button></div>
         </div>
-        <div class="regmark-row" id="phLinesRow" style="display:${mode==='lines'?'flex':'none'};gap:6px;flex-wrap:wrap">
-          <button class="regmark-btn active" onclick="R.cycleLineShape();R.phSyncLines()" title="Line shape"><span class="regmark-val" id="phLineShapeVal"></span></button>
-          <button class="regmark-btn" onclick="R.cycleLineWave();R.phSyncLines()" title="Wave modulation"><span class="regmark-val" id="phLineWaveVal">None</span></button>
-          <button class="regmark-btn" onclick="R.cycleLineWeight();R.phSyncLines()" title="Line weight"><span class="regmark-val" id="phLineWeightVal">1×</span></button>
-          <button class="regmark-btn" onclick="R.cycleLineRoughness();R.phSyncLines()" title="Edge roughness"><span class="regmark-val" id="phLineRoughVal">Med</span></button>
-          <button class="regmark-btn" onclick="R.cycleLineGrain();R.phSyncLines()" title="Line grain"><span class="regmark-val" id="phLineGrainVal">Med</span></button>
-          <button class="regmark-btn" onclick="R.cycleLineAmount();R.phSyncLines()" title="Wave amount"><span class="regmark-val" id="phLineAmountVal">100%</span></button>
+        <div class="regmark-row" id="phLinesRow" style="display:${mode==='lines'?'flex':'none'};gap:8px;flex-wrap:wrap;align-items:flex-end">
+          <div class="ph-ctl"><span class="ph-ctl-cap">SHAPE</span><button class="regmark-btn active" onclick="R.cycleLineShape();R.phSyncLines()" title="Line shape"><span class="regmark-icon" id="phLineShapeIcon" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px"></span></button></div>
+          <div class="ph-ctl"><span class="ph-ctl-cap">WAVE</span><button class="regmark-btn" onclick="R.cycleLineWave();R.phSyncLines()" title="Wave modulation"><span class="regmark-val" id="phLineWaveVal">None</span></button></div>
+          <div class="ph-ctl"><span class="ph-ctl-cap">AMOUNT</span><button class="regmark-btn" onclick="R.cycleLineAmount();R.phSyncLines()" title="Wave amount"><span class="regmark-val" id="phLineAmountVal">100%</span></button></div>
+          <div class="ph-ctl"><span class="ph-ctl-cap">WEIGHT</span><button class="regmark-btn" onclick="R.cycleLineWeight();R.phSyncLines()" title="Line weight"><span class="regmark-val" id="phLineWeightVal">Med</span></button></div>
+          <div class="ph-ctl"><span class="ph-ctl-cap">ROUGH</span><button class="regmark-btn" onclick="R.cycleLineRoughness();R.phSyncLines()" title="Edge roughness"><span class="regmark-val" id="phLineRoughVal">Med</span></button></div>
+          <div class="ph-ctl"><span class="ph-ctl-cap">GRAIN</span><button class="regmark-btn" onclick="R.cycleLineGrain();R.phSyncLines()" title="Line grain"><span class="regmark-val" id="phLineGrainVal">Med</span></button></div>
         </div>
         <div class="regmark-row">
           
@@ -455,7 +455,7 @@ function phPopulateOverlay(name){
         <div class="regmark-row">
           <button class="regmark-btn" id="phMisregBtn" onclick="R.cycleMisreg()"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="6" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="10" y1="2" x2="10" y2="18" stroke="currentColor" stroke-width="1"/><line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" stroke-width="1"/></svg><span class="regmark-val" id="phMisregBtnVal">2</span></button>
           <span class="regmark-link">&ndash;</span>
-          <button class="regmark-btn" id="phPosterizeBtn" onclick="R.cycleColorQuant()" title="Posterize"><span class="regmark-val" id="phPosterizeBtnVal">${(document.getElementById('posterizeBtnVal')||{}).textContent||'Off'}</span></button>
+          <div class="ph-ctl"><span class="ph-ctl-cap">POSTERIZE</span><button class="regmark-btn" id="phPosterizeBtn" onclick="R.cycleColorQuant()" title="Posterize"><span class="regmark-val" id="phPosterizeBtnVal">${(document.getElementById('posterizeBtnVal')||{}).textContent||'Off'}</span></button></div>
           <button class="regmark-btn" id="phSkewBtn" onclick="R.cycleSkew()"><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><line x1="4" y1="16" x2="4" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="4" y1="16" x2="16" y2="16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M4 11 A5 5 0 0 0 9 16" fill="none" stroke="currentColor" stroke-width="1"/></svg><span class="regmark-val" id="phSkewBtnVal">0</span></button>
         </div>
       </div>`;
@@ -469,7 +469,10 @@ function phPopulateOverlay(name){
 // the cycle handlers update desktop ids, and reading those back beats
 // duplicating the step tables here.
 function phSyncLines(){
-  [['lineShapeBtnPanelVal','phLineShapeVal'],['lineWaveBtnVal','phLineWaveVal'],
+  // Shape is icon-only on desktop (its text span is empty) — mirror the SVG.
+  const dIcon=document.getElementById('lineShapeIcon'), pIcon=document.getElementById('phLineShapeIcon');
+  if(dIcon&&pIcon) pIcon.innerHTML=dIcon.innerHTML;
+  [['lineWaveBtnVal','phLineWaveVal'],
    ['lineWeightBtnVal','phLineWeightVal'],['lineRoughBtnVal','phLineRoughVal'],
    ['lineGrainBtnVal','phLineGrainVal'],['lineAmountBtnVal','phLineAmountVal']]
     .forEach(function(pair){

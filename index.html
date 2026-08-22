@@ -14,7 +14,7 @@
 <title>RISO/CAM</title>
 <link rel="manifest" href="manifest.json">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/main.css?v=37">
+<link rel="stylesheet" href="css/main.css?v=38">
 <!-- Styles extracted to css/main.css -->
 <script data-goatcounter="https://chipskiko.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </head>
@@ -345,6 +345,7 @@
       <!-- RES removed: always max resolution -->
     </div>
     <div class="ph-top-right">
+      <button class="ph-icon-btn" id="phCamBtn" onclick="R.toggleCam()" title="Back to camera" style="display:none">CAMERA</button>
       <button class="ph-icon-btn" onclick="R.pickFile()" title="Upload">UPLOAD</button>
       <button class="ph-icon-btn ph-exit-btn" onclick="R.togglePhoneMode()" title="Exit">EXIT</button>
     </div>
@@ -3753,13 +3754,13 @@ void main(){
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/riso-amt-webgpu.js?v=6"></script>
 <script src="js/gen/bnvc256.js?v=2"></script>
-<script src="js/renderer.js?v=207"></script>
+<script src="js/renderer.js?v=208"></script>
 <script src="js/source.js?v=57"></script>
 <script src="js/save.js?v=76"></script>
 <script src="js/webgpu-live.js?v=6"></script>
 <script src="js/ui-controls.js?v=82"></script>
 <script src="js/ui-paper.js?v=14"></script>
-<script src="js/phone.js?v=33"></script>
+<script src="js/phone.js?v=34"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL
      service workers, and even the attempt makes the browser print a CSP-violation report
      that no .catch can silence. Offline caching works where CSP allows (e.g. localhost).
