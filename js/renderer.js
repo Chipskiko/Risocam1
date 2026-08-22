@@ -1659,6 +1659,20 @@ function _renderInner(){
     }
   }
   const isPhoneNow=phoneActive;
+  // PHONE FIT: on phone the print area is the WHOLE buffer (u_printArea is
+  // uniform margins), so the canvas box and buffer must carry the image's
+  // aspect or the full-source crop is stretched to the viewfinder's shape.
+  // Numeric aspects already do that; the string 'fit' (the default) fell
+  // into the fill-the-viewfinder branch — measured 11% horizontal stretch on
+  // a 4:3 source at 375x812. Resolve 'fit' to the source's own dims here and
+  // let BOTH sizing branches below treat it like a numeric aspect.
+  let _aspArr = (cropAspect && typeof cropAspect !== 'string') ? cropAspect : null;
+  if(isPhoneNow && cropAspect === 'fit' && hasSrc){
+    const _gif = videoOn && (gifImg || gifFrames);
+    const _sw = (camOn || (videoOn && !_gif)) ? ($vid && $vid.videoWidth) : (_gif ? (gifCanvas && gifCanvas.width) : (srcImg && srcImg.width));
+    const _sh = (camOn || (videoOn && !_gif)) ? ($vid && $vid.videoHeight) : (_gif ? (gifCanvas && gifCanvas.height) : (srcImg && srcImg.height));
+    if(_sw > 0 && _sh > 0) _aspArr = [_sw, _sh];
+  }
 
   // Aspect ratio — canvas shape
   if(needsAspectUpdate){
@@ -1672,8 +1686,8 @@ function _renderInner(){
       $gl.style.width='auto';
       $gl.style.maxWidth='100%';
       $gl.style.maxHeight='';
-    } else if(isPhoneNow && cropAspect && typeof cropAspect !== 'string'){
-      $gl.style.aspectRatio = cropAspect[0]+'/'+cropAspect[1];
+    } else if(isPhoneNow && _aspArr){
+      $gl.style.aspectRatio = _aspArr[0]+'/'+_aspArr[1];
       $gl.style.width = '';
       $gl.style.height = '';
     } else if(isPhoneNow){
@@ -1823,8 +1837,8 @@ function _renderInner(){
   // gives 'f'/'i' → NaN → $gl.width=NaN→0 → permanently black canvas. (Hit by
   // entering phone mode with FILL/FIT set, or any PDF load which sets 'fit'.)
   // Strings fall through to full-viewfinder sizing, same as the style branch.
-  if(isPhoneNow && cropAspect && typeof cropAspect !== 'string'){
-    const ar=cropAspect[0]/cropAspect[1];
+  if(isPhoneNow && _aspArr){
+    const ar=_aspArr[0]/_aspArr[1];
     const containerAR=cssW/cssH;
     if(ar>containerAR) cssH=Math.round(cssW/ar);
     else cssW=Math.round(cssH*ar);
