@@ -116,26 +116,36 @@ function phBindBcs(){
   document.querySelectorAll('.ph-bcs-arc').forEach(svg=>{
     const path=svg.querySelector('.ph-bcs-track');
     const thumb=svg.querySelector('.ph-bcs-thumb');
-    const key=svg.dataset.key;
     const valEl=svg.querySelector('.ph-bcs-svg-val');
     const len=path.getTotalLength();
+    // The arc proxies whichever desktop slider data-key names RIGHT NOW
+    // (the strip pages between image B/C/S and post E/C/S), so key and
+    // range are read per call from the desktop input, not captured at bind.
+    const range=()=>{const k=svg.dataset.key, d=el(k);
+      return {k, mn:d?+d.min:-30, mx:d?+d.max:30, st:d?(+d.step||1):2};};
     function setNorm(t){
       t=Math.max(0,Math.min(1,t));
       const pt=path.getPointAtLength(t*len);
       thumb.setAttribute('cx',pt.x);
       thumb.setAttribute('cy',pt.y);
-      const v=Math.round((t*60-30)/2)*2;
-      cached[key]=v;
+      const {k,mn,mx,st}=range();
+      const v=Math.round((mn+t*(mx-mn))/st)*st;
+      cached[k]=v;
       if(valEl) valEl.textContent=v;
-      const desk=el(key);if(desk)desk.value=v;
-      const dv=el(key+'Val');if(dv)dv.textContent=v;
+      const desk=el(k);if(desk)desk.value=v;
+      const dv=el(k+'Val');if(dv)dv.textContent=v;
       markDirty();
     }
-    // Initial position
-    const initT=((cached[key]||0)+30)/60;
-    const initPt=path.getPointAtLength(initT*len);
-    thumb.setAttribute('cx',initPt.x);
-    thumb.setAttribute('cy',initPt.y);
+    // Position the thumb from the current key's value (also used when the
+    // strip pages to a different slider set).
+    svg._phSync=function(){
+      const {k,mn,mx}=range();
+      const t=Math.max(0,Math.min(1,((cached[k]||0)-mn)/(mx-mn)));
+      const pt=path.getPointAtLength(t*len);
+      thumb.setAttribute('cx',pt.x); thumb.setAttribute('cy',pt.y);
+      if(valEl) valEl.textContent=cached[k]||0;
+    };
+    svg._phSync();
     function ptrToNorm(e){
       // Under the landscape counter-rotation (ph-ls-cw/-ccw) the arc's local
       // x axis runs vertically on screen and getBoundingClientRect returns
@@ -163,6 +173,28 @@ function phBindBcs(){
     svg.addEventListener('pointerup',()=>svg.classList.remove('dragging'));
     svg.addEventListener('pointercancel',()=>svg.classList.remove('dragging'));
   });
+}
+
+// BCS strip pages: image B/C/S (pre-separation) <-> post E/C/S (post-
+// composite exposure/contrast/saturation). The wide button that used to
+// re-roll registration now flips the page (user request); its label names
+// the page you'd switch TO.
+const PH_BCS_PAGES={
+  image:{keys:['imgBright','imgContrast','imgSat'],labels:['B','C','S'],btn:'POST \u203a'},
+  post:{keys:['postExposure','postContrast','postSat'],labels:['EXP','CON','SAT'],btn:'\u2039 IMAGE'}
+};
+let phBcsPage='image';
+function phToggleBcsPage(){
+  phBcsPage = phBcsPage==='image' ? 'post' : 'image';
+  const pg=PH_BCS_PAGES[phBcsPage];
+  document.querySelectorAll('.ph-bcs-arc').forEach((svg,i)=>{
+    if(!pg.keys[i]) return;
+    svg.dataset.key=pg.keys[i];
+    const lab=svg.querySelector('.ph-bcs-svg-label'); if(lab) lab.textContent=pg.labels[i];
+    if(svg._phSync) svg._phSync();
+  });
+  const b=el('phBcsPageBtn'); if(b) b.textContent=pg.btn;
+  try{navigator.vibrate(8);}catch(e){}
 }
 
 async function phFlipCam(){
@@ -746,6 +778,7 @@ R.phCycleMode = phCycleMode;
 R.phCycleAspect = phCycleAspect;
 R.phCycleFps = phCycleFps;
 R.phToggleBcs = phToggleBcs;
+R.phToggleBcsPage = phToggleBcsPage;
 R.syncArcSliders = syncArcSliders;
 R.phBindBcs = phBindBcs;
 R.phFlipCam = phFlipCam;

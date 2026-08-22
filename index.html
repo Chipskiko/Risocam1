@@ -357,7 +357,7 @@
       <div class="ph-bcs-row"><svg class="ph-bcs-arc" data-key="imgBright" viewBox="0 0 300 32"><text x="4" y="10" class="ph-bcs-svg-label">B</text><text x="296" y="10" class="ph-bcs-svg-val" id="phBcs0Val">0</text><line x1="53" y1="28" x2="53" y2="32" class="ph-bcs-tick"/><line x1="101" y1="22" x2="101" y2="26" class="ph-bcs-tick"/><line x1="150" y1="18" x2="150" y2="22" class="ph-bcs-tick ph-bcs-tick-mid"/><line x1="199" y1="22" x2="199" y2="26" class="ph-bcs-tick"/><line x1="247" y1="28" x2="247" y2="32" class="ph-bcs-tick"/><path class="ph-bcs-track" d="M 4,30 Q 150,6 296,30"/><circle class="ph-bcs-thumb" r="9"/></svg></div>
       <div class="ph-bcs-row"><svg class="ph-bcs-arc" data-key="imgContrast" viewBox="0 0 300 32"><text x="4" y="10" class="ph-bcs-svg-label">C</text><text x="296" y="10" class="ph-bcs-svg-val" id="phBcs1Val">0</text><line x1="53" y1="28" x2="53" y2="32" class="ph-bcs-tick"/><line x1="101" y1="22" x2="101" y2="26" class="ph-bcs-tick"/><line x1="150" y1="18" x2="150" y2="22" class="ph-bcs-tick ph-bcs-tick-mid"/><line x1="199" y1="22" x2="199" y2="26" class="ph-bcs-tick"/><line x1="247" y1="28" x2="247" y2="32" class="ph-bcs-tick"/><path class="ph-bcs-track" d="M 4,30 Q 150,6 296,30"/><circle class="ph-bcs-thumb" r="9"/></svg></div>
       <div class="ph-bcs-row"><svg class="ph-bcs-arc" data-key="imgSat" viewBox="0 0 300 32"><text x="4" y="10" class="ph-bcs-svg-label">S</text><text x="296" y="10" class="ph-bcs-svg-val" id="phBcs2Val">0</text><line x1="53" y1="28" x2="53" y2="32" class="ph-bcs-tick"/><line x1="101" y1="22" x2="101" y2="26" class="ph-bcs-tick"/><line x1="150" y1="18" x2="150" y2="22" class="ph-bcs-tick ph-bcs-tick-mid"/><line x1="199" y1="22" x2="199" y2="26" class="ph-bcs-tick"/><line x1="247" y1="28" x2="247" y2="32" class="ph-bcs-tick"/><path class="ph-bcs-track" d="M 4,30 Q 150,6 296,30"/><circle class="ph-bcs-thumb" r="9"/></svg></div>
-      <div class="ph-bcs-row"><button class="ph-bcs-btn" onclick="R.newMisreg();try{navigator.vibrate(8);}catch(e){}">RE-REG</button></div>
+      <div class="ph-bcs-row"><button class="ph-bcs-btn" id="phBcsPageBtn" onclick="R.phToggleBcsPage()" title="Switch between image B/C/S and post exposure/contrast/saturation">POST &rsaquo;</button></div>
     </div>
     <!-- Tool strip -->
     <div class="ph-tools" id="phTools">
@@ -3760,7 +3760,7 @@ void main(){
 <script src="js/webgpu-live.js?v=6"></script>
 <script src="js/ui-controls.js?v=82"></script>
 <script src="js/ui-paper.js?v=14"></script>
-<script src="js/phone.js?v=34"></script>
+<script src="js/phone.js?v=35"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL
      service workers, and even the attempt makes the browser print a CSP-violation report
      that no .catch can silence. Offline caching works where CSP allows (e.g. localhost).
