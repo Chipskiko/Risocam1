@@ -96,3 +96,24 @@ resampling as the cause). Fixed in grainDither by a per-cell-row hashed phase
 offset (±half a cell, seed-free): decorrelates the beat between rows, column
 peak collapsed 1.48 → 0.2-0.3 (noise floor), tone unchanged. Preview and
 export render at different strides, so pre-fix they banded DIFFERENTLY.
+
+## Performance profile (2026-07-31, Apple Silicon)
+
+Measured: frame cost 4.0-5.4 ms across all four modes at 2400x1620 (median
+of 7, gl.finish-timed); idle draws 0/s over 8 s (render loop is fully
+event-driven); Neocities serves brotli (renderer.js 210 KB -> ~72 KB wire).
+Already-optimal machinery: R8 single-channel AMT masters on WebGL2
+(886->222 MB), pointer-swap video frames (ONE texImage2D per camera frame),
+lazy WASM vendors, interaction/animation LODs, banded TDR-safe draws,
+worker-pool FS, anchor-prepass LPI gating.
+
+WebGPU shims (riso-amt-webgpu.js + webgpu-live.js, 41 KB) are LAZY: an
+inline loader in index.html document.writes them for ?webgpu (parse-order
+contract: webgpu-live must run before the GL context exists) and exposes
+window._loadWebGPUShims for the debug toggle (R.setAmtWebGPU fetches on
+first enable). Every call site is presence-guarded (window.RisoAmtGPU &&).
+
+Measured but deliberately NOT changed (risk > win): still-image loads
+upload the source to BOTH src textures (~10-40 ms + one texture of VRAM,
+once per load) so ghosting has a previous frame — gating it on
+cached.ghosting would touch ~10 upload sites.

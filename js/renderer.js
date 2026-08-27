@@ -3506,8 +3506,14 @@ R.asciiFontClick = function(){
 R.setAmtWebGPU = function(on){
   window._amtWebGPU = !!on;
   console.log('[RisoAmt] WebGPU wavefront ED', window._amtWebGPU ? 'ON (experimental)' : 'OFF');
-  R.invalidateAmt();
-  if((window._mode === 'flat' || window._mode === 'stipple') && R.runMasterPrepass) setTimeout(R.runMasterPrepass, 0);
+  // Shims are lazy-loaded (see index.html): fetch them on first enable, then
+  // rebake so the prepass finds window.RisoAmtGPU present.
+  const _rebake = function(){
+    R.invalidateAmt();
+    if((window._mode === 'flat' || window._mode === 'stipple') && R.runMasterPrepass) setTimeout(R.runMasterPrepass, 0);
+  };
+  if(on && !window.RisoAmtGPU && window._loadWebGPUShims){ window._loadWebGPUShims(_rebake); return; }
+  _rebake();
 };
 
 // Toggle LCG threshold modulation in driver-faithful FS:
