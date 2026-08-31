@@ -178,7 +178,13 @@ function advanceGifClock(now){
       gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
       gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifCanvas);
       videoFrameReady=true;
-      markDirty();
+      // NOT markDirty(): dirty frames render at FULL 6x supersample (a user-
+      // change repaint), and 25 of those a second saturates the GPU into an
+      // uneven, janky cadence. Like camera/video frames, a gif advance just
+      // refreshes the source texture; the riso-fps clock SAMPLES it on its
+      // own steady schedule at the cheap animation LOD. scheduleRender only
+      // makes sure the loop is awake to do that sampling.
+      scheduleRender();
     }
   }else if(gifImg){
     // Fallback: <img> DOM approach (simple GIFs only)
