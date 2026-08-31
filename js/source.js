@@ -879,7 +879,20 @@ function handleFile(e){
         loadGifFallback(f);
       });
     }else{
-      loadGifFallback(f);
+      // No ImageDecoder (Safari): decode the GIF in JS (js/gif-decode.js) so
+      // it still ANIMATES — the <img> fallback renders only a static first
+      // frame (canvas drawImage of an animated <img> samples frame 1 by
+      // spec), and it also lets the VID loop-length logic see real GIF
+      // periods here. <img> stays as the last resort if parsing fails.
+      f.arrayBuffer().then(ab=>{
+        const frames=window.decodeGifFrames?window.decodeGifFrames(ab):null;
+        if(!frames||!frames.length) throw new Error('no frames decoded');
+        gifFrames=frames;
+        initGifPlayback(frames[0].canvas.width,frames[0].canvas.height);
+      }).catch(err=>{
+        console.warn('JS GIF decode failed, falling back to <img>',err);
+        loadGifFallback(f);
+      });
     }
   }else{
     // Image: load as before
