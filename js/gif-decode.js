@@ -75,6 +75,23 @@ window.decodeGifFrames = function(buf){
   let gct = null;
   if(lsdPacked & 0x80){ const n = 2 << (lsdPacked & 7); gct = u8.subarray(p, p + n*3); p += n*3; }
   const frames = [];
+  // Output cap: frames are DISPLAY sources, and the riso pipeline grains/
+  // dithers everything anyway — above ~1280px a gif frame buys no visible
+  // detail but costs memory quadratically (a 2000px 60-frame gif would hold
+  // ~1GB of decoded canvases; Safari gets sluggish site-wide well before
+  // that). Composition still runs at native size for disposal correctness;
+  // only the emitted snapshots are scaled. Keep in sync with the
+  // ImageDecoder path in source.js.
+  const MAX_DIM = 1280;
+  const outScale = Math.min(1, MAX_DIM / Math.max(W, H));
+  const outW = Math.max(1, Math.round(W * outScale));
+  const outH = Math.max(1, Math.round(H * outScale));
+  let fullCanvas = null, fullCtx = null;                  // reused when scaling
+  if(outScale < 1){
+    fullCanvas = document.createElement('canvas');
+    fullCanvas.width = W; fullCanvas.height = H;
+    fullCtx = fullCanvas.getContext('2d');
+  }
   const comp = new Uint8ClampedArray(W * H * 4);  // running full-size composite
   let gce = {delay: 100, transIdx: -1, disposal: 0};
   let prevSnapshot = null;
@@ -130,8 +147,14 @@ window.decodeGifFrames = function(buf){
           comp[co] = pal[pi]; comp[co+1] = pal[pi+1]; comp[co+2] = pal[pi+2]; comp[co+3] = 255;
         }
       }
-      const c = document.createElement('canvas'); c.width = W; c.height = H;
-      c.getContext('2d').putImageData(new ImageData(comp.slice(), W, H), 0, 0);
+      const c = document.createElement('canvas'); c.width = outW; c.height = outH;
+      if(outScale < 1){
+        // putImageData can't scale — bounce through the reused full canvas
+        fullCtx.putImageData(new ImageData(comp.slice(), W, H), 0, 0);
+        c.getContext('2d').drawImage(fullCanvas, 0, 0, outW, outH);
+      } else {
+        c.getContext('2d').putImageData(new ImageData(comp.slice(), W, H), 0, 0);
+      }
       // Delay conventions: browsers render <=10ms as 100ms; the app's
       // ImageDecoder path additionally floors at 20ms — match both.
       let d = gce.delay; if(d <= 10) d = 100; d = Math.max(d, 20);

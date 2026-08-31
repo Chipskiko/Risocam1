@@ -532,6 +532,8 @@ async function startWebCodecsRecording(){
   const startMs = performance.now();
   isRecording = true;
   let frameCount = 0;
+  let lastKeyUs = -1e9;
+  let firstCapMs = -1;   // wall-clock base: mp4-muxer needs the FIRST sample at t=0
   let stopped = false;
   // Frame timestamp in microseconds (WebCodecs unit)
   const fps = 30;
@@ -554,12 +556,20 @@ async function startWebCodecsRecording(){
       } else {
         src = $gl;
       }
+      // WALL-CLOCK timestamps, not frameCount*33ms: the setTimeout cadence
+      // is aspirational — on a slow machine (or throttled timers) capture
+      // runs well under 30fps, and count-based stamps compressed a 5s
+      // recording into a ~1s file that played fast. Wall time keeps the
+      // saved duration (and the loop point) correct at any achieved fps.
+      if(firstCapMs < 0) firstCapMs = now;
+      const tsUs = Math.round((now - firstCapMs) * 1000);
       const frame = new VideoFrame(src, {
-        timestamp: frameCount * frameDurationUs,
+        timestamp: tsUs,
         duration: frameDurationUs,
       });
-      // Force a keyframe every ~1s so the file can be seeked
-      const isKey = (frameCount % fps) === 0;
+      // Force a keyframe every ~1s of wall time so the file can be seeked
+      const isKey = tsUs - lastKeyUs >= 1_000_000;
+      if(isKey) lastKeyUs = tsUs;
       encoder.encode(frame, { keyFrame: isKey });
       frame.close();
       frameCount++;

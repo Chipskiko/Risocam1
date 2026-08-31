@@ -1649,6 +1649,7 @@ R.togglePause=function(){
   return window._paused;
 };
 function _renderInner(){
+  const _stT0 = performance.now();   // resource-monitor frame timer
   // Program still compiling (KHR_parallel_shader_compile poll in initGL) —
   // drop the frame; _finishInit re-kicks rendering the moment it's linked.
   if(!window._glReady) return;
@@ -1957,6 +1958,9 @@ function _renderInner(){
   }
 
   // FPS counter — DOM write once per second
+  window._stDraws=(window._stDraws||0)+1;                    // resource monitor:
+  window._stMs=performance.now()-_stT0;                      // real draws only
+  window._stBuf=dw+'x'+dh+(resScale>1?' @'+resScale+'x':'');
   fpsFrames++;
   const fpsNow=performance.now();
   if(fpsNow-fpsLast>=1000){
@@ -3898,3 +3902,61 @@ function uploadOriginalSource(canvas){
 R.uploadOriginalSource = uploadOriginalSource;
 
 })(window.R);
+
+// ─── Resource monitor (?stats in the URL, or R.toggleStats()) ───────────
+// Tiny always-on counters live in the render tail (_stDraws/_stMs/_stBuf)
+// and in the gif advance (_stGifAdv, source.js); this HUD just reads them.
+// texImage2D is wrapped only once the HUD is first enabled, so the normal
+// path pays nothing.
+function toggleStats(force){
+  const en = force !== undefined ? !!force : !window._statsOn;
+  window._statsOn = en;
+  let el = document.getElementById('statsHud');
+  if(!en){
+    if(el) el.remove();
+    if(window._stTimer){ clearInterval(window._stTimer); window._stTimer = 0; }
+    return;
+  }
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'statsHud';
+    el.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:9999;'+
+      'background:rgba(0,0,0,.78);color:#8f7;font:10px/1.5 monospace;'+
+      'padding:6px 8px;border-radius:4px;pointer-events:none;white-space:pre';
+    document.body.appendChild(el);
+  }
+  if(gl && !gl._stWrap){
+    const o = gl.texImage2D.bind(gl);
+    gl.texImage2D = function(){ window._stTex = (window._stTex||0)+1; return o.apply(null, arguments); };
+    gl._stWrap = true;
+  }
+  let lastDraws = window._stDraws||0, lastTex = window._stTex||0,
+      lastGif = window._stGifAdv||0, lastT = performance.now();
+  if(window._stTimer) clearInterval(window._stTimer);
+  window._stTimer = setInterval(() => {
+    const t = performance.now(), dt = (t-lastT)/1000; lastT = t;
+    const draws = ((window._stDraws||0)-lastDraws)/dt; lastDraws = window._stDraws||0;
+    const tex   = ((window._stTex||0)-lastTex)/dt;     lastTex   = window._stTex||0;
+    const gAdv  = ((window._stGifAdv||0)-lastGif)/dt;  lastGif   = window._stGifAdv||0;
+    const gf = (typeof gifFrames!=='undefined') && gifFrames && gifFrames.length ? gifFrames : null;
+    let gifLine = '';
+    if(gf){
+      const fw = gf[0].canvas.width, fh = gf[0].canvas.height;
+      const mb = (gf.length*fw*fh*4/1048576).toFixed(0);
+      gifLine = 'gif       '+gf.length+'f '+fw+'x'+fh+' ~'+mb+'MB decoded\n';
+    }
+    const heap = (performance.memory && performance.memory.usedJSHeapSize)
+      ? (performance.memory.usedJSHeapSize/1048576).toFixed(0)+' MB' : 'n/a (Chrome only)';
+    const flags = [window._paused?'PAUSED':'', isRecording?'REC':'', camOn?'cam':'', videoOn?'video':'']
+      .filter(Boolean).join(' ');
+    el.textContent =
+      'renders/s '+draws.toFixed(1)+'  frame '+(window._stMs||0).toFixed(1)+' ms\n'+
+      'tex up/s  '+tex.toFixed(1)+'  gif adv/s '+gAdv.toFixed(1)+'\n'+
+      gifLine+
+      'buffer    '+(window._stBuf||'-')+'  '+(typeof risoFps!=='undefined'?risoFps+' anim fps':'')+'\n'+
+      'js heap   '+heap+'\n'+
+      'mode      '+(window._mode||mode)+(flags?'  ['+flags+']':'');
+  }, 500);
+}
+R.toggleStats = toggleStats;
+if(/[?&]stats\b/.test(location.search)) setTimeout(() => toggleStats(true), 500);

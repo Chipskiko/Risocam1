@@ -137,6 +137,15 @@ function stopVideo(){
 function startGifLoop(now){
   if(!videoOn){gifRafId=0;return;}
   if(!now)now=performance.now();
+  if(window._paused){
+    // Pause freezes the gif clock in place: holding gifLastTime at 'now'
+    // means resume continues from the SAME frame with a full frame-duration
+    // ahead of it, and no markDirty fires — so the paused render loop stays
+    // asleep instead of being re-woken ~10x/s by gif advances.
+    gifLastTime=now;
+    gifRafId=requestAnimationFrame(startGifLoop);
+    return;
+  }
   if(gifFrames&&gifFrames.length>0){
     // ImageDecoder path: advance based on per-frame timing
     const elapsed=now-gifLastTime;
@@ -144,6 +153,7 @@ function startGifLoop(now){
     if(elapsed>=dur){
       gifFrameIdx=(gifFrameIdx+1)%gifFrames.length;
       gifLastTime=now;
+      window._stGifAdv=(window._stGifAdv||0)+1;   // resource-monitor counter
       gifCtx.drawImage(gifFrames[gifFrameIdx].canvas,0,0);
       gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
       gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifCanvas);
@@ -860,10 +870,15 @@ function handleFile(e){
               tmpC.getContext('2d').drawImage(vf,0,0);
               vf.close();
               compCtx.drawImage(tmpC,0,0);
-              // Snapshot composited result
+              // Snapshot composited result — capped at 1280px max dimension
+              // (same cap and rationale as js/gif-decode.js: display source,
+              // memory is quadratic, the pipeline grains everything anyway).
+              const GIF_MAX_DIM=1280;
+              const gsc=Math.min(1, GIF_MAX_DIM/Math.max(compCanvas.width,compCanvas.height));
               const snapC=document.createElement('canvas');
-              snapC.width=compCanvas.width;snapC.height=compCanvas.height;
-              snapC.getContext('2d').drawImage(compCanvas,0,0);
+              snapC.width=Math.max(1,Math.round(compCanvas.width*gsc));
+              snapC.height=Math.max(1,Math.round(compCanvas.height*gsc));
+              snapC.getContext('2d').drawImage(compCanvas,0,0,snapC.width,snapC.height);
               frames.push({canvas:snapC, duration:frameDur});
               decodeNext(idx+1);
             }).catch(()=>decodeNext(idx+1));
