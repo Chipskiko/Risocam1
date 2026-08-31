@@ -1650,9 +1650,10 @@ R.togglePause=function(){
 };
 function _renderInner(){
   const _stT0 = performance.now();   // resource-monitor frame timer
+  window._stExit='?';                // breadcrumb: which gate ended this call
   // Program still compiling (KHR_parallel_shader_compile poll in initGL) —
   // drop the frame; _finishInit re-kicks rendering the moment it's linked.
-  if(!window._glReady) return;
+  if(!window._glReady){ window._stExit='compiling'; return; }
   // D3D slim shaders: the current program only contains ONE mode's engines.
   // On mode change, rebuild for the new mode (a few seconds the first time;
   // instant once Edge's per-site shader disk cache has seen that variant).
@@ -1744,6 +1745,7 @@ function _renderInner(){
     const vidDue = now - lastRisoFrame >= interval;
     if(!vidDue && !needsRedraw){
       fpsFrames++;
+      window._stExit='vid-throttle';
       // Sleep until next frame is due instead of spinning RAF
       if(!_rafId) _rafId=setTimeout(()=>{_rafId=0;scheduleRender();}, Math.max(1, interval-(now-lastRisoFrame)));
       return;
@@ -1778,6 +1780,7 @@ function _renderInner(){
     const animating = cached.grainStatic > 0 || videoOn;
     if(!needsRedraw && !hasCamData && !hasGifData && !isRecording && !animating) {
       fpsFrames++;
+      window._stExit='idle';
       return; // truly idle — no scheduleRender(), engine sleeps
     }
     if(animating){
@@ -1958,8 +1961,10 @@ function _renderInner(){
   }
 
   // FPS counter — DOM write once per second
+  window._stExit='drew';
   window._stDraws=(window._stDraws||0)+1;                    // resource monitor:
   window._stMs=performance.now()-_stT0;                      // real draws only
+  window._stDrawT=performance.now();                         // staleness probe (recording)
   window._stBuf=dw+'x'+dh+(resScale>1?' @'+resScale+'x':'');
   fpsFrames++;
   const fpsNow=performance.now();
@@ -3959,4 +3964,5 @@ function toggleStats(force){
   }, 500);
 }
 R.toggleStats = toggleStats;
+R._renderNow = () => { try{ _renderInner(); }catch(e){ console.error('forced render err', e); } };
 if(/[?&]stats\b/.test(location.search)) setTimeout(() => toggleStats(true), 500);

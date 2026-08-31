@@ -129,13 +129,20 @@ function stopVideo(){
   if(window._vidFallback){clearInterval(window._vidFallback);window._vidFallback=null;}
   if(window._camFallback){clearInterval(window._camFallback);window._camFallback=null;}
   if(gifRafId){cancelAnimationFrame(gifRafId);gifRafId=0;}
+  if(window._gifTickBk){clearInterval(window._gifTickBk);window._gifTickBk=0;}
   if(gifImg&&gifImg.parentNode)gifImg.parentNode.removeChild(gifImg);
   gifImg=null;
   if(gifFrames){gifFrames.forEach(f=>{f.canvas=null;});gifFrames=null;}
   gifFrameIdx=0;
 }
-function startGifLoop(now){
-  if(!videoOn){gifRafId=0;return;}
+// Advance the gif clock to wall time 'now'. Called from THREE drivers so
+// gif time keeps flowing wherever any of them is alive: the rAF loop
+// (smooth foreground playback), a 250ms backup interval (rAF is fully
+// SUSPENDED in hidden tabs/occluded windows — recordings there froze on
+// one frame), and the recording capture loops (so every captured frame
+// sees up-to-date gif time even when both others are throttled).
+function advanceGifClock(now){
+  if(!videoOn) return;
   if(!now)now=performance.now();
   if(window._paused){
     // Pause freezes the gif clock in place: holding gifLastTime at 'now'
@@ -143,17 +150,28 @@ function startGifLoop(now){
     // ahead of it, and no markDirty fires — so the paused render loop stays
     // asleep instead of being re-woken ~10x/s by gif advances.
     gifLastTime=now;
-    gifRafId=requestAnimationFrame(startGifLoop);
     return;
   }
   if(gifFrames&&gifFrames.length>0){
-    // ImageDecoder path: advance based on per-frame timing
-    const elapsed=now-gifLastTime;
-    const dur=gifFrames[gifFrameIdx].duration||100;
-    if(elapsed>=dur){
+    // CLOCK-based advance with catch-up. The old one-frame-per-rAF-tick
+    // advance played the gif in SLOW MOTION whenever rAF ran below the
+    // gif's fps (heavy page, throttled tab: 4 rAF/s made a 25fps gif 6x
+    // slow) — and VID then recorded only a sliver of the loop instead of
+    // a full cycle. Walking the schedule with a remainder-preserving
+    // clock keeps gif TIME exact at any rAF rate: frames are SKIPPED,
+    // never stretched, so a recording of one period always covers the
+    // whole loop (the clock-face does a full 360).
+    let dur=gifFrames[gifFrameIdx].duration||100;
+    let adv=0;
+    while(now-gifLastTime>=dur){
+      gifLastTime+=dur;
       gifFrameIdx=(gifFrameIdx+1)%gifFrames.length;
-      gifLastTime=now;
-      window._stGifAdv=(window._stGifAdv||0)+1;   // resource-monitor counter
+      adv++;
+      dur=gifFrames[gifFrameIdx].duration||100;
+      if(adv>=gifFrames.length){ gifLastTime=now; break; } // >1 cycle behind: resync
+    }
+    if(adv){
+      window._stGifAdv=(window._stGifAdv||0)+adv;  // resource-monitor: frames of gif TIME
       gifCtx.drawImage(gifFrames[gifFrameIdx].canvas,0,0);
       gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
       gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifCanvas);
@@ -168,7 +186,22 @@ function startGifLoop(now){
     videoFrameReady=true;
     markDirty();
   }
+}
+R._advanceGifClock=advanceGifClock;
+function startGifLoop(now){
+  if(!videoOn){gifRafId=0;return;}
+  window._gifRafSeen=performance.now();
+  advanceGifClock(now);
   gifRafId=requestAnimationFrame(startGifLoop);
+  // Backup driver: fires the clock only when rAF has gone quiet (hidden
+  // tab / occluded window suspend it entirely). Cleared in stopVideo.
+  if(!window._gifTickBk){
+    window._gifTickBk=setInterval(()=>{
+      if(!videoOn) return;
+      const t=performance.now();
+      if(t-(window._gifRafSeen||0)>300) advanceGifClock(t);
+    },250);
+  }
 }
 function loadGifFallback(f){
   // Fallback for browsers without ImageDecoder: use <img> DOM approach.
@@ -845,6 +878,14 @@ function handleFile(e){
           const count=track.frameCount;
           if(!count){R.toast('GIF has no frames');return;}
           const frames=[];
+          // Memory budget — same two levers as js/gif-decode.js (frame
+          // count is the real multiplier: 180f x 720x1280 = ~633MB of raw
+          // bitmaps): scale dimensions to fit ~256MB for the frame count,
+          // and decimate >20fps gifs on the fly, folding dropped delays
+          // into the previous kept frame so the loop period stays exact.
+          const GIF_BUDGET=256*1048576, GIF_MIN_DELAY=50;
+          let _gifScale=0; // resolved on first decoded frame (needs dims)
+          let _gifAcc=0;   // ms covered since the last EMITTED frame started
           const compCanvas=document.createElement('canvas');
           let compCtx=null;
           function decodeNext(idx){
@@ -870,16 +911,28 @@ function handleFile(e){
               tmpC.getContext('2d').drawImage(vf,0,0);
               vf.close();
               compCtx.drawImage(tmpC,0,0);
-              // Snapshot composited result — capped at 1280px max dimension
-              // (same cap and rationale as js/gif-decode.js: display source,
-              // memory is quadratic, the pipeline grains everything anyway).
-              const GIF_MAX_DIM=1280;
-              const gsc=Math.min(1, GIF_MAX_DIM/Math.max(compCanvas.width,compCanvas.height));
-              const snapC=document.createElement('canvas');
-              snapC.width=Math.max(1,Math.round(compCanvas.width*gsc));
-              snapC.height=Math.max(1,Math.round(compCanvas.height*gsc));
-              snapC.getContext('2d').drawImage(compCanvas,0,0,snapC.width,snapC.height);
-              frames.push({canvas:snapC, duration:frameDur});
+              if(!_gifScale){
+                const capScale=Math.min(1, 1280/Math.max(compCanvas.width,compCanvas.height));
+                const budgetScale=Math.sqrt(GIF_BUDGET/Math.max(1,count*compCanvas.width*compCanvas.height*4));
+                _gifScale=Math.min(capScale,budgetScale,1);
+              }
+              // decimate: while the current visible slot is still shorter
+              // than GIF_MIN_DELAY, this frame folds its time into the
+              // previous kept frame instead of becoming its own bitmap —
+              // an accumulating greedy, or a uniform-30ms gif would fold
+              // EVERY frame into the first and freeze. (First frame always
+              // kept; period stays exact.)
+              if(frames.length && _gifAcc<GIF_MIN_DELAY){
+                frames[frames.length-1].duration+=frameDur;
+                _gifAcc+=frameDur;
+              }else{
+                _gifAcc=frameDur;
+                const snapC=document.createElement('canvas');
+                snapC.width=Math.max(1,Math.round(compCanvas.width*_gifScale));
+                snapC.height=Math.max(1,Math.round(compCanvas.height*_gifScale));
+                snapC.getContext('2d').drawImage(compCanvas,0,0,snapC.width,snapC.height);
+                frames.push({canvas:snapC, duration:frameDur});
+              }
               decodeNext(idx+1);
             }).catch(()=>decodeNext(idx+1));
           }

@@ -546,6 +546,12 @@ async function startWebCodecsRecording(){
       window._recState.stopFn();   // normal loop-length completion
       return;
     }
+    // Keep gif time flowing even when rAF (and so the render loop's usual
+    // driver) is suspended — hidden tab, occluded window. And if the
+    // renderer hasn't drawn in a while (renders are rAF-driven too), force
+    // a frame so the capture doesn't encode a stale canvas.
+    if(R._advanceGifClock) R._advanceGifClock(now);
+    if(now-(window._stDrawT||0)>200 && R._renderNow) R._renderNow();
     try {
       // Source for VideoFrame: either the live canvas direct, or downscaled
       // through a scratch 2D canvas if the live one's too big for H.264.
@@ -732,6 +738,7 @@ function startMediaRecorderRecording(){
   // always has fresh frames even if the live render loop pauses for any
   // reason. Also pumps requestFrame() on the video track if available.
   const pumpId = setInterval(() => {
+    if(R._advanceGifClock) R._advanceGifClock(performance.now());
     markDirty();
     if(track && track.requestFrame){
       try { track.requestFrame(); } catch(_){}

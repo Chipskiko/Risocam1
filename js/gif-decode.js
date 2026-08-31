@@ -75,23 +75,67 @@ window.decodeGifFrames = function(buf){
   let gct = null;
   if(lsdPacked & 0x80){ const n = 2 << (lsdPacked & 7); gct = u8.subarray(p, p + n*3); p += n*3; }
   const frames = [];
-  // Output cap: frames are DISPLAY sources, and the riso pipeline grains/
-  // dithers everything anyway — above ~1280px a gif frame buys no visible
-  // detail but costs memory quadratically (a 2000px 60-frame gif would hold
-  // ~1GB of decoded canvases; Safari gets sluggish site-wide well before
-  // that). Composition still runs at native size for disposal correctness;
-  // only the emitted snapshots are scaled. Keep in sync with the
-  // ImageDecoder path in source.js.
-  const MAX_DIM = 1280;
-  const outScale = Math.min(1, MAX_DIM / Math.max(W, H));
-  const outW = Math.max(1, Math.round(W * outScale));
-  const outH = Math.max(1, Math.round(H * outScale));
+  // ── Memory budget ──────────────────────────────────────────────────────
+  // Frames are DISPLAY sources and the riso pipeline grains/dithers
+  // everything, so quality above ~1280px buys nothing — but the real
+  // multiplier is FRAME COUNT: a 180-frame 720x1280 gif is ~633MB of raw
+  // bitmaps, and Safari gets sluggish site-wide under decoded-image
+  // pressure (measured; see field notes). Two levers, period-preserving:
+  //  1. decimate gifs above ~20fps — a dropped frame folds its delay into
+  //     the previous kept frame, so the total loop length (and the VID
+  //     loop-length math) is EXACT;
+  //  2. scale frame dimensions so kept-frames x W x H x 4 fits the budget
+  //     (on top of the flat 1280px cap).
+  // A cheap pre-pass walks the block structure (no LZW) to count frames
+  // and read delays so both levers are known before decoding.
+  // Keep in sync with the ImageDecoder path in source.js.
+  const MAX_DIM = 1280, BUDGET_BYTES = 256 * 1048576, MIN_DELAY_MS = 50;
+  const plan = (function(){
+    const delays = [];
+    let q = p;                                     // continue from after GCT
+    let delay = 100;
+    while(q < u8.length){
+      const b = u8[q++];
+      if(b === 0x3B) break;
+      if(b === 0x21){
+        const label = u8[q++];
+        if(label === 0xF9 && u8[q] >= 4){
+          let d = (u8[q+2] | (u8[q+3] << 8)) * 10;
+          if(d <= 10) d = 100; delay = Math.max(d, 20);
+          q += 1 + u8[q];
+        }
+        while(q < u8.length && u8[q] !== 0) q += u8[q] + 1; q++;
+      } else if(b === 0x2C){
+        q += 8;
+        const idp = u8[q++];
+        if(idp & 0x80) q += (2 << (idp & 7)) * 3;
+        q++;                                       // LZW min code size
+        while(q < u8.length && u8[q] !== 0) q += u8[q] + 1; q++;
+        delays.push(delay); delay = 100;
+      } else if(b !== 0) break;
+    }
+    // decimation: greedily merge runs shorter than MIN_DELAY_MS
+    const emit = new Array(delays.length).fill(false);
+    let kept = 0, acc = 0;
+    for(let i = 0; i < delays.length; i++){
+      acc += delays[i];
+      if(kept === 0 || acc >= MIN_DELAY_MS){ emit[i] = true; kept++; acc = 0; }
+    }
+    if(!kept){ emit[0] = true; kept = 1; }
+    const capScale = Math.min(1, MAX_DIM / Math.max(W, H));
+    const budgetScale = Math.sqrt(BUDGET_BYTES / Math.max(1, kept * W * H * 4));
+    return {emit, scale: Math.min(capScale, budgetScale, 1)};
+  })();
+  const outW = Math.max(1, Math.round(W * plan.scale));
+  const outH = Math.max(1, Math.round(H * plan.scale));
+  const outScale = plan.scale;
   let fullCanvas = null, fullCtx = null;                  // reused when scaling
   if(outScale < 1){
     fullCanvas = document.createElement('canvas');
     fullCanvas.width = W; fullCanvas.height = H;
     fullCtx = fullCanvas.getContext('2d');
   }
+  let frameNo = 0, foldedMs = 0;
   const comp = new Uint8ClampedArray(W * H * 4);  // running full-size composite
   let gce = {delay: 100, transIdx: -1, disposal: 0};
   let prevSnapshot = null;
@@ -147,18 +191,29 @@ window.decodeGifFrames = function(buf){
           comp[co] = pal[pi]; comp[co+1] = pal[pi+1]; comp[co+2] = pal[pi+2]; comp[co+3] = 255;
         }
       }
-      const c = document.createElement('canvas'); c.width = outW; c.height = outH;
-      if(outScale < 1){
-        // putImageData can't scale — bounce through the reused full canvas
-        fullCtx.putImageData(new ImageData(comp.slice(), W, H), 0, 0);
-        c.getContext('2d').drawImage(fullCanvas, 0, 0, outW, outH);
-      } else {
-        c.getContext('2d').putImageData(new ImageData(comp.slice(), W, H), 0, 0);
-      }
       // Delay conventions: browsers render <=10ms as 100ms; the app's
       // ImageDecoder path additionally floors at 20ms — match both.
       let d = gce.delay; if(d <= 10) d = 100; d = Math.max(d, 20);
-      frames.push({canvas: c, duration: d});
+      const keep = plan.emit[frameNo] !== false;   // frames past the pre-pass count: keep
+      frameNo++;
+      if(!keep){
+        // decimated: COMPOSITED (later frames may depend on it) but not
+        // emitted — its delay extends the frame currently on screen (the
+        // previous kept one), so the loop period stays exact.
+        if(frames.length) frames[frames.length - 1].duration += d;
+        else foldedMs += d;
+      } else {
+        const c = document.createElement('canvas'); c.width = outW; c.height = outH;
+        if(outScale < 1){
+          // putImageData can't scale — bounce through the reused full canvas
+          fullCtx.putImageData(new ImageData(comp.slice(), W, H), 0, 0);
+          c.getContext('2d').drawImage(fullCanvas, 0, 0, outW, outH);
+        } else {
+          c.getContext('2d').putImageData(new ImageData(comp.slice(), W, H), 0, 0);
+        }
+        frames.push({canvas: c, duration: d + foldedMs});
+        foldedMs = 0;
+      }
       if(gce.disposal === 2){                     // restore to transparent
         for(let y = 0; y < fh; y++){ const cy = fy + y; if(cy >= H) continue;
           for(let x = 0; x < fw; x++){ const cx = fx + x; if(cx >= W) continue;
@@ -170,6 +225,8 @@ window.decodeGifFrames = function(buf){
       break;                                      // unknown block: keep what we have
     }
   }
+  if(foldedMs > 0 && frames.length)               // trailing decimated frames:
+    frames[frames.length - 1].duration += foldedMs; // period stays exact
   return frames;
 };
 })();
