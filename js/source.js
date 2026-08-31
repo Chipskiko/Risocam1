@@ -123,6 +123,9 @@ function stopVideo(){
     $vid.pause();$vid.removeAttribute('src');$vid.load();
     videoOn=false;
   }
+  // Deferred blob-URL release (see Safari notes at the load sites).
+  if(window._vidObjUrl){ try{ URL.revokeObjectURL(window._vidObjUrl); }catch(e){} window._vidObjUrl=null; }
+  if(window._gifObjUrl){ try{ URL.revokeObjectURL(window._gifObjUrl); }catch(e){} window._gifObjUrl=null; }
   if(window._vidFallback){clearInterval(window._vidFallback);window._vidFallback=null;}
   if(window._camFallback){clearInterval(window._camFallback);window._camFallback=null;}
   if(gifRafId){cancelAnimationFrame(gifRafId);gifRafId=0;}
@@ -162,11 +165,14 @@ function loadGifFallback(f){
   // NOTE: canvas drawImage() of an animated <img> samples the FIRST frame by
   // spec in Chrome/Safari — this path only truly animates in old Firefox.
   // It exists as a last-resort static fallback, not an animation path.
+  // Same Safari rule as video: keep the URL until the gif is replaced —
+  // Safari can lazily re-decode a DOM <img> from its (revoked) source.
+  if(window._gifObjUrl){ try{ URL.revokeObjectURL(window._gifObjUrl); }catch(e){} }
   const url=URL.createObjectURL(f);
+  window._gifObjUrl=url;
   const img=new Image();
-  img.onerror=()=>{URL.revokeObjectURL(url);R.toast('GIF failed to load');};
+  img.onerror=()=>{URL.revokeObjectURL(url);if(window._gifObjUrl===url)window._gifObjUrl=null;R.toast('GIF failed to load');};
   img.onload=()=>{
-    URL.revokeObjectURL(url);
     gifImg=img;
     img.style.cssText='position:fixed;left:-9999px;top:-9999px;pointer-events:none;';
     document.body.appendChild(img);
@@ -742,7 +748,16 @@ function handleFile(e){
     // Video: load into <video> element and play looped
     stopVideo();
     if(camOn){if(camStream)camStream.getTracks().forEach(t=>t.stop());camOn=false;}
+    // SAFARI: never revoke a media blob URL while the element uses it. The
+    // <video> keeps PLAYING from its own decode pipeline after a revoke, but
+    // texImage2D silently receives BLACK frames — no error anywhere. A/B on
+    // Mac Safari with the same H.264 file: revoke-at-loadeddata -> pixel mean
+    // 76 (black through the ink pipeline); revoke disabled -> mean 155-170
+    // with true whites. So the URL lives until the NEXT source replaces it
+    // (bounded: one outstanding URL) or stopVideo() tears it down.
+    if(window._vidObjUrl){ try{ URL.revokeObjectURL(window._vidObjUrl); }catch(e){} }
     const url=URL.createObjectURL(f);
+    window._vidObjUrl=url;
     $vid.srcObject=null;
     $vid.src=url;$vid.loop=true;$vid.muted=true;$vid.playsInline=true;
     // A .mov is a QuickTime CONTAINER — browsers (esp. Chrome/Firefox) often
@@ -751,6 +766,7 @@ function handleFile(e){
     // comes, so without this handler the upload fails silently and looks broken.
     $vid.onerror=()=>{
       try{ URL.revokeObjectURL(url); }catch(e){}
+      if(window._vidObjUrl===url) window._vidObjUrl=null;
       $vid.onerror=null; $vid.onloadeddata=null;
       const isMov=/\.mov$/i.test(f.name)||f.type==='video/quicktime';
       const msg=isMov
@@ -762,7 +778,7 @@ function handleFile(e){
     };
     $vid.onloadeddata=()=>{
       $vid.onerror=null;
-      URL.revokeObjectURL(url);
+      // (revoke deliberately NOT here — see the Safari note above)
       $vid.play();
       videoOn=true;camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();scheduleRender();
       $status.textContent='▶ VIDEO';
