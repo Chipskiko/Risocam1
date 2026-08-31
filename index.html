@@ -39,7 +39,7 @@
       <button class="header-dl-btn" onclick="R.savePdf()">PDF</button>
       <button class="header-dl-btn" onclick="R.exportSeparations()">SEPS</button>
     </div>
-    <button class="header-btn" onclick="R.reseedAll()" title="Reseed — re-roll plate offsets, grain pattern, and paper-texture shift"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/><circle cx="16" cy="8" r="1.4" fill="currentColor"/><circle cx="8" cy="16" r="1.4" fill="currentColor"/><circle cx="16" cy="16" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/></svg></button>
+    <button class="header-btn" onclick="R.randomizeLook()" title="Random — surprise profile, mode &amp; settings (also re-rolls registration, grain and paper shift)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/><circle cx="16" cy="8" r="1.4" fill="currentColor"/><circle cx="8" cy="16" r="1.4" fill="currentColor"/><circle cx="16" cy="16" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/></svg></button>
     <button class="header-btn" id="compareBtn" onclick="R.toggleCompare()" title="Compare"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="18" height="18" rx="2"/><line x1="11" y1="3" x2="11" y2="21"/><polyline points="15 8 19 12 15 16"/></svg></button>
     <div class="header-src">
       <button class="header-src-btn" onclick="R.pickFile()" title="Upload">↑</button>
@@ -3745,7 +3745,7 @@ void main(){
 <!-- mp4-muxer for proper MP4 (H.264) output via WebCodecs in Chrome/Edge -->
 <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.min.js"></script>
 <script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
-<script src="js/data.js?v=21"></script>
+<script src="js/data.js?v=22"></script>
 <script src="js/state.js?v=22"></script>
 <script src="js/undo.js?v=11"></script>
 <script src="js/compare.js?v=6"></script>
@@ -3781,7 +3781,7 @@ void main(){
   };
 })();
 </script>
-<script src="js/ui-controls.js?v=82"></script>
+<script src="js/ui-controls.js?v=83"></script>
 <script src="js/ui-paper.js?v=14"></script>
 <script src="js/phone.js?v=35"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL

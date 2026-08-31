@@ -104,6 +104,11 @@ const PROFILES=[
   {name:"Pool Party",colors:["Aqua","Bubblegum"]},{name:"Bruise",colors:["Indigo","Raspberry"]},
   {name:"Sea Glass",colors:["Mint","Cornflower","Coral"]},{name:"Harvest",colors:["Sunflower","Brick","Hunter Green"]},
   {name:"Twilight",colors:["Indigo","Fl. Pink","Flat Gold"]},{name:"Sprout",colors:["Kelly Green","Sunflower"]},
+  {name:"Newsprint",colors:["Black","Bright Red"]},{name:"Cyanotype",colors:["Federal Blue","Mist"]},
+  {name:"Peach Fuzz",colors:["Coral","Bisque","Melon"]},{name:"Bodega",colors:["Fl. Green","Purple"]},
+  {name:"Cove",colors:["Lagoon","Coral"]},{name:"Grape Soda",colors:["Violet","Bubblegum"]},
+  {name:"Gilded",colors:["Metallic Gold","Indigo"]},{name:"Smog",colors:["Smoky Teal","Melon"]},
+  {name:"Acid",colors:["Fl. Yellow","Indigo"]},{name:"Cola",colors:["Brown","Fl. Red"]},
   {name:"Pure CMYK",colors:["Process Cyan","Process Magenta","Process Yellow","Process Black"],dens:[88,85,70,75]},
 ];
 

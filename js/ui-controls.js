@@ -589,6 +589,27 @@ function channelsMatchProfile(p){
   return true;
 }
 
+// 🎲 Random look: random mode + random profile + random mode-specific
+// sub-settings, then the old reseed (plate offsets / grain / paper shift)
+// as the finale. Spins the existing cycle handlers a random number of
+// steps so every label, icon and phone mirror stays in sync for free.
+function randomizeLook(){
+  const spin=(fn,n)=>{const k=Math.floor(Math.random()*n);for(let i=0;i<k;i++){try{fn();}catch(e){}}};
+  const modes=['grain','screen','lines','flat'];
+  R.setMode(modes[Math.floor(Math.random()*modes.length)]);
+  const profs=allProfiles();
+  applyProf(profs[Math.floor(Math.random()*profs.length)]);
+  const m=window._mode||mode;
+  if(m==='grain'){ spin(cycleGrainSize,3); }
+  else if(m==='screen'){ spin(cycleLpi,6); spin(cycleStampShape,6); }
+  else if(m==='lines'){ spin(cycleLpi,6); spin(cycleLineShape,5); spin(cycleLineWave,3); spin(cycleLineAmount,4); spin(cycleLineWeight,3); spin(cycleLineRoughness,3); spin(cycleLineGrain,3); }
+  else if(m==='flat'){ spin(cycleAmtDpi,3); }
+  spin(cycleMisreg,4);
+  if(R.reseedAll) R.reseedAll();
+  markDirty();
+  try{ R.toast('Random look'); }catch(e){}
+}
+
 function updateUI(){
   // Sep-mode buttons follow cached.sepType — undo/restore assigns it
   // directly and previously left stale active classes (review finding).
@@ -2199,6 +2220,7 @@ R.setSepType = setSepType;
 R.setScale = setScale;
 R.setRisoFps = setRisoFps;
 R.cycleFps = cycleFps;
+R.randomizeLook = randomizeLook;
 R.setAngle = setAngle;
 R.lockCmykAngles = lockCmykAngles;
 R.toggleLayerVisible = toggleLayerVisible;
