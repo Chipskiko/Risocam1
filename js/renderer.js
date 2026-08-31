@@ -1881,7 +1881,15 @@ function _renderInner(){
   // and recording/saving always run full quality.
   const animTick = !_dirtyFrame && !isRecording && !_saving
                    && (cached.grainStatic > 0 || camOn || videoOn);
-  const animScale = Math.min(Math.max(resScale, dpr), Math.max(3, dpr * 1.5));
+  // Adaptive animation LOD: on GPU-bound machines a 3x anim frame can cost
+  // more than the riso-fps budget — renders clamp at ~5/s no matter what
+  // the FPS mode asks (measured on user hardware; fast GPUs hit the mode
+  // exactly and keep bias 0). _animLodBias is raised by the controller in
+  // the once-a-second fps block below until the cadence is honored, and
+  // decays back when there is headroom. Floor 1.5x; dirty frames and
+  // exports are untouched.
+  const animCap = Math.max(1.5, Math.max(3, dpr * 1.5) - (window._animLodBias || 0));
+  const animScale = Math.min(Math.max(resScale, dpr), animCap);
   // GPU safe mode: BEFORE the first frame has probed the GPU — and forever
   // after on GPUs the probe judged slow, or after repeated context losses —
   // cap the supersample at 2×. A 6× ≈ 14 MP frame that costs ~100 ms on an
@@ -1972,6 +1980,17 @@ function _renderInner(){
     $fps.textContent=((camOn||videoOn)?risoFps+'fps':fpsFrames+' fps');
     $res.textContent=dw+'×'+dh+(resScale>1?' ('+resScale+'×)':'');
     fpsFrames=0;fpsLast=fpsNow;
+    // Adaptive anim LOD controller (see animCap above): compare achieved
+    // draws/s against the requested riso fps; step quality down fast when
+    // lagging >25%, recover slowly when comfortably keeping up.
+    const _lodTarget = (camOn||videoOn) && risoFps>0 ? risoFps : 0;
+    const _lodGot = (window._stDraws||0) - (window._lodLastDraws||0);
+    window._lodLastDraws = window._stDraws||0;
+    const _bias = window._animLodBias||0;
+    if(_lodTarget>0){
+      if(_lodGot < _lodTarget*0.75 && _bias < 1.5) window._animLodBias = _bias + 0.25;
+      else if(_lodGot >= _lodTarget*0.92 && _bias > 0) window._animLodBias = Math.max(0, _bias - 0.125);
+    } else if(_bias) window._animLodBias = 0;
   }
 
   // Schedule next frame only if continuous mode — throttled scheduling happens above
@@ -3956,7 +3975,8 @@ function toggleStats(force){
     }
     const heap = (performance.memory && performance.memory.usedJSHeapSize)
       ? (performance.memory.usedJSHeapSize/1048576).toFixed(0)+' MB' : 'n/a (Chrome only)';
-    const flags = [window._paused?'PAUSED':'', isRecording?'REC':'', camOn?'cam':'', videoOn?'video':'']
+    const flags = [window._paused?'PAUSED':'', isRecording?'REC':'', camOn?'cam':'', videoOn?'video':'',
+      (window._animLodBias||0)>0?('lod -'+window._animLodBias.toFixed(2)+'x'):'']
       .filter(Boolean).join(' ');
     el.textContent =
       'renders/s '+draws.toFixed(1)+'  frame '+(window._stMs||0).toFixed(1)+' ms\n'+
