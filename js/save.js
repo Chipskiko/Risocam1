@@ -353,9 +353,40 @@ function _lzwCompress(idx,minCode){
 // VID saves a fixed-length LOOP instead of an armed start/stop recording
 // (user request): the grain re-rolls on every shimmer tick, so any splice
 // between frames is statistically identical to every other transition —
-// loop length is taste, not correctness. 8 s sits in the requested 5-12 s
-// range; clicking VID again still stops (and saves) early.
-const RECORD_MAX_SEC = 8;
+// loop length is taste, not correctness — so ANY cut loops. The length
+// depends on the source:
+//  - still image / camera: 8 s house cut (any length would wrap clean).
+//  - uploaded video: exactly one full playthrough. The video loops in the
+//    render, so a window of exactly its duration wraps clean from any start
+//    phase (the video's own seam exists in every possible cut anyway).
+//  - animated GIF (ImageDecoder path): whole GIF periods, repeated until the
+//    clip reaches 5 s so the grain has room to read as alive. The <img>
+//    fallback renders a static first frame and is treated as a still.
+// Short videos get the same whole-multiple treatment; very long ones are
+// capped (no longer a true loop — the toast says so). Clicking VID again
+// still stops (and saves) early.
+const RECORD_STATIC_SEC = 8;   // still sources
+const RECORD_MIN_SEC    = 5;   // shortest clip worth calling a loop
+const RECORD_CAP_SEC    = 60;  // safety cap for long videos
+function loopSeconds(){
+  let per = 0;
+  if(typeof videoOn !== 'undefined' && videoOn){
+    if(typeof gifFrames !== 'undefined' && gifFrames && gifFrames.length)
+      per = gifFrames.reduce((a, f) => a + (f.duration || 100), 0) / 1000;
+    else if(typeof gifImg !== 'undefined' && gifImg)
+      per = 0; // static <img> fallback
+    else if(typeof $vid !== 'undefined' && $vid && isFinite($vid.duration))
+      per = $vid.duration;
+  }
+  if(!(per > 0.05)) return RECORD_STATIC_SEC;
+  let d = per;
+  while(d < RECORD_MIN_SEC && d + per <= RECORD_CAP_SEC) d += per;
+  return Math.min(d, RECORD_CAP_SEC);
+}
+function loopToast(d){
+  const fmt = (Math.round(d * 10) / 10) + 's';
+  R.toast('Saving ' + fmt + (d >= RECORD_CAP_SEC - 0.01 ? ' (capped)' : '') + ' loop — click VID to stop early');
+}
 window._recState = {recording:false, recorder:null, chunks:null, startMs:0, mime:'', timerId:0, autoStopId:0};
 
 // Browser detection — Chrome's MediaRecorder claims H.264 support but the
@@ -497,6 +528,7 @@ async function startWebCodecsRecording(){
     return startMediaRecorderRecording();
   }
   // Capture loop: every frame, grab canvas as VideoFrame, encode it
+  const durSec = loopSeconds();
   const startMs = performance.now();
   isRecording = true;
   let frameCount = 0;
@@ -508,9 +540,8 @@ async function startWebCodecsRecording(){
     if(stopped) return;
     const now = performance.now();
     const elapsed = (now - startMs) / 1000;
-    if(elapsed >= RECORD_MAX_SEC){
-      R.toast('Max recording length reached');
-      window._recState.stopFn();
+    if(elapsed >= durSec){
+      window._recState.stopFn();   // normal loop-length completion
       return;
     }
     try {
@@ -581,19 +612,20 @@ async function startWebCodecsRecording(){
     recording: true,
     stopFn,
     startMs,
+    durSec,
     timerId: 0,
     autoStopId: 0,
     isWebCodecs: true,
   };
   window._recState.autoStopId = setTimeout(() => {
     if(window._recState.recording) stopFn();
-  }, RECORD_MAX_SEC * 1000);
+  }, durSec * 1000);
   window._recState.timerId = setInterval(() => {
-    const left = Math.max(0, RECORD_MAX_SEC - (performance.now() - window._recState.startMs) / 1000);
+    const left = Math.max(0, window._recState.durSec - (performance.now() - window._recState.startMs) / 1000);
     updateRecordButton('● ' + left.toFixed(1) + 's');
   }, 100);
-  updateRecordButton('● ' + RECORD_MAX_SEC + '.0s');
-  R.toast('Saving ' + RECORD_MAX_SEC + 's loop — click VID to stop early');
+  updateRecordButton('● ' + durSec.toFixed(1) + 's');
+  loopToast(durSec);
   // Start the capture loop on the next tick so UI updates first
   setTimeout(captureLoop, 0);
 }
@@ -688,20 +720,21 @@ function startMediaRecorderRecording(){
       try { track.requestFrame(); } catch(_){}
     }
   }, 33);
+  const durSec = loopSeconds();
   window._recState = {
     recording:true, recorder, chunks, stream, track, pumpId,
-    startMs: performance.now(), mime,
+    startMs: performance.now(), mime, durSec,
     timerId: 0, autoStopId: 0
   };
   window._recState.autoStopId = setTimeout(() => {
     if(window._recState.recording){ stopRecording(); }   // normal loop-length completion
-  }, RECORD_MAX_SEC * 1000);
+  }, durSec * 1000);
   window._recState.timerId = setInterval(() => {
-    const left = Math.max(0, RECORD_MAX_SEC - (performance.now() - window._recState.startMs) / 1000);
+    const left = Math.max(0, window._recState.durSec - (performance.now() - window._recState.startMs) / 1000);
     updateRecordButton('● ' + left.toFixed(1) + 's');
   }, 100);
-  updateRecordButton('● ' + RECORD_MAX_SEC + '.0s');
-  R.toast('Recording — click VID again to stop');
+  updateRecordButton('● ' + durSec.toFixed(1) + 's');
+  loopToast(durSec);
 }
 
 function stopRecording(){

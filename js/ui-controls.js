@@ -1217,12 +1217,12 @@ function refreshDitherScaleVisibility(){
 }
 
 // ─── Color quantization (pre-NNLS posterize / coarse cache) ───
-// Off = full range; 32/16/8 = N levels per channel. Lower = chunkier.
 // n is the divisor in floor(c*n + 0.5)/n, so it yields n+1 tones per channel
-// (n=2 -> 0, 1/2, 1). The low end is where the flat screen-print look lives:
-// n=2 across 3 inks is at most 27 possible colours in the whole image.
-const COLOR_QUANT_STEPS = [{v:0, l:'Off'}, {v:16, l:'16'}, {v:8, l:'8'},
-                           {v:4, l:'4'}, {v:3, l:'3'}, {v:2, l:'2'}, {v:1, l:'Flat'}];
+// (n=2 -> 0, 1/2, 1); n=1 is binary = Flat. Only the low end is offered —
+// 16/8 were visually indistinguishable from Off, so the cycle is the useful
+// range: Off -> 4 -> 3 -> 2 -> Flat.
+const COLOR_QUANT_STEPS = [{v:0, l:'Off'}, {v:4, l:'4'}, {v:3, l:'3'},
+                           {v:2, l:'2'}, {v:1, l:'Flat'}];
 window._colorQuant = window._colorQuant ?? 0;
 // ─── Perceptual Lab residual toggle ───
 // When on, NNLS picks the best ink subset using Lab color distance instead
@@ -1438,7 +1438,17 @@ function cycleColorQuant(){
   const v = el('posterizeBtnVal'); if(v) v.textContent = COLOR_QUANT_STEPS[i].l;
   const pv = el('phPosterizeBtnVal'); if(pv) pv.textContent = COLOR_QUANT_STEPS[i].l;
   const b = el('posterizeBtn'); if(b) b.classList.toggle('active', window._colorQuant > 0);
-  R.toast('Posterize: ' + (window._colorQuant ? COLOR_QUANT_STEPS[i].l + ' levels' : 'Off'));
+  // Posterize implies knockout: flat regions should TILE, not stack. With KO
+  // on every plate, u_koExclusive hands each pixel to its strongest ink only,
+  // so the posterized colours never overlay (and Off restores overprinting).
+  if(typeof layerKnockout !== 'undefined'){
+    for(let k = 0; k < 4; k++) layerKnockout[k] = window._colorQuant > 0;
+    buildChannelUI();
+    if(el('phChannelList') && el('phChannelList').children.length) buildChannelUI('phChannelList');
+  }
+  R.toast('Posterize: ' + (window._colorQuant
+    ? (window._colorQuant === 1 ? 'Flat' : COLOR_QUANT_STEPS[i].l + ' levels') + ' — no overlay'
+    : 'Off'));
   // Source quantisation changes the separation itself, so RISO/stipple masters
   // baked from the old values are stale.
   if(window._mode === 'flat' || window._mode === 'stipple'){
