@@ -1634,6 +1634,13 @@ R._lineSpinOffset = function(ch){
 };
 R.togglePause=function(){
   window._paused=!window._paused;
+  // An uploaded video is part of the artwork's clock: pause freezes it,
+  // resume continues from the same frame (user request — previously the
+  // <video> kept playing underneath and resume jumped ahead). Camera stays
+  // live (freezing a viewfinder reads as a hang, not a pause).
+  if(videoOn && !gifImg && !gifFrames && $vid){
+    try{ if(window._paused) $vid.pause(); else $vid.play(); }catch(e){}
+  }
   if(!window._paused){
     needsRedraw=true;
     scheduleRender(); // wake the loop back up

@@ -350,8 +350,12 @@ function _lzwCompress(idx,minCode){
 // ─── Press-to-start/stop recording via MediaRecorder ──────────────────
 // Hardware-accelerated capture of the live canvas. No per-frame encoding
 // overhead, no palette quantization. Saves as .webm or .mp4 depending on
-// browser support. Hard-capped at 30 seconds to bound memory.
-const RECORD_MAX_SEC = 30;
+// VID saves a fixed-length LOOP instead of an armed start/stop recording
+// (user request): the grain re-rolls on every shimmer tick, so any splice
+// between frames is statistically identical to every other transition —
+// loop length is taste, not correctness. 8 s sits in the requested 5-12 s
+// range; clicking VID again still stops (and saves) early.
+const RECORD_MAX_SEC = 8;
 window._recState = {recording:false, recorder:null, chunks:null, startMs:0, mime:'', timerId:0, autoStopId:0};
 
 // Browser detection — Chrome's MediaRecorder claims H.264 support but the
@@ -389,35 +393,7 @@ function updateRecordButton(label){
   if(btn) btn.textContent = label;
 }
 
-const COUNTDOWN_SEC = 5;
-window._countdownState = {active:false, intervalId:0, cancelled:false};
-
-// Cancellable 5-second countdown shown only in the button text + a single
-// initial toast. Clicking the button again during countdown cancels it.
-function startCountdown(onComplete){
-  let remaining = COUNTDOWN_SEC;
-  window._countdownState = {active:true, intervalId:0, cancelled:false};
-  updateRecordButton(remaining + '…');
-  R.toast('Recording in ' + remaining + 's');
-  window._countdownState.intervalId = setInterval(() => {
-    if(window._countdownState.cancelled) return;
-    remaining--;
-    if(remaining > 0){
-      updateRecordButton(remaining + '…');
-    } else {
-      clearInterval(window._countdownState.intervalId);
-      window._countdownState.active = false;
-      onComplete();
-    }
-  }, 1000);
-}
-function cancelCountdown(){
-  clearInterval(window._countdownState.intervalId);
-  window._countdownState.active = false;
-  window._countdownState.cancelled = true;
-  updateRecordButton('VID');
-  R.toast('Cancelled');
-}
+// (The old 5 s arm countdown was removed with the loop-length VID save.)
 
 // Pick an AVC level identifier for the given pixel count. Returns the
 // hex byte (as a string) used as the third pair of the codec string
@@ -613,11 +589,11 @@ async function startWebCodecsRecording(){
     if(window._recState.recording) stopFn();
   }, RECORD_MAX_SEC * 1000);
   window._recState.timerId = setInterval(() => {
-    const elapsed = (performance.now() - window._recState.startMs) / 1000;
-    updateRecordButton('● ' + elapsed.toFixed(1) + 's');
+    const left = Math.max(0, RECORD_MAX_SEC - (performance.now() - window._recState.startMs) / 1000);
+    updateRecordButton('● ' + left.toFixed(1) + 's');
   }, 100);
-  updateRecordButton('● 0.0s');
-  R.toast('Recording MP4 — click VID to stop');
+  updateRecordButton('● ' + RECORD_MAX_SEC + '.0s');
+  R.toast('Saving ' + RECORD_MAX_SEC + 's loop — click VID to stop early');
   // Start the capture loop on the next tick so UI updates first
   setTimeout(captureLoop, 0);
 }
@@ -718,13 +694,13 @@ function startMediaRecorderRecording(){
     timerId: 0, autoStopId: 0
   };
   window._recState.autoStopId = setTimeout(() => {
-    if(window._recState.recording){R.toast('Max recording length reached'); stopRecording();}
+    if(window._recState.recording){ stopRecording(); }   // normal loop-length completion
   }, RECORD_MAX_SEC * 1000);
   window._recState.timerId = setInterval(() => {
-    const elapsed = (performance.now() - window._recState.startMs) / 1000;
-    updateRecordButton('● ' + elapsed.toFixed(1) + 's');
+    const left = Math.max(0, RECORD_MAX_SEC - (performance.now() - window._recState.startMs) / 1000);
+    updateRecordButton('● ' + left.toFixed(1) + 's');
   }, 100);
-  updateRecordButton('● 0.0s');
+  updateRecordButton('● ' + RECORD_MAX_SEC + '.0s');
   R.toast('Recording — click VID again to stop');
 }
 
@@ -758,15 +734,11 @@ function stopRecording(){
 //   - During recording → stop early
 //   - Otherwise → start 5s countdown, then record
 function toggleRecording(){
-  if(window._countdownState.active){
-    cancelCountdown();
-    return;
-  }
   if(window._recState.recording){
-    stopRecording();
+    stopRecording();   // early stop still saves the clip
     return;
   }
-  startCountdown(startRecording);
+  startRecording();    // no arm/countdown — records an 8 s loop and saves
 }
 
 async function saveGif(){

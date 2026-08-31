@@ -35,7 +35,7 @@
       <span class="header-dl-arrow"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg></span>
       <button class="header-dl-btn" onclick="R.saveHiRes()" title="Lossless PNG — best quality, largest file, preserves alpha">PNG</button>
       <button class="header-dl-btn" onclick="R.saveJpg()" title="JPEG q=0.95 capped at 2400px — sharing-optimized, ~500KB–1MB files">JPG</button>
-      <button class="header-dl-btn" onclick="R.toggleRecording()" title="Click to start a 5-second countdown then record. Click again to stop early. Max 30s. Saved as MP4/WebM.">VID</button>
+      <button class="header-dl-btn" onclick="R.toggleRecording()" title="Save an 8-second loop — grain re-rolls every tick, so the cut is invisible. Click again to stop early. MP4/WebM.">VID</button>
       <button class="header-dl-btn" onclick="R.savePdf()">PDF</button>
       <button class="header-dl-btn" onclick="R.exportSeparations()">SEPS</button>
     </div>
@@ -3753,9 +3753,9 @@ void main(){
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/gen/bnvc256.js?v=2"></script>
-<script src="js/renderer.js?v=209"></script>
+<script src="js/renderer.js?v=210"></script>
 <script src="js/source.js?v=58"></script>
-<script src="js/save.js?v=76"></script>
+<script src="js/save.js?v=77"></script>
 <script>
 // WebGPU shims (opt-in experiment): 41KB that only ?webgpu or the debug
 // toggle ever executes — loaded on demand instead of parsed on every visit.
