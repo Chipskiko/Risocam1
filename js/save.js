@@ -440,7 +440,7 @@ function pickAvcLevel(pixels){
   return '3E';                         // 6.2
 }
 
-// ─── WebCodecs + mp4-muxer path (Chrome/Edge) ─────────────────────────
+// ─── WebCodecs + mp4-muxer path (Chrome/Edge/Safari) ──────────────────
 // Bypasses MediaRecorder's broken H.264-from-WebGL pipeline by using
 // VideoEncoder directly to encode H.264, then muxing to MP4 ourselves.
 async function startWebCodecsRecording(){
@@ -635,11 +635,18 @@ function startRecording(){
   if(!hasSrc){R.toast('No source to record');return;}
   if(window._pdfDoc){R.toast('Recording disabled in PDF mode');return;}
   if(!$gl.captureStream && !hasWebCodecsH264){R.toast('Recording not supported in this browser');return;}
-  // Chrome/Edge with WebCodecs + mp4-muxer → true MP4/H.264
-  if(hasWebCodecsH264 && !isSafari){
+  // WebCodecs + mp4-muxer → true MP4/H.264 wherever VideoEncoder exists
+  // (Chrome/Edge, and Safari 16.4+). This path reads frames STRAIGHT off
+  // the canvas (new VideoFrame($gl)) — it never touches captureStream,
+  // which on WebKit nondeterministically delivers ZERO frames from a WebGL
+  // canvas (some page loads every recording came back empty: "No data
+  // recorded", other loads worked — measured across ~20 isolated runs).
+  // If encoder setup fails, startWebCodecsRecording falls back to
+  // MediaRecorder itself.
+  if(hasWebCodecsH264){
     return startWebCodecsRecording();
   }
-  // Safari (HEVC/H.264) or Firefox (WebM) → MediaRecorder
+  // Firefox (WebM) / old Safari → MediaRecorder
   startMediaRecorderRecording();
 }
 
@@ -750,16 +757,21 @@ function stopRecording(){
     if(s.stopFn) s.stopFn();
     return;
   }
-  // MediaRecorder path
+  // MediaRecorder path.
+  // Order matters on Safari: recorder.stop() finalizes the MP4
+  // ASYNCHRONOUSLY, and the old teardown both called requestData() (which
+  // flushes an EMPTY blob from Safari's non-fragmentable MP4 recorder) and
+  // killed the source track 100ms later — mid-finalize — so the final
+  // dataavailable arrived empty and every save toasted "No data recorded".
+  // Stop ONLY the recorder here; onstop stops the tracks once the file has
+  // been delivered. The late timer is a safety net for teardowns where no
+  // stop event ever fires (e.g. after onerror), when the canvas
+  // captureStream track would otherwise keep running.
   if(s.pumpId){clearInterval(s.pumpId); s.pumpId=0;}
-  try { if(s.recorder && s.recorder.state==='recording') s.recorder.requestData(); } catch(_){}
+  try { s.recorder.stop(); } catch(e){ console.error('[REC] stop err', e); }
   setTimeout(() => {
-    try { s.recorder.stop(); } catch(e){ console.error('[REC] stop err', e); }
-    // Safety net: recorder.onstop normally stops the capture-stream tracks,
-    // but if the recorder is already inactive (e.g. teardown after onerror)
-    // no stop event fires and the canvas captureStream track keeps running.
     try { s.stream && s.stream.getTracks().forEach(t => t.stop()); } catch(_){}
-  }, 100);
+  }, 2000);
 }
 
 // Toggle entry-point used by the toolbar VID button:
