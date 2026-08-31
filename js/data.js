@@ -100,6 +100,10 @@ const PROFILES=[
   {name:"Earthy",colors:["Brown","Flat Gold","Hunter Green"]},{name:"Night",colors:["Federal Blue","Violet","Fl. Green"]},
   {name:"CMYK",colors:["Blue","Bright Red","Yellow","Black"],dens:[88,85,70,75]},{name:"Tropical",colors:["Fl. Orange","Turquoise","Yellow"]},
   {name:"Mono",colors:["Black"]},{name:"Vintage",colors:["Brick","Flat Gold","Federal Blue"]},
+  {name:"Rose Teal",colors:["Fl. Pink","Teal"]},{name:"Citrus",colors:["Fl. Orange","Light Lime"]},
+  {name:"Pool Party",colors:["Aqua","Bubblegum"]},{name:"Bruise",colors:["Indigo","Raspberry"]},
+  {name:"Sea Glass",colors:["Mint","Cornflower","Coral"]},{name:"Harvest",colors:["Sunflower","Brick","Hunter Green"]},
+  {name:"Twilight",colors:["Indigo","Fl. Pink","Flat Gold"]},{name:"Sprout",colors:["Kelly Green","Sunflower"]},
   {name:"Pure CMYK",colors:["Process Cyan","Process Magenta","Process Yellow","Process Black"],dens:[88,85,70,75]},
 ];
 
