@@ -60,7 +60,19 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
      narrow widths EVERY stacked panel pinned to 680px and clipped off the
      right edge. minmax(0,...) lets the column track the viewport; the rows
      below then wrap instead of overflowing. */
-  .app-container{grid-template-columns:minmax(0,1fr);padding:12px;gap:12px;overflow-y:auto;-webkit-overflow-scrolling:touch;align-items:start}
+  /* The body must not double-scroll: the container's desktop height is
+     calc(100vh - 56px), but the narrow header WRAPS to ~82px, so the page
+     overflowed by the difference and scrolled the body under the sticky
+     header (rows sliding into it mid-element). Flex column makes the
+     container take exactly the leftover height for ANY header height. */
+  body{height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+  header{flex:none}
+  /* grid-template-rows:none + max-content auto rows: with the container's
+     definite height, the implicit rows were COMPRESSED to fit (163px row
+     holding a 374px panel, etc.) so every stacked panel overlapped the
+     next. max-content rows are not shrinkable — the content overflows into
+     scroll, which is the whole point of the container being the scroller. */
+  .app-container{flex:1 1 0;min-height:0;height:auto;grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-auto-rows:max-content;padding:12px;padding-top:0;gap:12px;overflow-y:auto;-webkit-overflow-scrolling:touch;align-items:start}
   .controls-panel,.channel-list,.ch-slot,.ch-mono-row,.paper-compact{min-width:0}
   .ch-angles{flex-wrap:wrap;justify-content:flex-end;min-width:0}
 }
@@ -550,7 +562,12 @@ body.phone-mode.ph-ls.ph-ls-cw .ph-overlay{padding-bottom:calc(env(safe-area-ins
    source than the media block up top and silently wins at equal specificity.
    Keep this block last. */
 @media(max-width:900px){
-  .viewfinder-panel{position:sticky;top:0;z-index:30;background:var(--bg)}
+  /* The bg-coloured borders MASK scrolling content: without them, panels
+     scrolling under the sticky viewfinder peeked out in the container's
+     top padding strip (“appearing above the viewport”) and butted flush
+     against the canvas bottom. Border colour = page bg, so both read as a
+     constant clean gap around the pinned canvas. */
+  .viewfinder-panel{position:sticky;top:0;z-index:30;background:var(--bg);border-top:12px solid var(--bg);border-bottom:12px solid var(--bg)}
   /* These two must ALSO live down here: the base #gl (75vh) and pdf-mode
      (65vh/min-400px) height rules are later in source than the top media
      block and win at equal specificity — the 52vh cap up there was dead
@@ -559,6 +576,17 @@ body.phone-mode.ph-ls.ph-ls-cw .ph-overlay{padding-bottom:calc(env(safe-area-ins
      short windows. */
   .viewfinder-panel>#gl{max-height:52vh}
   body.pdf-mode .viewfinder-panel{height:52vh!important;min-height:220px}
+  /* The right-rail panel can be taller than the scroll window left under
+     the pinned canvas in short windows — its header row (PLATES +
+     CMYK/RGB/SPOT) could then NEVER scroll out from under the canvas. Cap
+     it to the leftover height and let it scroll internally instead.
+     48vh−130px ≈ viewport − header(~82) − pinned canvas(52vh + 24px border
+     masks) − gaps. The 200px floor keeps it usable in very short windows
+     even if that means a little of it slides under the canvas again. */
+  .controls-panel{max-height:max(200px, calc(48vh - 130px));max-height:max(200px, calc(48dvh - 130px));overflow-y:auto}
+  /* …and its flex children must not compress to fit that cap (flex-shrink
+     defaults to 1: the sections were squeezing instead of scrolling). */
+  .controls-panel>*{flex:0 0 auto}
 }
 
 /* Phone overlay control captions: tiny uppercase label above each pill so a
