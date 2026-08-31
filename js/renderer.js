@@ -3906,7 +3906,6 @@ function uploadOriginalSource(canvas){
 }
 R.uploadOriginalSource = uploadOriginalSource;
 
-})(window.R);
 
 // ─── Resource monitor (?stats in the URL, or R.toggleStats()) ───────────
 // Tiny always-on counters live in the render tail (_stDraws/_stMs/_stBuf)
@@ -3945,7 +3944,12 @@ function toggleStats(force){
     const gAdv  = ((window._stGifAdv||0)-lastGif)/dt;  lastGif   = window._stGifAdv||0;
     const gf = (typeof gifFrames!=='undefined') && gifFrames && gifFrames.length ? gifFrames : null;
     let gifLine = '';
-    if(gf){
+    if(gf && window._gifStream){
+      const st = window._gifStream;
+      gifLine = 'gif       '+st.frameCount+'f '+st.width+'x'+st.height+
+        (st.outW!==st.width?' → '+st.outW+'x'+st.outH:'')+
+        ' ~'+(st.approxBytes/1048576).toFixed(0)+'MB streamed\n';
+    } else if(gf && gf[0].canvas){
       const fw = gf[0].canvas.width, fh = gf[0].canvas.height;
       const mb = (gf.length*fw*fh*4/1048576).toFixed(0);
       gifLine = 'gif       '+gf.length+'f '+fw+'x'+fh+' ~'+mb+'MB decoded\n';
@@ -3966,3 +3970,4 @@ function toggleStats(force){
 R.toggleStats = toggleStats;
 R._renderNow = () => { try{ _renderInner(); }catch(e){ console.error('forced render err', e); } };
 if(/[?&]stats\b/.test(location.search)) setTimeout(() => toggleStats(true), 500);
+})(window.R);

@@ -534,6 +534,7 @@ async function startWebCodecsRecording(){
   let frameCount = 0;
   let lastKeyUs = -1e9;
   let firstCapMs = -1;   // wall-clock base: mp4-muxer needs the FIRST sample at t=0
+  let lastTsUs = -1;     // newest captured timestamp (for the stop-time top-up)
   let stopped = false;
   // Frame timestamp in microseconds (WebCodecs unit)
   const fps = 30;
@@ -578,6 +579,7 @@ async function startWebCodecsRecording(){
       if(isKey) lastKeyUs = tsUs;
       encoder.encode(frame, { keyFrame: isKey });
       frame.close();
+      lastTsUs = tsUs;
       frameCount++;
     } catch(e){
       console.error('[REC] frame encode err:', e);
@@ -597,6 +599,22 @@ async function startWebCodecsRecording(){
   const stopFn = async () => {
     if(stopped) return;
     stopped = true;
+    // Endpoint top-up: in an occluded window the (timer-clamped) capture
+    // loop can leave the last ~second of the loop uncaptured, cutting the
+    // saved duration short. Encode one final frame stamped at the loop's
+    // end so the file always spans the full period.
+    try {
+      const endUs = Math.round(durSec * 1e6) - frameDurationUs;
+      if(lastTsUs >= 0 && endUs > lastTsUs){
+        if(R._advanceGifClock) R._advanceGifClock(performance.now());
+        if(R._renderNow) R._renderNow();
+        let src2;
+        if(useScratch){ sctx.drawImage($gl, 0, 0, w, h); src2 = scratch; } else { src2 = $gl; }
+        const fin = new VideoFrame(src2, { timestamp: endUs, duration: frameDurationUs });
+        encoder.encode(fin, { keyFrame: false });
+        fin.close();
+      }
+    } catch(e){ console.warn('[REC] endpoint top-up failed', e); }
     isRecording = false;
     clearTimeout(window._recState.autoStopId);
     clearInterval(window._recState.timerId);
@@ -889,7 +907,15 @@ async function saveGif(){
         srcIdx=k;
       }
       gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
-      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifFrames[srcIdx].canvas);
+      if(window._gifStream){
+        // Streamed frames: composite srcIdx into gifCanvas, upload that.
+        // srcIdx is non-decreasing across the export loop, so this stays on
+        // the decoder's cheap sequential path.
+        window._gifStream.drawFrame(srcIdx,gifCtx);
+        gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifCanvas);
+      }else{
+        gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifFrames[srcIdx].canvas);
+      }
     }else if(hasVideoFile){
       // Seek video to this frame's timestamp
       const t=(i/gifFps)%($vid.duration||1);

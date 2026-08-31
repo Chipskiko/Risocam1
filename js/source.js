@@ -132,6 +132,7 @@ function stopVideo(){
   if(window._gifTickBk){clearInterval(window._gifTickBk);window._gifTickBk=0;}
   if(gifImg&&gifImg.parentNode)gifImg.parentNode.removeChild(gifImg);
   gifImg=null;
+  if(window._gifStream){try{window._gifStream.close();}catch(e){} window._gifStream=null;}
   if(gifFrames){gifFrames.forEach(f=>{f.canvas=null;});gifFrames=null;}
   gifFrameIdx=0;
 }
@@ -172,7 +173,8 @@ function advanceGifClock(now){
     }
     if(adv){
       window._stGifAdv=(window._stGifAdv||0)+adv;  // resource-monitor: frames of gif TIME
-      gifCtx.drawImage(gifFrames[gifFrameIdx].canvas,0,0);
+      if(window._gifStream) window._gifStream.drawFrame(gifFrameIdx,gifCtx);
+      else gifCtx.drawImage(gifFrames[gifFrameIdx].canvas,0,0);
       gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
       gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifCanvas);
       videoFrameReady=true;
@@ -856,7 +858,8 @@ function handleFile(e){
       gifFrameIdx=0;gifLastTime=0; // force immediate first-frame draw
       // Draw first frame immediately into texture
       if(gifFrames&&gifFrames.length>0){
-        gifCtx.drawImage(gifFrames[0].canvas,0,0);
+        if(window._gifStream) window._gifStream.drawFrame(0,gifCtx);
+        else gifCtx.drawImage(gifFrames[0].canvas,0,0);
         gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,window._srcTexA);
         gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,gifCanvas);
         // Also set texture B for static reference
@@ -867,7 +870,26 @@ function handleFile(e){
       startGifLoop();
     }
 
-    if(typeof ImageDecoder!=='undefined'){
+    // Streaming decoder first, for EVERY engine: keeps only the compressed
+    // bytes + one composited frame in memory (a 10MB 180-frame gif is
+    // ~663MB as per-frame bitmaps but ~15MB streamed), decoding one frame
+    // per advance. Pixel-exact against ImageDecoder (verified: palettes,
+    // transparency, interlace, disposal 0-3). ImageDecoder remains the
+    // fallback for files this parser rejects; <img> is the last resort.
+    f.arrayBuffer().then(ab=>{
+      const stream=window.createGifStream?window.createGifStream(ab):null;
+      if(!stream) throw new Error('no stream decoder');
+      window._gifStream=stream;
+      gifFrames=stream.delays.map(d=>({canvas:null, duration:d})); // schedule only
+      initGifPlayback(stream.outW,stream.outH);
+    }).catch(err=>{
+      console.warn('Streaming GIF decode failed, trying ImageDecoder/<img>',err);
+      if(window._gifStream){try{window._gifStream.close();}catch(e){} window._gifStream=null;}
+      loadGifViaImageDecoder(f);
+    });
+
+    function loadGifViaImageDecoder(f){
+      if(typeof ImageDecoder==='undefined'){ loadGifFallback(f); return; }
       // ImageDecoder path: decode every frame with proper timing & disposal
       f.arrayBuffer().then(ab=>{
         const decoder=new ImageDecoder({data:ab,type:'image/gif'});
@@ -944,21 +966,6 @@ function handleFile(e){
         });
       }).catch(err=>{
         console.warn('GIF read failed, falling back to <img>',err);
-        loadGifFallback(f);
-      });
-    }else{
-      // No ImageDecoder (Safari): decode the GIF in JS (js/gif-decode.js) so
-      // it still ANIMATES — the <img> fallback renders only a static first
-      // frame (canvas drawImage of an animated <img> samples frame 1 by
-      // spec), and it also lets the VID loop-length logic see real GIF
-      // periods here. <img> stays as the last resort if parsing fails.
-      f.arrayBuffer().then(ab=>{
-        const frames=window.decodeGifFrames?window.decodeGifFrames(ab):null;
-        if(!frames||!frames.length) throw new Error('no frames decoded');
-        gifFrames=frames;
-        initGifPlayback(frames[0].canvas.width,frames[0].canvas.height);
-      }).catch(err=>{
-        console.warn('JS GIF decode failed, falling back to <img>',err);
         loadGifFallback(f);
       });
     }

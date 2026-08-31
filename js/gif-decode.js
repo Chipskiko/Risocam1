@@ -1,14 +1,27 @@
-// GIF frame decoder for engines without the ImageDecoder API (Safari).
-// Exposes window.decodeGifFrames(ArrayBuffer) -> [{canvas, duration(ms)}],
-// the same frame contract source.js builds on the ImageDecoder path, so the
-// playback loop and the VID loop-length logic work unchanged. Without this,
-// Safari fell back to a DOM <img>, which canvas drawImage() samples as the
-// FIRST frame only (per spec) — GIFs rendered as stills.
+// Streaming GIF decoder — used for ALL animated GIF playback (and as the
+// no-ImageDecoder path Safari depends on; the ImageDecoder route remains a
+// fallback if this parser rejects a file).
 //
-// Scope: full GIF87a/89a — global/local palettes, transparency, interlace,
-// disposal 0-3 (2 = restore to transparent like browsers do, not bg colour;
-// 3 = restore previous composite). Frames are emitted as full-size
-// composites, matching the ImageDecoder path's snapshots.
+// v5: streaming. The batch decoder materialised every frame as a full-size
+// RGBA canvas — memory is frameCount x W x H x 4, so a 10MB file (LZW +
+// palette + patch compression, ~60x) became 663MB of bitmaps and Safari
+// got sluggish site-wide. This version keeps only the COMPRESSED bytes
+// plus ONE composited frame (~15MB for the same gif) and re-runs LZW one
+// frame at a time as playback advances (a few ms per step). Playback is
+// sequential, so seek(cur+1) is the hot path; wrapping to 0 resets and
+// decodes forward. Composition mechanics are byte-identical to the batch
+// decoder that was verified pixel-exact against Chrome's ImageDecoder
+// (palettes, transparency, interlace, disposal 0-3). With per-frame memory
+// gone, the >20fps decimation and the 256MB budget scaling are gone too —
+// full frame rate, full (display-capped) resolution.
+//
+// window.createGifStream(ArrayBuffer) -> {
+//   frameCount, delays[], width, height, outW, outH,   // out* capped at 1280
+//   drawFrame(idx, ctx2d),   // seeks + blits frame idx into ctx (outW x outH)
+//   approxBytes, close()
+// }
+// window.decodeGifFrames(buf) remains as a batch wrapper over the stream
+// (tests and stragglers) — playback must not use it.
 (function(){
 'use strict';
 
@@ -64,83 +77,22 @@ function lzwDecode(minCodeSize, data, npix){
   return out;
 }
 
-window.decodeGifFrames = function(buf){
+window.createGifStream = function(buf){
   const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
   if(u8.length < 13 || u8[0] !== 0x47 || u8[1] !== 0x49 || u8[2] !== 0x46)
     throw new Error('not a GIF');
   let p = 6;
-  const u16 = () => { const v = u8[p] | (u8[p+1] << 8); p += 2; return v; };
-  const W = u16(), H = u16();
+  const rd16 = (q) => u8[q] | (u8[q+1] << 8);
+  const W = rd16(p), H = rd16(p+2); p += 4;
   const lsdPacked = u8[p++]; p += 2;              // bg index + aspect: unused
-  let gct = null;
-  if(lsdPacked & 0x80){ const n = 2 << (lsdPacked & 7); gct = u8.subarray(p, p + n*3); p += n*3; }
-  const frames = [];
-  // ── Memory budget ──────────────────────────────────────────────────────
-  // Frames are DISPLAY sources and the riso pipeline grains/dithers
-  // everything, so quality above ~1280px buys nothing — but the real
-  // multiplier is FRAME COUNT: a 180-frame 720x1280 gif is ~633MB of raw
-  // bitmaps, and Safari gets sluggish site-wide under decoded-image
-  // pressure (measured; see field notes). Two levers, period-preserving:
-  //  1. decimate gifs above ~20fps — a dropped frame folds its delay into
-  //     the previous kept frame, so the total loop length (and the VID
-  //     loop-length math) is EXACT;
-  //  2. scale frame dimensions so kept-frames x W x H x 4 fits the budget
-  //     (on top of the flat 1280px cap).
-  // A cheap pre-pass walks the block structure (no LZW) to count frames
-  // and read delays so both levers are known before decoding.
-  // Keep in sync with the ImageDecoder path in source.js.
-  const MAX_DIM = 1280, BUDGET_BYTES = 256 * 1048576, MIN_DELAY_MS = 50;
-  const plan = (function(){
-    const delays = [];
-    let q = p;                                     // continue from after GCT
-    let delay = 100;
-    while(q < u8.length){
-      const b = u8[q++];
-      if(b === 0x3B) break;
-      if(b === 0x21){
-        const label = u8[q++];
-        if(label === 0xF9 && u8[q] >= 4){
-          let d = (u8[q+2] | (u8[q+3] << 8)) * 10;
-          if(d <= 10) d = 100; delay = Math.max(d, 20);
-          q += 1 + u8[q];
-        }
-        while(q < u8.length && u8[q] !== 0) q += u8[q] + 1; q++;
-      } else if(b === 0x2C){
-        q += 8;
-        const idp = u8[q++];
-        if(idp & 0x80) q += (2 << (idp & 7)) * 3;
-        q++;                                       // LZW min code size
-        while(q < u8.length && u8[q] !== 0) q += u8[q] + 1; q++;
-        delays.push(delay); delay = 100;
-      } else if(b !== 0) break;
-    }
-    // decimation: greedily merge runs shorter than MIN_DELAY_MS
-    const emit = new Array(delays.length).fill(false);
-    let kept = 0, acc = 0;
-    for(let i = 0; i < delays.length; i++){
-      acc += delays[i];
-      if(kept === 0 || acc >= MIN_DELAY_MS){ emit[i] = true; kept++; acc = 0; }
-    }
-    if(!kept){ emit[0] = true; kept = 1; }
-    const capScale = Math.min(1, MAX_DIM / Math.max(W, H));
-    const budgetScale = Math.sqrt(BUDGET_BYTES / Math.max(1, kept * W * H * 4));
-    return {emit, scale: Math.min(capScale, budgetScale, 1)};
-  })();
-  const outW = Math.max(1, Math.round(W * plan.scale));
-  const outH = Math.max(1, Math.round(H * plan.scale));
-  const outScale = plan.scale;
-  let fullCanvas = null, fullCtx = null;                  // reused when scaling
-  if(outScale < 1){
-    fullCanvas = document.createElement('canvas');
-    fullCanvas.width = W; fullCanvas.height = H;
-    fullCtx = fullCanvas.getContext('2d');
-  }
-  let frameNo = 0, foldedMs = 0;
-  const comp = new Uint8ClampedArray(W * H * 4);  // running full-size composite
-  let gce = {delay: 100, transIdx: -1, disposal: 0};
-  let prevSnapshot = null;
-  const skipSubBlocks = () => { while(p < u8.length && u8[p] !== 0) p += u8[p] + 1; p++; };
+  let gctOff = -1;
+  if(lsdPacked & 0x80){ const n = 2 << (lsdPacked & 7); gctOff = p; p += n * 3; }
 
+  // ── Structure pass: index every frame WITHOUT running LZW ──
+  // {delay, disposal, transIdx, fx,fy,fw,fh, interlaced, palOff, minCode, dataOff, dataEnd}
+  const F = [];
+  let gce = {delay: 100, transIdx: -1, disposal: 0};
+  const skipSub = () => { while(p < u8.length && u8[p] !== 0) p += u8[p] + 1; p++; };
   while(p < u8.length){
     const b = u8[p++];
     if(b === 0x3B) break;                         // trailer
@@ -148,85 +100,130 @@ window.decodeGifFrames = function(buf){
       const label = u8[p++];
       if(label === 0xF9 && u8[p] >= 4){           // graphic control
         const pk = u8[p+1];
-        gce = {
-          disposal: (pk >> 2) & 7,
-          delay: (u8[p+2] | (u8[p+3] << 8)) * 10, // centiseconds -> ms
-          transIdx: (pk & 1) ? u8[p+4] : -1,
-        };
+        // Delay conventions: browsers render <=10ms as 100ms; floor at 20ms
+        // (matches the old batch decoder and the ImageDecoder path).
+        let d = rd16(p+2) * 10; if(d <= 10) d = 100; d = Math.max(d, 20);
+        gce = { disposal: (pk >> 2) & 7, delay: d, transIdx: (pk & 1) ? u8[p+4] : -1 };
         p += 1 + u8[p];
       }
-      skipSubBlocks();                            // NETSCAPE/comment/leftovers
+      skipSub();                                  // NETSCAPE/comment/leftovers
     } else if(b === 0x2C){                        // image descriptor
-      const fx = u16(), fy = u16(), fw = u16(), fh = u16();
-      const idPacked = u8[p++];
-      let pal = gct;
-      if(idPacked & 0x80){ const n = 2 << (idPacked & 7); pal = u8.subarray(p, p + n*3); p += n*3; }
-      if(!pal) throw new Error('no palette');
-      const interlaced = !!(idPacked & 0x40);
+      const fx = rd16(p), fy = rd16(p+2), fw = rd16(p+4), fh = rd16(p+6);
+      const idPacked = u8[p+8]; p += 9;
+      let palOff = gctOff;
+      if(idPacked & 0x80){ const n = 2 << (idPacked & 7); palOff = p; p += n * 3; }
+      if(palOff < 0) throw new Error('no palette');
       const minCode = u8[p++];
-      let total = 0, q = p;                       // concatenate LZW sub-blocks
-      while(q < u8.length && u8[q] !== 0){ total += u8[q]; q += u8[q] + 1; }
-      const data = new Uint8Array(total); let o = 0; q = p;
-      while(q < u8.length && u8[q] !== 0){ data.set(u8.subarray(q+1, q+1+u8[q]), o); o += u8[q]; q += u8[q] + 1; }
-      p = q + 1;
-      const idx = lzwDecode(minCode, data, fw * fh);
-      if(gce.disposal === 3) prevSnapshot = comp.slice();
-      let rows = null;
-      if(interlaced){                             // 4-pass row order
-        rows = new Array(fh); let r = 0;
-        for(let y = 0; y < fh; y += 8) rows[r++] = y;
-        for(let y = 4; y < fh; y += 8) rows[r++] = y;
-        for(let y = 2; y < fh; y += 4) rows[r++] = y;
-        for(let y = 1; y < fh; y += 2) rows[r++] = y;
-      }
-      for(let ry = 0; ry < fh; ry++){
-        const y = interlaced ? rows[ry] : ry;
-        const cy = fy + y; if(cy >= H) continue;
-        const rowBase = ry * fw;
-        for(let x = 0; x < fw; x++){
-          const cx = fx + x; if(cx >= W) continue;
-          const ci = idx[rowBase + x];
-          if(ci === gce.transIdx) continue;
-          const co = (cy * W + cx) * 4, pi = ci * 3;
-          comp[co] = pal[pi]; comp[co+1] = pal[pi+1]; comp[co+2] = pal[pi+2]; comp[co+3] = 255;
-        }
-      }
-      // Delay conventions: browsers render <=10ms as 100ms; the app's
-      // ImageDecoder path additionally floors at 20ms — match both.
-      let d = gce.delay; if(d <= 10) d = 100; d = Math.max(d, 20);
-      const keep = plan.emit[frameNo] !== false;   // frames past the pre-pass count: keep
-      frameNo++;
-      if(!keep){
-        // decimated: COMPOSITED (later frames may depend on it) but not
-        // emitted — its delay extends the frame currently on screen (the
-        // previous kept one), so the loop period stays exact.
-        if(frames.length) frames[frames.length - 1].duration += d;
-        else foldedMs += d;
-      } else {
-        const c = document.createElement('canvas'); c.width = outW; c.height = outH;
-        if(outScale < 1){
-          // putImageData can't scale — bounce through the reused full canvas
-          fullCtx.putImageData(new ImageData(comp.slice(), W, H), 0, 0);
-          c.getContext('2d').drawImage(fullCanvas, 0, 0, outW, outH);
-        } else {
-          c.getContext('2d').putImageData(new ImageData(comp.slice(), W, H), 0, 0);
-        }
-        frames.push({canvas: c, duration: d + foldedMs});
-        foldedMs = 0;
-      }
-      if(gce.disposal === 2){                     // restore to transparent
-        for(let y = 0; y < fh; y++){ const cy = fy + y; if(cy >= H) continue;
-          for(let x = 0; x < fw; x++){ const cx = fx + x; if(cx >= W) continue;
-            const co = (cy * W + cx) * 4;
-            comp[co] = comp[co+1] = comp[co+2] = comp[co+3] = 0; } }
-      } else if(gce.disposal === 3 && prevSnapshot){ comp.set(prevSnapshot); }
-      gce = {delay: 100, transIdx: -1, disposal: 0};   // GCE covers ONE image
+      const dataOff = p;
+      while(p < u8.length && u8[p] !== 0) p += u8[p] + 1;
+      const dataEnd = p; p++;
+      F.push({delay: gce.delay, disposal: gce.disposal, transIdx: gce.transIdx,
+              fx, fy, fw, fh, interlaced: !!(idPacked & 0x40), palOff, minCode, dataOff, dataEnd});
+      gce = {delay: 100, transIdx: -1, disposal: 0};
     } else if(b !== 0){
       break;                                      // unknown block: keep what we have
     }
   }
-  if(foldedMs > 0 && frames.length)               // trailing decimated frames:
-    frames[frames.length - 1].duration += foldedMs; // period stays exact
+  if(!F.length) throw new Error('no frames');
+
+  // Display cap: 1280px max dimension — texture-upload cost per advance,
+  // not memory, since only one frame exists at a time now.
+  const outScale = Math.min(1, 1280 / Math.max(W, H));
+  const outW = Math.max(1, Math.round(W * outScale));
+  const outH = Math.max(1, Math.round(H * outScale));
+
+  // ── Streaming state: ONE composite + optional disposal-3 snapshot ──
+  const comp = new Uint8ClampedArray(W * H * 4);
+  const compImg = new ImageData(comp, W, H);      // persistent wrapper: zero copies per blit
+  const anyD3 = F.some(f => f.disposal === 3);
+  let snapshot = anyD3 ? new Uint8ClampedArray(W * H * 4) : null;
+  const fullCanvas = document.createElement('canvas'); // native-size staging for the scale blit
+  fullCanvas.width = W; fullCanvas.height = H;
+  const fullCtx = fullCanvas.getContext('2d');
+  let cur = -1;                                   // index of the frame currently in `comp`
+  let pending = null;                             // disposal owed by frame `cur` (applied before painting cur+1)
+
+  function applyPending(){
+    if(!pending) return;
+    if(pending.disposal === 2){                   // restore to transparent
+      for(let y = 0; y < pending.fh; y++){ const cy = pending.fy + y; if(cy >= H) continue;
+        for(let x = 0; x < pending.fw; x++){ const cx = pending.fx + x; if(cx >= W) continue;
+          const co = (cy * W + cx) * 4;
+          comp[co] = comp[co+1] = comp[co+2] = comp[co+3] = 0; } }
+    } else if(pending.disposal === 3 && snapshot){
+      comp.set(snapshot);                         // restore previous composite
+    }
+    pending = null;
+  }
+
+  function decodeOne(i){
+    const f = F[i];
+    applyPending();
+    if(f.disposal === 3 && snapshot) snapshot.set(comp);
+    let total = 0, q = f.dataOff;                 // concatenate LZW sub-blocks
+    while(q < f.dataEnd){ total += u8[q]; q += u8[q] + 1; }
+    const data = new Uint8Array(total); let o = 0; q = f.dataOff;
+    while(q < f.dataEnd){ data.set(u8.subarray(q+1, q+1+u8[q]), o); o += u8[q]; q += u8[q] + 1; }
+    const idx = lzwDecode(f.minCode, data, f.fw * f.fh);
+    let rows = null;
+    if(f.interlaced){                             // 4-pass row order
+      rows = new Array(f.fh); let r = 0;
+      for(let y = 0; y < f.fh; y += 8) rows[r++] = y;
+      for(let y = 4; y < f.fh; y += 8) rows[r++] = y;
+      for(let y = 2; y < f.fh; y += 4) rows[r++] = y;
+      for(let y = 1; y < f.fh; y += 2) rows[r++] = y;
+    }
+    for(let ry = 0; ry < f.fh; ry++){
+      const y = f.interlaced ? rows[ry] : ry;
+      const cy = f.fy + y; if(cy >= H) continue;
+      const rowBase = ry * f.fw;
+      for(let x = 0; x < f.fw; x++){
+        const cx = f.fx + x; if(cx >= W) continue;
+        const ci = idx[rowBase + x];
+        if(ci === f.transIdx) continue;
+        const co = (cy * W + cx) * 4, pi = f.palOff + ci * 3;
+        comp[co] = u8[pi]; comp[co+1] = u8[pi+1]; comp[co+2] = u8[pi+2]; comp[co+3] = 255;
+      }
+    }
+    pending = {disposal: f.disposal, fx: f.fx, fy: f.fy, fw: f.fw, fh: f.fh};
+    cur = i;
+  }
+
+  function seek(t){
+    t = ((t % F.length) + F.length) % F.length;
+    if(t === cur) return;
+    if(t < cur){                                  // wrap / backward: rebuild from 0
+      comp.fill(0); pending = null; cur = -1;
+    }
+    for(let i = cur + 1; i <= t; i++) decodeOne(i);
+  }
+
+  return {
+    frameCount: F.length,
+    delays: F.map(f => f.delay),
+    width: W, height: H, outW, outH,
+    drawFrame(t, ctx){
+      seek(t);
+      fullCtx.putImageData(compImg, 0, 0);
+      if(outScale < 1) ctx.drawImage(fullCanvas, 0, 0, outW, outH);
+      else ctx.drawImage(fullCanvas, 0, 0);
+    },
+    approxBytes: u8.length + W * H * 4 * (anyD3 ? 2 : 1),
+    close(){ snapshot = null; fullCanvas.width = 1; fullCanvas.height = 1; }
+  };
+};
+
+// Batch compatibility wrapper (tests / stragglers): materialises every frame
+// through the stream — carries the OLD memory cost, playback must not use it.
+window.decodeGifFrames = function(buf){
+  const st = window.createGifStream(buf);
+  const frames = [];
+  for(let i = 0; i < st.frameCount; i++){
+    const c = document.createElement('canvas'); c.width = st.outW; c.height = st.outH;
+    st.drawFrame(i, c.getContext('2d'));
+    frames.push({canvas: c, duration: st.delays[i]});
+  }
+  st.close();
   return frames;
 };
 })();
