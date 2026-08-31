@@ -220,7 +220,7 @@
     if(building || failed || ready) return;
     building = true;
     var s = document.createElement('script');
-    s.src = 'js/gen/shaders-wgsl.js?v=2';
+    s.src = 'js/gen/shaders-wgsl.js?v=3';
     s.onerror = function(){ fail('gen WGSL asset missing'); };
     s.onload = function(){
       gen = window.RC_WGSL_GEN;

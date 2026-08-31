@@ -157,6 +157,9 @@ function loadPaperTexture(key){
     gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
     gl.uniform1i(locs.u_paperScan,2);
     gl.uniform1f(locs.u_usePaperScan,1.0);
+    window._paperScanTex = paperScanGlTex;  // keep the per-frame unit-2 swap
+                                            // (paper PBR merge) pointing at
+                                            // the REAL scan, not the boot 1x1
     markDirty();
   };
   img.src=tex.src;

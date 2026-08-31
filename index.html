@@ -575,7 +575,12 @@ uniform float u_usePaperScan;  // 1.0 = use scanned texture, 0.0 = procedural
 // Applied to the final composite in ALL modes (incl. RISO) so the paper's
 // tooth shows in unprinted areas, through ink, and in exports — unlike the
 // legacy pf path which was gated off by u_simNoise in clean/RISO mode.
-uniform sampler2D u_paperPBR;
+// u_paperPBR MERGED into u_paperScan's sampler slot (unit 2): the fragment
+// shader hit MAX_TEXTURE_IMAGE_UNITS(16) when the coverage-split u_covTex
+// arrived. Scan and PBR are runtime-mutually-exclusive (pf is neutralised
+// whenever the PBR substrate is on), so JS binds whichever texture the
+// current mode needs to unit 2 each frame; each texture object keeps its own
+// wrap params (scan REPEAT-tiles, the PBR sheet CLAMP cover-fits).
 uniform float u_usePaperPBR;
 uniform vec2 u_paperShift;    // per-frame paper position offset (simulates different sheet feeds)
 uniform vec2 u_paperPbrShift; // per-frame PBR-sheet UV jitter (normalized, ~±0.03; 0 when static)
@@ -598,6 +603,8 @@ uniform float u_textKnockout;  // 1.0 = text glyphs punch through every plate to
 uniform float u_trappingPx;    // canvas-pixel trapping amount — contracts knockout regions so adjacent inks overlap (no white halos at misregistered edges)
 uniform float u_colorQuant;    // 0=off, else N levels per channel — pre-NNLS posterize (source colour)
 uniform float u_covQuant;      // 0=off, else N steps of per-plate COVERAGE — what actually flattens a halftoned render
+uniform float u_covPass;       // coverage-split: 0=legacy live, 1=bake pre-physics ink (half-res FBO), 2=consume u_covTex
+uniform sampler2D u_covTex;    // baked per-plate pre-physics ink (RGBA = plates 0..3), texture unit 11
 uniform float u_koExclusive;   // 1 = only the strongest plate carries ink at a pixel; the rest are zeroed (true separation knockout)
 uniform float u_uniqueInks;    // count of DISTINCT inks (not filled slots). Gates the neutral duotone bypass: 0 = legacy (bypass always on)
 uniform float u_screenLin;     // 1 = SCREEN mode skips the grain-physics tone lifts (per-ink gamma + S-curve); the halftone matrix IS the tone reproduction
@@ -2098,8 +2105,26 @@ float trimCorner(vec2 uv, vec2 corner, vec2 dir, float armLenH, float armLenV, f
 // rpx for grain/texture (resolution-independent), pix for screen halftone (pixel-precise)
 // Returns continuous ink coverage (0-1) for LUT lookup.
 // The grain/halftone texture is applied separately in main() as a visual effect.
-float getCoverage(vec4 cmyk, vec2 rpx, int idx, int ch, float noise1, float dens, float pf, vec3 srcRGB, float inkGamma){
-  if(dens < 0.5) return 0.0; // density slider at 0 = no ink at all
+// ── Coverage-split pipeline ─────────────────────────────────────────────
+// The per-plate ink signal decomposes into a SEED-FREE separation head
+// (channel extraction / NNLS weight, density, per-ink gamma, S-curve) and a
+// per-tick physics tail (dot gain, depletion, density flicker, paper fibre,
+// press bands, starvation, ink noise, absorption). The head only changes
+// with the SOURCE or a setting and is smooth, so it can be baked at half
+// resolution (u_covPass==1 writes all four plates packed RGBA to a small
+// FBO); the tail re-runs live every shimmer tick. u_covPass==2 fetches the
+// baked head at each plate's misregistered position — separation is
+// POINTWISE, so sampling the baked field at an offset equals separating
+// offset samples exactly (up to bilinear resampling). u_covPass==0 is the
+// untouched legacy path (?covlive, exports, prepasses).
+float inkPhysics(float ink, vec2 rpx, int idx, float noise1, float pf); // fwd decl (defined after getCoverage)
+
+// The fullscreen quad negates Y in clip space so v_uv(0,0) lands at the
+// canvas TOP-left; rendered into an FBO that same quad stores the field
+// bottom-up, so covTex must be fetched Y-flipped relative to v_uv.
+vec2 covUV(vec2 v){ return vec2(v.x, 1.0 - v.y); }
+
+float sepInkCMYK(vec4 cmyk, int ch, float dens, vec3 srcRGB, float inkGamma){
   float ink;
   if(u_sepType == 2){
     // RGB separation keyed on the SLOT id carried in u_chanN (ch), NOT the
@@ -2129,8 +2154,21 @@ float getCoverage(vec4 cmyk, vec2 rpx, int idx, int ch, float noise1, float dens
   float tc = clamp(ink, 0.0, 1.0);
   float curved = tc * tc * (3.0 - 2.0 * tc);
   if(!screenLin) ink = mix(tc, curved, 0.15);
+  return ink;
+}
 
-  // Dot gain — halved since LUT swatch data already includes physical dot gain
+float getCoverage(vec4 cmyk, vec2 rpx, int idx, int ch, float noise1, float dens, float pf, vec3 srcRGB, float inkGamma){
+  if(dens < 0.5) return 0.0; // density slider at 0 = no ink at all
+  float ink = sepInkCMYK(cmyk, ch, dens, srcRGB, inkGamma);
+
+  return inkPhysics(ink, rpx, idx, noise1, pf);
+}
+
+// Shared post-separation print physics — the former tails of getCoverage and
+// getCoverageApprox, which were identical by construction ("MUST match" per
+// the calibration notes). One function now serves both paths AND the
+// coverage-split consume pass, so they can never drift apart again.
+float inkPhysics(float ink, vec2 rpx, int idx, float noise1, float pf){
   float inkAbsorb = mix(0.9, 1.2, float(idx) / 3.0);
   float gainMod = u_dotGain * inkAbsorb * (1.0 + (pf - 1.0) * 3.0) * u_simNoise;
   float dgSpread = gainMod * 0.005; // halved from v8's 0.01
@@ -2179,8 +2217,7 @@ float getCoverage(vec4 cmyk, vec2 rpx, int idx, int ch, float noise1, float dens
 // ─── Approximate mode: coverage from NNLS weight (no CMYK mapping) ───
 // Takes a pre-computed NNLS weight and applies physical print effects.
 // Same physics as getCoverage but skips CMYK channel extraction.
-float getCoverageApprox(float weight, vec2 rpx, int idx, float noise1, float dens, float pf){
-  if(dens < 0.5) return 0.0;
+float sepInkSpot(float weight, int idx, float dens){
   float ink = weight;
   ink *= dens * 0.01;
   // Per-ink gamma — MUST match getCoverage (CMYK path) or SPOT prints lighter.
@@ -2195,35 +2232,12 @@ float getCoverageApprox(float weight, vec2 rpx, int idx, float noise1, float den
   float tc = clamp(ink, 0.0, 1.0);
   float curved = tc * tc * (3.0 - 2.0 * tc);
   ink = mix(tc, curved, 0.15);
-  // Dot gain with paper modulation
-  float inkAbsorb = mix(0.9, 1.2, float(idx) / 3.0);
-  float gainMod = u_dotGain * inkAbsorb * (1.0 + (pf - 1.0) * 3.0) * u_simNoise;
-  float dgSpread = gainMod * 0.005;
-  ink = clamp(ink + dgSpread * ink * (1.0 - ink) * 4.0, 0.0, 1.0);
-  ink *= 1.0 - u_layerDeplete * float(idx) * u_simNoise;
-  float flicker = 1.0 + (hash(vec2(u_frameSeed * 7.3, float(idx) * 1.3)) - 0.5) * u_densFlicker * u_simNoise;
-  ink *= flicker;
-  ink *= pf; // paper fiber modulation
-  // Print pressure variation — use noise to avoid visible wave banding
-  float pressX = (texture2D(u_noise, fract(vec2(rpx.x * 0.0003, 0.2 + float(idx) * 0.31))).r - 0.5) * 0.03 * u_pressVar * u_simNoise;
-  float pressY = (texture2D(u_noise, fract(vec2(0.7 + float(idx) * 0.23, rpx.y * 0.0005))).r - 0.5) * 0.02 * u_pressVar * u_simNoise;
-  float drumNoise = texture2D(u_noise, fract(vec2(0.1 + float(idx) * 0.19, rpx.y * 0.0004 + u_frameSeed * 0.01))).r;
-  float drumBand = (drumNoise - 0.5) * 0.036 * u_pressVar * u_simNoise;
-  ink *= 1.0 + pressX + pressY + drumBand;
-  // Ink starvation — gated on clean modes (FLAT / SCREEN-clean) because
-  // it produces a per-pixel hash speckle at high-coverage shape edges
-  // that doesn't scale with any uniform we already zero.
-  // Ink starvation in dense areas — scales with u_simNoise.
-  float starvNoise = texture2D(u_noise, fract(vec2(rpx.x * 0.0002, rpx.y * 0.001))).r;
-  float starvation = smoothstep(0.6, 1.0, ink) * (starvNoise - 0.5) * 0.06 * u_simNoise;
-  ink -= starvation;
-  // Per-pixel ink hash: GRAIN mode only. In SCREEN/LINES this per-pixel coverage
-  // noise gets screened into white TV-static instead of clean dots/lines, so gate
-  // it to u_mode==0 (clustered/line screens carry their texture in the structure).
-  ink += (noise1 - 0.5) * u_inkNoise * 0.006 * (u_mode == 0 ? u_simNoise : 0.0);
-  ink = clamp(ink, 0.0, 1.0);
-  ink = mix(ink, sqrt(ink), 0.08); // absorption softening
-  return quantizeCoverage(clamp(ink, 0.0, 1.0));
+  return ink;
+}
+
+float getCoverageApprox(float weight, vec2 rpx, int idx, float noise1, float dens, float pf){
+  if(dens < 0.5) return 0.0;
+  return inkPhysics(sepInkSpot(weight, idx, dens), rpx, idx, noise1, pf);
 }
 
 // Real-time GPU Grain-Touch (per-fragment, no prepass). Thresholds the coverage
@@ -2284,7 +2298,7 @@ float dissolveInk(float d, vec2 uv){
   if(g_dissolveThr < 0.0){
     float bn = texture2D(u_bnVC, uv * REF * 0.35 / max(u_bnSize, 128.0)).g;   // REPEAT+NEAREST, raw ranks
     float h = 0.14; // map mean — neutral when the PBR sheet is off
-    if(u_usePaperPBR > 0.5) h = texture2D(u_paperPBR, paperPbrUV(uv)).r;
+    if(u_usePaperPBR > 0.5) h = texture2D(u_paperScan, paperPbrUV(uv)).r; // shared slot: unit 2 holds the PBR sheet when u_usePaperPBR
     // Peaks (h above mean) pull the threshold DOWN → ink catches there first.
     g_dissolveThr = clamp(bn - (h - 0.14) * 2.0, 0.001, 0.999);
   }
@@ -2885,6 +2899,11 @@ float paperField(vec2 pix){
 // When the PBR substrate is active it supersedes this (pf is forced to 1.0 in
 // main), so this is unchanged from the original behaviour for PBR-off.
 float paperEffect(vec2 pix){
+  // PBR substrate supersedes the legacy pf EVERYWHERE (main already forced
+  // pf=1 under PBR; the sepMode export path didn't — now consistent). Also
+  // required by the shared sampler slot: under PBR, unit 2 holds the PBR
+  // sheet, so the scan-based field must not be read at all.
+  if(u_usePaperPBR > 0.5) return 1.0;
   float intensity = u_paperTex * 0.04 * u_simNoise;
   float base = mix(1.0, paperField(pix), intensity);
   float paperVar = (hash(vec2(u_frameSeed * 11.1, 0.5)) - 0.5) * 0.03 * u_simNoise;
@@ -2908,7 +2927,7 @@ vec3 applyPaperPBR(vec3 result, vec2 uv, float inkCov){
   // Cover-fit + zoom + sheet-feed jitter — shared with dissolveInk via
   // paperPbrUV() so ink speckle and visible tooth sample the same fibers.
   vec2 puv = paperPbrUV(uv);
-  vec4 p = texture2D(u_paperPBR, puv);
+  vec4 p = texture2D(u_paperScan, puv); // shared slot: unit 2 holds the PBR sheet when u_usePaperPBR
   // Paper-type character: u_paperPbrMul.x scales the height tooth, .y the
   // normal-mapped sheen (Smooth = low tooth / coated sheen, Kraft = heavy
   // tooth / matte, etc). (1,1) = Standard.
@@ -3210,6 +3229,53 @@ void main(){
     return;
   }
 
+  // ── Coverage-split BAKE pass (u_covPass==1, half-res FBO) ──
+  // Writes each plate's seed-free pre-physics ink at this CANONICAL sheet
+  // position (no skew/misreg/drift — the consume pass fetches at each
+  // plate's offset position instead; see sepInk*/inkPhysics). One NNLS
+  // solve serves all four plates here, where the live SPOT path runs four
+  // solves at four offsets per fragment.
+  if(u_covPass > 0.5 && u_covPass < 1.5){
+    vec2 rpxC = uv * REF;
+    vec4 pre = vec4(0.0);
+    if(u_sepType == 1){
+      vec3 sA = texture2D(u_src, srcUV(uv)).rgb;
+      sA = adjustRGB(sA, rpxC);
+      vec4 wA = koExclusive(nnlsDecompose(u_layers, u_paperColor, sA, u_ink0, u_ink1, u_ink2, u_ink3));
+      if(u_dens0 >= 0.5) pre.x = sepInkSpot(wA.x, 0, u_dens0);
+      if(u_layers > 1 && u_dens1 >= 0.5) pre.y = sepInkSpot(wA.y, 1, u_dens1);
+      if(u_layers > 2 && u_dens2 >= 0.5) pre.z = sepInkSpot(wA.z, 2, u_dens2);
+      if(u_layers > 3 && u_dens3 >= 0.5) pre.w = sepInkSpot(wA.w, 3, u_dens3);
+    } else {
+      // Per-plate transport-streak blur, matching the live layer blocks
+      // (layer 0: +0.0012/0.35, 1: +0.0008/0.25, 2: +0.0004/0.15, 3: none).
+      vec3 sBase = texture2D(u_src, srcUV(uv)).rgb;
+      vec3 s0 = mix(sBase, texture2D(u_src, srcUV(uv + vec2(0.0, 0.0012))).rgb, 0.35);
+      s0 = adjustRGB(s0, rpxC);
+      vec4 k0 = koExclusive(toCMYK(s0));
+      if(u_dens0 >= 0.5) pre.x = sepInkCMYK(k0, u_chan0, u_dens0, s0, u_inkGamma0);
+      if(u_layers > 1){
+        vec3 s1 = mix(sBase, texture2D(u_src, srcUV(uv + vec2(0.0, 0.0008))).rgb, 0.25);
+        s1 = adjustRGB(s1, rpxC);
+        vec4 k1 = koExclusive(toCMYK(s1));
+        if(u_dens1 >= 0.5) pre.y = sepInkCMYK(k1, u_chan1, u_dens1, s1, u_inkGamma1);
+      }
+      if(u_layers > 2){
+        vec3 s2 = mix(sBase, texture2D(u_src, srcUV(uv + vec2(0.0, 0.0004))).rgb, 0.15);
+        s2 = adjustRGB(s2, rpxC);
+        vec4 k2 = koExclusive(toCMYK(s2));
+        if(u_dens2 >= 0.5) pre.z = sepInkCMYK(k2, u_chan2, u_dens2, s2, u_inkGamma2);
+      }
+      if(u_layers > 3){
+        vec3 s3 = adjustRGB(sBase, rpxC);
+        vec4 k3 = koExclusive(toCMYK(s3));
+        if(u_dens3 >= 0.5) pre.w = sepInkCMYK(k3, u_chan3, u_dens3, s3, u_inkGamma3);
+      }
+    }
+    gl_FragColor = pre;
+    return;
+  }
+
   // Separation mode: output single channel as grayscale (black=ink, white=no ink)
   if(u_sepMode == 1){
     vec2 pix = uv * u_res;
@@ -3308,7 +3374,10 @@ void main(){
     float n0 = hash(lrpx * 1.7);
     vec2 snapUV0 = uv0;
     float cov;
-    if(u_sepType == 1){
+    if(u_covPass > 1.5){
+      // consume the baked head at THIS plate's misregistered position
+      cov = (u_dens0 < 0.5) ? 0.0 : inkPhysics(texture2D(u_covTex, covUV(snapUV0)).x, lrpx, 0, n0, pf);
+    } else if(u_sepType == 1){
       vec3 src0a = texture2D(u_src, srcUV(snapUV0)).rgb;
       src0a = adjustRGB(src0a, lrpx);
       vec4 w0 = koExclusive(nnlsDecompose(u_layers, u_paperColor, src0a, u_ink0, u_ink1, u_ink2, u_ink3));
@@ -3369,7 +3438,9 @@ void main(){
     float n1 = hash(lrpx * 1.7 + 100.0);
     vec2 snapUV1 = uv1;
     float cov;
-    if(u_sepType == 1){
+    if(u_covPass > 1.5){
+      cov = (u_dens1 < 0.5) ? 0.0 : inkPhysics(texture2D(u_covTex, covUV(snapUV1)).y, lrpx, 1, n1, pf);
+    } else if(u_sepType == 1){
       vec3 src1a = texture2D(u_src, srcUV(snapUV1)).rgb;
       src1a = adjustRGB(src1a, lrpx);
       vec4 w1 = koExclusive(nnlsDecompose(u_layers, u_paperColor, src1a, u_ink0, u_ink1, u_ink2, u_ink3));
@@ -3420,7 +3491,9 @@ void main(){
     float n2 = hash(lrpx * 1.7 + 200.0);
     vec2 snapUV2 = uv2;
     float cov;
-    if(u_sepType == 1){
+    if(u_covPass > 1.5){
+      cov = (u_dens2 < 0.5) ? 0.0 : inkPhysics(texture2D(u_covTex, covUV(snapUV2)).z, lrpx, 2, n2, pf);
+    } else if(u_sepType == 1){
       vec3 src2a = texture2D(u_src, srcUV(snapUV2)).rgb;
       src2a = adjustRGB(src2a, lrpx);
       vec4 w2 = koExclusive(nnlsDecompose(u_layers, u_paperColor, src2a, u_ink0, u_ink1, u_ink2, u_ink3));
@@ -3471,7 +3544,9 @@ void main(){
     vec2 uv3 = skUV3 + off3;
     vec2 snapUV3 = uv3;
     float cov;
-    if(u_sepType == 1){
+    if(u_covPass > 1.5){
+      cov = (u_dens3 < 0.5) ? 0.0 : inkPhysics(texture2D(u_covTex, covUV(snapUV3)).w, lrpx, 3, n3, pf);
+    } else if(u_sepType == 1){
       vec3 src3a = texture2D(u_src, srcUV(snapUV3)).rgb;
       src3a = adjustRGB(src3a, lrpx);
       vec4 w3 = koExclusive(nnlsDecompose(u_layers, u_paperColor, src3a, u_ink0, u_ink1, u_ink2, u_ink3));
@@ -3745,7 +3820,7 @@ void main(){
 <!-- mp4-muxer for proper MP4 (H.264) output via WebCodecs in Chrome/Edge -->
 <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.min.js"></script>
 <script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
-<script src="js/data.js?v=22"></script>
+<script src="js/data.js?v=23"></script>
 <script src="js/state.js?v=22"></script>
 <script src="js/undo.js?v=11"></script>
 <script src="js/compare.js?v=6"></script>
@@ -3753,7 +3828,7 @@ void main(){
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/gen/bnvc256.js?v=2"></script>
-<script src="js/renderer.js?v=215"></script>
+<script src="js/renderer.js?v=216"></script>
 <script src="js/gif-decode.js?v=5"></script>
 <script src="js/source.js?v=64"></script>
 <script src="js/save.js?v=83"></script>
@@ -3765,7 +3840,7 @@ void main(){
 // toggle path loads them async later, which the presence-guarded call sites
 // (window.RisoAmtGPU && ...) handle.
 (function(){
-  var srcs=['js/riso-amt-webgpu.js?v=6','js/webgpu-live.js?v=6'];
+  var srcs=['js/riso-amt-webgpu.js?v=6','js/webgpu-live.js?v=7'];
   if(/[?&]webgpu\b/.test(location.search)){
     srcs.forEach(function(u){ document.write('<script src="'+u+'"><\/script>'); });
     window._webgpuShimsLoaded=true;

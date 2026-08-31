@@ -259,9 +259,9 @@ function initGL(onReady){
    'u_off0','u_off1','u_off2','u_off3',
    'u_angle0','u_angle1','u_angle2','u_angle3','u_screenCell',
    'u_chan0','u_chan1','u_chan2','u_chan3',
-   'u_stampSeed','u_asciiTonePass','u_aMin','u_aDims','u_aPitch','u_wordLen','u_edgeSoft','u_mtxTexel','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineWave','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineGrain','u_inkDissolve','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_covQuant','u_koExclusive','u_uniqueInks','u_screenLin','u_dotSpacing','u_useLabResidual','u_useCalChord','u_ynN','u_useSepLut','u_sepLutN','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
+   'u_stampSeed','u_asciiTonePass','u_aMin','u_aDims','u_aPitch','u_wordLen','u_edgeSoft','u_mtxTexel','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineWave','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineGrain','u_inkDissolve','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_covQuant','u_covPass','u_covTex','u_koExclusive','u_uniqueInks','u_screenLin','u_dotSpacing','u_useLabResidual','u_useCalChord','u_ynN','u_useSepLut','u_sepLutN','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
    'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_paperShift','u_paperPbrShift','u_paperPbrMul','u_paperOrient','u_scanSwap','u_crop','u_paper',
-   'u_paperPBR','u_usePaperPBR','u_paperScaleK',
+   'u_usePaperPBR','u_paperScaleK',
    'u_lutA0','u_lutA1','u_lutA2','u_lutA3',
    'u_lutB0','u_lutB1','u_lutB2','u_lutB3',
    'u_lutC0','u_lutC1','u_lutC2','u_lutC3',
@@ -335,6 +335,7 @@ function initGL(onReady){
   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
   gl.uniform1i(locs.u_paperScan,2);
   gl.uniform1f(locs.u_usePaperScan,0.0);
+  window._paperScanTex = pTex;   // shared-slot swap partner (see PBR merge)
 
   // Tone curve LUT texture (tex unit 4) — 256×1 identity
   var tcTex=gl.createTexture();
@@ -662,6 +663,7 @@ function initGL(onReady){
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   if(locs.u_bnVC) gl.uniform1i(locs.u_bnVC, 13);
+  if(locs.u_covTex) gl.uniform1i(locs.u_covTex, 11);   // coverage-split baked head
   if(locs.u_bnSize) gl.uniform1f(locs.u_bnSize, BN_SIZE);
   window._bnVCTex = bnVCTex;
   if(locs.u_risoGamma) gl.uniform1f(locs.u_risoGamma, 1.5);
@@ -700,7 +702,7 @@ function initGL(onReady){
   // in every mode (incl. RISO) and in exports. Seeded 1×1 neutral until the
   // PNG loads. REPEAT wrap (it tiles); LINEAR (smooth fiber).
   var paperPbrTex = gl.createTexture();
-  gl.activeTexture(gl.TEXTURE15); gl.bindTexture(gl.TEXTURE_2D, paperPbrTex);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, paperPbrTex);
   // neutral seed: height=0.14 (map mean → no tone shift), normal flat (0.5,0.5)
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([36,128,128,255]));
   // CLAMP (not REPEAT): the 2K sheet is mapped ONCE across the canvas (cover-fit
@@ -710,14 +712,15 @@ function initGL(onReady){
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  if (locs.u_paperPBR) gl.uniform1i(locs.u_paperPBR, 15);
+  // u_paperPBR sampler was merged into u_paperScan's unit-2 slot (16-sampler
+  // cap); the per-frame swap in setRenderUniforms binds the right texture.
   if (locs.u_usePaperPBR) gl.uniform1f(locs.u_usePaperPBR, (window._usePaperPBR ?? true) ? 1.0 : 0.0);
   window._paperPbrTex = paperPbrTex;
   // Load the packed texture asynchronously; enable once ready.
   (function(){
     var img = new Image();
     img.onload = function(){
-      gl.activeTexture(gl.TEXTURE15);
+      gl.activeTexture(gl.TEXTURE2);
       gl.bindTexture(gl.TEXTURE_2D, window._paperPbrTex);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
@@ -1235,6 +1238,12 @@ function _buildGlyphAtlas(){
 // BLOTCHES (user report). Stipple still sets its own crisp value.
 var RISO_DOT_CRISP = 0.0;
 function setRenderUniforms(dw, dh, scale, isPhone){
+  // Shared paper sampler slot (unit 2): the PBR sheet when the substrate is
+  // on, the legacy scan texture otherwise — see the u_paperPBR merge note in
+  // the shader (16-sampler cap forced it when u_covTex arrived).
+  gl.activeTexture(gl.TEXTURE2);
+  gl.bindTexture(gl.TEXTURE_2D, ((window._usePaperPBR ?? true) && window._paperPbrTex) ? window._paperPbrTex : (window._paperScanTex || null));
+  gl.activeTexture(gl.TEXTURE0);
   const layers=activeLayers();
   const nLayers=layers.length;
   gl.uniform2f(locs.u_res,dw,dh);
@@ -1949,7 +1958,45 @@ function _renderInner(){
       try { R.toast('Slower GPU detected — quality reduced for stability'); } catch(e){}
     }
     markDirty();                       // re-render at the decided quality
+  } else if((window._covSplit === true || (window._covSplit !== false && window._covSplitAuto)) && locs.u_covPass && !_saving){
+    // ── Coverage-split: bake the seed-free separation head at half res,
+    // then render the full-res frame consuming it (see shader notes at
+    // sepInkCMYK). Separation cost drops ~4x from resolution alone, and
+    // SPOT drops another 4x (one NNLS at canonical position instead of
+    // four at per-plate offsets). Exports and prepasses never see this:
+    // u_covPass is reset to 0 right after the consume draw.
+    const cw = Math.max(1, Math.round(dw * 0.5)), chh = Math.max(1, Math.round(dh * 0.5));
+    if(!window._covFbo){ window._covFbo = gl.createFramebuffer(); window._covTex = gl.createTexture(); window._covDims = [0,0]; }
+    gl.activeTexture(gl.TEXTURE11); gl.bindTexture(gl.TEXTURE_2D, window._covTex);
+    if(window._covDims[0] !== cw || window._covDims[1] !== chh){
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, cw, chh, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, window._covFbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, window._covTex, 0);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      window._covDims = [cw, chh];
+    }
+    // The shader statically samples u_covTex, so covTex must NOT be bound on
+    // unit 11 while it is also the bake FBO's color attachment — WebGL's
+    // feedback-loop rule invalidates the whole draw (the bake silently never
+    // landed and every plate read zero coverage). Unbind for the bake, bind
+    // for the consume.
+    gl.activeTexture(gl.TEXTURE11); gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, window._covFbo);
+    gl.viewport(0, 0, cw, chh);
+    gl.uniform1f(locs.u_covPass, 1.0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.activeTexture(gl.TEXTURE11); gl.bindTexture(gl.TEXTURE_2D, window._covTex);
+    gl.viewport(0, 0, dw, dh);
+    gl.uniform1f(locs.u_covPass, 2.0);
+    R.drawFullscreenTiled(dw, dh);
+    gl.uniform1f(locs.u_covPass, 0.0);
   } else {
+    if(locs.u_covPass) gl.uniform1f(locs.u_covPass, 0.0);
     R.drawFullscreenTiled(dw, dh);
   }
 
@@ -1970,6 +2017,23 @@ function _renderInner(){
 
   // FPS counter — DOM write once per second
   window._stExit='drew';
+  // GPU frame cost (resource monitor): fenceSync submit->drain latency.
+  // When the GPU is the bottleneck this approximates the true per-frame
+  // cost that the CPU-side _stMs (draw submission only) cannot see.
+  // fenceSync exists on every WebGL2 (Safari included); one in flight max.
+  if(window._statsOn && gl.fenceSync && !window._stFencePending){
+    try{
+      const _sync=gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE,0);
+      const _ft0=performance.now(); window._stFencePending=true;
+      const _poll=()=>{ let st; try{ st=gl.clientWaitSync(_sync,0,0); }catch(e){ window._stFencePending=false; return; }
+        if(st===gl.ALREADY_SIGNALED||st===gl.CONDITION_SATISFIED){
+          window._stGpuMs=performance.now()-_ft0;
+          try{ gl.deleteSync(_sync); }catch(e){}
+          window._stFencePending=false;
+        } else setTimeout(_poll,1); };
+      setTimeout(_poll,0);
+    }catch(e){ window._stFencePending=false; }
+  }
   window._stDraws=(window._stDraws||0)+1;                    // resource monitor:
   window._stMs=performance.now()-_stT0;                      // real draws only
   window._stDrawT=performance.now();                         // staleness probe (recording)
@@ -1990,6 +2054,16 @@ function _renderInner(){
     if(_lodTarget>0){
       if(_lodGot < _lodTarget*0.75 && _bias < 1.5) window._animLodBias = _bias + 0.25;
       else if(_lodGot >= _lodTarget*0.92 && _bias > 0) window._animLodBias = Math.max(0, _bias - 0.125);
+      // Second rung of the ladder: quality bias maxed and STILL missing the
+      // mode — engage the coverage-split pipeline (separation baked at half
+      // res; exact-order physics live; measured indistinguishable from one
+      // shimmer re-roll). Disengage only from full health, so it can't
+      // oscillate: bias must fall to 0 and the target hold WITH split on.
+      if(_lodGot < _lodTarget*0.75 && _bias >= 1.5 && !window._covSplitAuto){
+        window._covSplitAuto = true;
+      } else if(window._covSplitAuto && _bias === 0 && _lodGot >= _lodTarget){
+        window._covSplitAuto = false;
+      }
     } else if(_bias) window._animLodBias = 0;
   }
 
@@ -3976,10 +4050,11 @@ function toggleStats(force){
     const heap = (performance.memory && performance.memory.usedJSHeapSize)
       ? (performance.memory.usedJSHeapSize/1048576).toFixed(0)+' MB' : 'n/a (Chrome only)';
     const flags = [window._paused?'PAUSED':'', isRecording?'REC':'', camOn?'cam':'', videoOn?'video':'',
+      (window._covSplit===true)?'covsplit':(window._covSplit===false)?'covlive':(window._covSplitAuto?'covsplit-auto':''),
       (window._animLodBias||0)>0?('lod -'+window._animLodBias.toFixed(2)+'x'):'']
       .filter(Boolean).join(' ');
     el.textContent =
-      'renders/s '+draws.toFixed(1)+'  frame '+(window._stMs||0).toFixed(1)+' ms\n'+
+      'renders/s '+draws.toFixed(1)+'  cpu '+(window._stMs||0).toFixed(1)+' ms  gpu ~'+(window._stGpuMs||0).toFixed(0)+' ms\n'+
       'tex up/s  '+tex.toFixed(1)+'  gif adv/s '+gAdv.toFixed(1)+'\n'+
       gifLine+
       'buffer    '+(window._stBuf||'-')+'  '+(typeof risoFps!=='undefined'?risoFps+' anim fps':'')+'\n'+
@@ -3990,4 +4065,9 @@ function toggleStats(force){
 R.toggleStats = toggleStats;
 R._renderNow = () => { try{ _renderInner(); }catch(e){ console.error('forced render err', e); } };
 if(/[?&]stats\b/.test(location.search)) setTimeout(() => toggleStats(true), 500);
+// Coverage-split control: ?covsplit forces it ON, ?covlive forces it OFF;
+// otherwise undefined = automatic (the adaptive-LOD ladder engages it when
+// quality bias maxes out and the FPS mode is still missed).
+window._covSplit = /[?&]covsplit\b/.test(location.search) ? true
+                 : (/[?&]covlive\b/.test(location.search) ? false : undefined);
 })(window.R);
