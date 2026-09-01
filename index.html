@@ -1883,12 +1883,25 @@ float lineDither(float val, vec2 pix, float cellPx, float angle, int idx){
     // branch cut). Wavelength tracks ~9 cells of arc; braid nests an FM term.
     if(u_lineWave > 0){
       float angC = atan(dC.y, dC.x);
-      float ringR = (floor(r / cellPxAdj) + 0.5) * cellPxAdj;
-      float k = max(3.0, floor(6.2832 * ringR / (cellPxAdj * 9.0)));
+      float ringId = floor(r / cellPxAdj);
+      float ringR = (ringId + 0.5) * cellPxAdj;
+      // Integer waves per ring (seamless at the atan branch cut) — but with a
+      // PER-RING RANDOM PHASE: sin(angC*k) alone put a crest on the +x axis of
+      // EVERY ring, so crests aligned along one direction and interleaved
+      // elsewhere — the whole pattern leaned (user: "lopsided"). Same fix for
+      // braid's FM modulator, which was a fixed 3-lobed phase pump anchored to
+      // the same axis (it bunched spacing on three sides). Min k raised 3→6
+      // (k=3 rendered the inner rings as triangles — the lopsided star) and
+      // the wave fades out over the innermost rings so the bullseye stays
+      // calm. Displacement is clamped below half a ring so neighbouring rings
+      // never cross whatever the Amount knob says.
+      float ph = fract(sin(ringId * 12.9898 + 78.233) * 43758.5453) * 6.2832;
+      float k = max(6.0, floor(6.2832 * ringR / (cellPxAdj * 9.0)));
       float w = (u_lineWave == 2)
-        ? sin(angC * k + sin(angC * 3.0) * 3.0 * u_lineAmount) * 0.40
-        : sin(angC * k) * 0.35;
-      r += w * cellPxAdj * u_lineAmount;
+        ? sin(angC * k + ph + sin(angC * 3.0 + ph * 1.7) * 2.2 * u_lineAmount) * 0.40
+        : sin(angC * k + ph) * 0.35;
+      w *= smoothstep(cellPxAdj * 1.5, cellPxAdj * 4.0, r);
+      r += clamp(w * cellPxAdj * u_lineAmount, -0.45 * cellPxAdj, 0.45 * cellPxAdj);
     }
     float pos = mod(r, cellPxAdj) / cellPxAdj;
     dist = abs(pos - 0.5) * 2.0;
@@ -3865,7 +3878,7 @@ void main(){
 // toggle path loads them async later, which the presence-guarded call sites
 // (window.RisoAmtGPU && ...) handle.
 (function(){
-  var srcs=['js/riso-amt-webgpu.js?v=6','js/webgpu-live.js?v=8'];
+  var srcs=['js/riso-amt-webgpu.js?v=6','js/webgpu-live.js?v=9'];
   if(/[?&]webgpu\b/.test(location.search)){
     srcs.forEach(function(u){ document.write('<script src="'+u+'"><\/script>'); });
     window._webgpuShimsLoaded=true;
