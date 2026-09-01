@@ -887,6 +887,27 @@ function cycleLineRoughness(){
   R.toast('Edge roughness: ' + LINE_ROUGH_STEPS[i].l);
   markDirty();
 }
+// ─── Directional paper fibre (FIBER control in the paper row) ───
+const FIBER_STEPS=[{v:0,l:'Fibre Off'},{v:0.35,l:'Fibre Soft'},{v:0.7,l:'Fibre Med'},{v:1.0,l:'Fibre Strong'}];
+function cycleFiber(){
+  const i=FIBER_STEPS.findIndex(st=>st.v===(window._fiberAmt||0));
+  const n=FIBER_STEPS[(i+1)%FIBER_STEPS.length];
+  window._fiberAmt=n.v;
+  const b=el('fiberBtn'); if(b) b.textContent=n.l;
+  const w=el('fiberDirWrap'); if(w) w.style.display=n.v>0?'':'none';
+  R.toast(n.v>0?('Fibre: '+n.l.replace('Fibre ','')+' — direction: '+(window._fiberDirDeg===90?'vertical':window._fiberDirDeg===45?'diagonal':'horizontal')):'Fibre off');
+  markDirty();
+}
+const FIBER_DIRS=[{v:0,l:'H'},{v:90,l:'V'},{v:45,l:'45°'}];
+function cycleFiberDir(){
+  const i=FIBER_DIRS.findIndex(d=>d.v===(window._fiberDirDeg||0));
+  const n=FIBER_DIRS[(i+1)%FIBER_DIRS.length];
+  window._fiberDirDeg=n.v;
+  const b=el('fiberDirBtn'); if(b) b.textContent=n.l;
+  R.toast('Fibre direction: '+(n.v===90?'vertical':n.v===45?'diagonal':'horizontal'));
+  markDirty();
+}
+
 // ANIMATE: precess each plate's line angle (see R._lineSpinOffset). Needs the
 // animation loop ticking — if FPS is STILL when enabling, bump it to 4.
 // Per-plate angle animation. Three states, cycled by one button:
@@ -2255,6 +2276,8 @@ R.toggleTextKnockout = toggleTextKnockout;
 R.cycleTrapping = cycleTrapping;
 R.cycleColorQuant = cycleColorQuant;
 R.toggleKnockout = toggleKnockout;
+R.cycleFiber = cycleFiber;
+R.cycleFiberDir = cycleFiberDir;
 R.toggleLabResidual = toggleLabResidual;
 R.cycleDitherMode = cycleDitherMode;
 R.cycleDitherScale = cycleDitherScale;

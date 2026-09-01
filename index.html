@@ -79,6 +79,8 @@
     <div id="paperColorGrid" style="display:flex;gap:4px;flex-wrap:wrap"></div>
     <div class="header-cycle paper-type-box"><span class="header-cycle-val" id="paperTypeBtn" onclick="R.cyclePaperTex()" style="cursor:pointer">Standard</span></div>
     <div class="header-cycle" title="Paper texture scale — higher zooms the fibers out"><span class="header-cycle-val" id="paperScaleBtn" onclick="R.cyclePaperScale()" style="cursor:pointer;min-width:18px">3&times;</span></div>
+    <div class="header-cycle" title="Directional fibre — machine-direction paper strands that trap ink as fine streaks. Works with every paper."><span class="header-cycle-val" id="fiberBtn" onclick="R.cycleFiber()" style="cursor:pointer">Fibre Off</span></div>
+    <div class="header-cycle" id="fiberDirWrap" style="display:none" title="Fibre direction"><span class="header-cycle-val" id="fiberDirBtn" onclick="R.cycleFiberDir()" style="cursor:pointer;min-width:18px">H</span></div>
     <div id="paperTexGrid" style="display:none"></div>
     <input type="range" id="paperTex" min="0" max="25" value="12" step="1" style="display:none"><span class="slider-value" id="paperTexVal" style="display:none">12</span>
     <div class="controls-sep"></div>
@@ -603,6 +605,8 @@ uniform float u_textKnockout;  // 1.0 = text glyphs punch through every plate to
 uniform float u_trappingPx;    // canvas-pixel trapping amount — contracts knockout regions so adjacent inks overlap (no white halos at misregistered edges)
 uniform float u_colorQuant;    // 0=off, else N levels per channel — pre-NNLS posterize (source colour)
 uniform float u_covQuant;      // 0=off, else N steps of per-plate COVERAGE — what actually flattens a halftoned render
+uniform float u_fiberAmt;      // directional paper fibre: 0=off .. 1=strong (ink-side, works under PBR)
+uniform float u_fiberDir;      // fibre direction in radians (0 = horizontal strands)
 uniform float u_covPass;       // coverage-split: 0=legacy live, 1=bake pre-physics ink (half-res FBO), 2=consume u_covTex
 uniform sampler2D u_covTex;    // baked per-plate pre-physics ink (RGBA = plates 0..3), texture unit 11
 uniform float u_koExclusive;   // 1 = only the strongest plate carries ink at a pixel; the rest are zeroed (true separation knockout)
@@ -2221,6 +2225,23 @@ float inkPhysics(float ink, vec2 rpx, int idx, float noise1, float pf){
 
   // Paper fiber modulation: fibers trap ink unevenly
   ink *= pf;
+
+  // Directional fibre (FIBER control): machine-made paper has a grain
+  // direction — long thin strands that trap ink as fine directional
+  // streaks. Ink-side on purpose, so it works under the PBR sheet (where
+  // legacy pf is neutralised and ink otherwise lays down uniformly:
+  // "printed over" rather than "printed into"). Anisotropy is at STRAND
+  // scale — ~1px across, hundreds long, two octaves — deliberately far
+  // from the mid-scale sweep that produced the press-band plaid.
+  if(u_fiberAmt > 0.001){
+    float fc = cos(u_fiberDir), fs = sin(u_fiberDir);
+    float along  = rpx.x * fc + rpx.y * fs;
+    float across = -rpx.x * fs + rpx.y * fc;
+    float strand  = texture2D(u_noise, fract(vec2(along * 0.0004, across * 0.02))).r;
+    float strand2 = texture2D(u_noise, fract(vec2(across * 0.031 + 0.37, along * 0.0011))).r;
+    float fib = (strand * 0.65 + strand2 * 0.35) - 0.5;
+    ink *= 1.0 + fib * 0.5 * u_fiberAmt;
+  }
 
   // Print pressure variation, rebuilt at PRINT scale: a drum lays a few
   // BROAD soft streaks per sheet (dominantly horizontal, from rotation) —
@@ -3874,7 +3895,7 @@ void main(){
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/gen/bnvc256.js?v=2"></script>
-<script src="js/renderer.js?v=222"></script>
+<script src="js/renderer.js?v=223"></script>
 <script src="js/gif-decode.js?v=5"></script>
 <script src="js/source.js?v=64"></script>
 <script src="js/save.js?v=83"></script>
@@ -3886,7 +3907,7 @@ void main(){
 // toggle path loads them async later, which the presence-guarded call sites
 // (window.RisoAmtGPU && ...) handle.
 (function(){
-  var srcs=['js/riso-amt-webgpu.js?v=6','js/webgpu-live.js?v=10'];
+  var srcs=['js/riso-amt-webgpu.js?v=6','js/webgpu-live.js?v=11'];
   if(/[?&]webgpu\b/.test(location.search)){
     srcs.forEach(function(u){ document.write('<script src="'+u+'"><\/script>'); });
     window._webgpuShimsLoaded=true;
@@ -3903,7 +3924,7 @@ void main(){
   };
 })();
 </script>
-<script src="js/ui-controls.js?v=86"></script>
+<script src="js/ui-controls.js?v=87"></script>
 <script src="js/ui-paper.js?v=14"></script>
 <script src="js/phone.js?v=35"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL

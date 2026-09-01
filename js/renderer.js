@@ -259,7 +259,7 @@ function initGL(onReady){
    'u_off0','u_off1','u_off2','u_off3',
    'u_angle0','u_angle1','u_angle2','u_angle3','u_screenCell',
    'u_chan0','u_chan1','u_chan2','u_chan3',
-   'u_stampSeed','u_asciiTonePass','u_aMin','u_aDims','u_aPitch','u_wordLen','u_edgeSoft','u_mtxTexel','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineWave','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineGrain','u_inkDissolve','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_covQuant','u_covPass','u_covTex','u_koExclusive','u_uniqueInks','u_screenLin','u_dotSpacing','u_useLabResidual','u_useCalChord','u_ynN','u_useSepLut','u_sepLutN','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
+   'u_stampSeed','u_asciiTonePass','u_aMin','u_aDims','u_aPitch','u_wordLen','u_edgeSoft','u_mtxTexel','u_grainSize','u_dotGain','u_dens0','u_dens1','u_dens2','u_dens3','u_inkNoise','u_static','u_resScale','u_bright','u_contrast','u_sat','u_shadows','u_highlights','u_postExposure','u_postContrast','u_postSat','u_mode','u_lineShape','u_lineWave','u_lineAmount','u_lineWeight','u_lineRoughness','u_lineGrain','u_inkDissolve','u_lineCenter0','u_lineCenter1','u_lineCenter2','u_lineCenter3','u_lineEdgeThickness','u_lineCount','u_sepMode','u_sepType','u_colorQuant','u_covQuant','u_covPass','u_covTex','u_fiberAmt','u_fiberDir','u_koExclusive','u_uniqueInks','u_screenLin','u_dotSpacing','u_useLabResidual','u_useCalChord','u_ynN','u_useSepLut','u_sepLutN','u_warmCool','u_stampShape','u_screenType','u_ditherScale','u_simNoise',
    'u_paperColor','u_paperTex','u_paperScan','u_usePaperScan','u_paperShift','u_paperPbrShift','u_paperPbrMul','u_paperOrient','u_scanSwap','u_crop','u_paper',
    'u_usePaperPBR','u_paperScaleK',
    'u_lutA0','u_lutA1','u_lutA2','u_lutA3',
@@ -1299,6 +1299,8 @@ function setRenderUniforms(dw, dh, scale, isPhone){
   // 4-distinct-ink palettes fall back to toCMYK's K-generation for neutrals.
   // Duotones/tritones are unaffected either way (count < 4).
   if(locs.u_dotSpacing) gl.uniform1f(locs.u_dotSpacing, window._dotSpacing || 1);
+  if(locs.u_fiberAmt) gl.uniform1f(locs.u_fiberAmt, window._fiberAmt || 0);
+  if(locs.u_fiberDir) gl.uniform1f(locs.u_fiberDir, (window._fiberDirDeg || 0) * 0.01745329);
   if(locs.u_screenLin) gl.uniform1f(locs.u_screenLin, (window._screenLin ?? !!(window._flags && window._flags.screenlin)) ? 1.0 : 0.0);
   if(locs.u_uniqueInks){
     const gateOn = !!(window._neutralGate ?? false);
