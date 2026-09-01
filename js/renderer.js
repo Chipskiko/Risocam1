@@ -2065,14 +2065,16 @@ function _renderInner(){
     window._lodLastDraws = window._stDraws||0;
     const _bias = window._animLodBias||0;
     if(_lodTarget>0){
+      // MODE-AWARE first rung: the coverage split costs no visible quality
+      // and measured 4.4x faster in GRAIN and 4.3x in LINES — but SLOWER in
+      // SCREEN (44.5 -> 48.2ms: the edgeSoft cellTone / anchor chains still
+      // compute live ink per fragment, so the bake is pure overhead there).
+      // Engaging it first in screen mode was the fps regression the user
+      // reported after the ladder reorder. Screen goes straight to bias.
+      const _lodMode = (window._mode || mode);
+      if(window._covSplitAuto && _lodMode === 'screen') window._covSplitAuto = false;
       if(_lodGot < _lodTarget*0.75){
-        // FIRST rung: the coverage split — it costs NO visible quality
-        // (measured indistinguishable from one shimmer re-roll), unlike the
-        // supersample bias, whose softening is plainly visible in SCREEN
-        // mode's clean dots (user: "a better version appears and then
-        // disappears" — the crisp 6x dirty frame giving way to biased anim
-        // frames). Only if split isn't enough does the bias start.
-        if(!window._covSplitAuto && window._covSplit === undefined) window._covSplitAuto = true;
+        if(!window._covSplitAuto && window._covSplit === undefined && _lodMode !== 'screen') window._covSplitAuto = true;
         else if(_bias < 1.5) window._animLodBias = _bias + 0.25;
       }
       else if(_lodGot >= _lodTarget*0.92 && _bias > 0) window._animLodBias = Math.max(0, _bias - 0.125);

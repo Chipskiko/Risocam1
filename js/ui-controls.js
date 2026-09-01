@@ -214,7 +214,13 @@ function buildChannelUI(targetId){
           return `<button class="ch-angle-btn${isOpen?' active':''}" style="min-width:38px" onclick="event.stopPropagation();R.toggleLineCtl(${mIdx},'${axis}')">${label}</button>`;
         };
         html += `<div class="ch-angles" style="gap:3px">`;
-        html += btn('angle', aDeg+'°');
+        // Same id'd readout + ANIMATE (spin) button as the multi-layer rows —
+        // mono was missing both, so the angle-precession control simply
+        // vanished for single-ink palettes (user report).
+        html += `<button class="ch-angle-btn${open === (mIdx+'_angle') ? ' active' : ''}" style="min-width:38px" onclick="event.stopPropagation();R.toggleLineCtl(${mIdx},'angle')"><span id="lineAngleVal${mIdx}">${aDeg}°</span></button>`;
+        const spM = (typeof layerSpin !== 'undefined') ? (layerSpin[mIdx]|0) : 0;
+        const spGlyphM = spM === 0 ? '↻' : (spM > 0 ? '↻' : '↺');
+        html += `<button class="ch-spin-btn${spM !== 0 ? ' active' : ''}" onclick="event.stopPropagation();R.cycleLineSpin(${mIdx})" title="Animate this plate's angle — press for clockwise, again for anticlockwise, again for off">${spGlyphM}</button>`;
         if(radialish){
           html += btn('x', 'X '+cx+'%');
           html += btn('y', 'Y '+cy+'%');
