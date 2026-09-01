@@ -1095,7 +1095,10 @@ function refreshShapeIcons(){
 }
 
 const fpsSteps=[0,4,8,12,24];
-const FPS_STATIC_MAP={0:0, 4:5, 8:5, 12:5, 24:5};
+// Still-image shimmer rate per FPS mode. Was a flat 5 for every mode — the
+// FPS control did nothing for stills (user: "the fps issue is on grain too").
+// 4 keeps the legacy 5/s feel; higher modes now actually mean higher shimmer.
+const FPS_STATIC_MAP={0:0, 4:5, 8:8, 12:12, 24:24};
 function setRisoFps(fps){
   risoFps=fps;
   // Auto-derive grain static from FPS

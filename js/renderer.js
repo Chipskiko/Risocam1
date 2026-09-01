@@ -2060,7 +2060,12 @@ function _renderInner(){
     // Adaptive anim LOD controller (see animCap above): compare achieved
     // draws/s against the requested riso fps; step quality down fast when
     // lagging >25%, recover slowly when comfortably keeping up.
-    const _lodTarget = (camOn||videoOn) && risoFps>0 ? risoFps : 0;
+    // Target covers STILLS too: their shimmer runs on the grainStatic clock,
+    // not the riso-fps clock — with no target, neither covsplit nor the bias
+    // ever engaged for a still image on a GPU-bound machine (user: "the fps
+    // issue is on grain too").
+    const _lodTarget = (camOn||videoOn) && risoFps>0 ? risoFps
+                     : (cached.grainStatic > 0 ? Math.max(2, cached.grainStatic) : 0);
     const _lodGot = (window._stDraws||0) - (window._lodLastDraws||0);
     window._lodLastDraws = window._stDraws||0;
     const _bias = window._animLodBias||0;
