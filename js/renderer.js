@@ -1651,7 +1651,14 @@ R.togglePause=function(){
     try{ if(window._paused) $vid.pause(); else $vid.play(); }catch(e){}
   }
   if(!window._paused){
-    needsRedraw=true;
+    // Resume with an ANIMATION tick, not a dirty frame: dirty renders run at
+    // the full 6x supersample, and on a GPU-bound machine that one frame
+    // takes long enough that the pre-pause image visibly lingers (user:
+    // "when I pause and play, for a second the previous image shows").
+    // Forcing the anim clocks stale makes a tick due IMMEDIATELY at the
+    // cheap anim LOD instead. (Changes made while paused already rendered
+    // their own dirty frame under the pause gate.)
+    lastRisoFrame = 0; window._lastStaticFrame = 0;
     scheduleRender(); // wake the loop back up
   }
   R.toast(window._paused?'PAUSED (space)':'PLAY');
