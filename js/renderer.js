@@ -1979,17 +1979,30 @@ function _renderInner(){
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       window._covDims = [cw, chh];
     }
-    // The shader statically samples u_covTex, so covTex must NOT be bound on
-    // unit 11 while it is also the bake FBO's color attachment — WebGL's
-    // feedback-loop rule invalidates the whole draw (the bake silently never
-    // landed and every plate read zero coverage). Unbind for the bake, bind
-    // for the consume.
-    gl.activeTexture(gl.TEXTURE11); gl.bindTexture(gl.TEXTURE_2D, null);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, window._covFbo);
-    gl.viewport(0, 0, cw, chh);
-    gl.uniform1f(locs.u_covPass, 1.0);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    // Staleness: the baked head is SEED-FREE — a pure shimmer tick (same
+    // source frame, same settings, only frameSeed/misreg re-rolled) can
+    // reuse it as-is, which cuts an anim tick to the cheap physics pass
+    // alone on still images. Rebake only when the inputs changed: a dirty
+    // frame (any user change), a new camera/video/gif frame, or resized
+    // bake dims. _covBakeStamp mirrors the dirty/source counters.
+    const _covStamp = ((_dirtyFrame?1:0)) + ':' + (window._stGifAdv||0) + ':' + (newCamFrame?performance.now():0) + ':' + cw + 'x' + chh;
+    const _covStale = _dirtyFrame || newCamFrame || (window._covBakeStamp !== _covStamp);
+    if(_covStale){
+      window._covBakeStamp = _covStamp;
+      window._stCovBakes = (window._stCovBakes||0) + 1;
+      // The shader statically samples u_covTex, so covTex must NOT be bound
+      // on unit 11 while it is also the bake FBO's color attachment —
+      // WebGL's feedback-loop rule invalidates the whole draw (the bake
+      // silently never landed and every plate read zero coverage). Unbind
+      // for the bake, bind for the consume.
+      gl.activeTexture(gl.TEXTURE11); gl.bindTexture(gl.TEXTURE_2D, null);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, window._covFbo);
+      gl.viewport(0, 0, cw, chh);
+      gl.uniform1f(locs.u_covPass, 1.0);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, dw, dh);
+    }
     gl.activeTexture(gl.TEXTURE11); gl.bindTexture(gl.TEXTURE_2D, window._covTex);
     gl.viewport(0, 0, dw, dh);
     gl.uniform1f(locs.u_covPass, 2.0);
@@ -2052,18 +2065,18 @@ function _renderInner(){
     window._lodLastDraws = window._stDraws||0;
     const _bias = window._animLodBias||0;
     if(_lodTarget>0){
-      if(_lodGot < _lodTarget*0.75 && _bias < 1.5) window._animLodBias = _bias + 0.25;
-      else if(_lodGot >= _lodTarget*0.92 && _bias > 0) window._animLodBias = Math.max(0, _bias - 0.125);
-      // Second rung of the ladder: quality bias maxed and STILL missing the
-      // mode — engage the coverage-split pipeline (separation baked at half
-      // res; exact-order physics live; measured indistinguishable from one
-      // shimmer re-roll). Disengage only from full health, so it can't
-      // oscillate: bias must fall to 0 and the target hold WITH split on.
-      if(_lodGot < _lodTarget*0.75 && _bias >= 1.5 && !window._covSplitAuto){
-        window._covSplitAuto = true;
-      } else if(window._covSplitAuto && _bias === 0 && _lodGot >= _lodTarget){
-        window._covSplitAuto = false;
+      if(_lodGot < _lodTarget*0.75){
+        // FIRST rung: the coverage split — it costs NO visible quality
+        // (measured indistinguishable from one shimmer re-roll), unlike the
+        // supersample bias, whose softening is plainly visible in SCREEN
+        // mode's clean dots (user: "a better version appears and then
+        // disappears" — the crisp 6x dirty frame giving way to biased anim
+        // frames). Only if split isn't enough does the bias start.
+        if(!window._covSplitAuto && window._covSplit === undefined) window._covSplitAuto = true;
+        else if(_bias < 1.5) window._animLodBias = _bias + 0.25;
       }
+      else if(_lodGot >= _lodTarget*0.92 && _bias > 0) window._animLodBias = Math.max(0, _bias - 0.125);
+      else if(window._covSplitAuto && _bias === 0 && _lodGot >= _lodTarget) window._covSplitAuto = false;
     } else if(_bias) window._animLodBias = 0;
   }
 
@@ -2490,7 +2503,7 @@ R.bakeSepLut = async function(N){
   let resolveRun; _sepLutBaking = new Promise(r => resolveRun = r);
   try {
     if(!_sepLutWorker){
-      const blobUrl = await _buildWorkerBlobUrl('js/sep-lut-worker.js?v=5');
+      const blobUrl = await _buildWorkerBlobUrl('js/sep-lut-worker.js?v=6');
       _sepLutWorker = new Worker(blobUrl);
     }
     const inks = inksForKey;

@@ -226,6 +226,24 @@ function solve(target, inks, paper, opts) {
   return { w: best, dE: Math.sqrt(bestE) * 100 };
 }
 
+// ── Out-of-gamut dark rescue (mirror of the shader's darkPush) ──
+// The ΔE-optimal solve backs ink OFF for targets darker than the palette
+// can reach (the unreachable component dominates the residual, and REG
+// trims further) — so the settled LUT rendered LIGHTER than the live
+// NNLS+darkPush transient that shows while the bake is in flight (user:
+// "a better version appears and then disappears"). Rescue at BAKE time
+// with the worker's own measured forward model, same K as the shader:
+// when the solved mix still predicts lighter than the target's luminance,
+// push every weight toward full by the deficit. In-gamut: no effect.
+function darkRescue(w, target, inks, paper, opts) {
+  const pred = forward(w, inks, paper, opts);
+  const lum = c => 0.299*c[0] + 0.587*c[1] + 0.114*c[2];
+  const deficit = lum(pred) - lum(target);
+  if (deficit <= 0) return w;
+  const push = Math.min(1, deficit * 2.2);
+  return w.map(v => v + (1 - v) * push);
+}
+
 // ── Bake: N³ grid over sRGB-encoded target space ──
 function bake(msg) {
   const { N, paper, inks, opts } = msg;
@@ -234,7 +252,8 @@ function bake(msg) {
   let idx = 0;
   for (let bi = 0; bi < N; bi++) for (let gi = 0; gi < N; gi++) for (let ri = 0; ri < N; ri++) {
     const target = [ri/(N-1), gi/(N-1), bi/(N-1)];
-    const { w, dE } = solve(target, inks, paper, opts || {});
+    let { w, dE } = solve(target, inks, paper, opts || {});
+    w = darkRescue(w, target, inks, paper, opts || {});
     for (let i = 0; i < 4; i++) out[idx*4 + i] = i < w.length ? w[i] : 0;
     errs[idx] = dE;
     idx++;
