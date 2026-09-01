@@ -1738,6 +1738,21 @@ function _renderInner(){
       $gl.style.maxHeight='';
     }
     cachedVfW=$vf.clientWidth;cachedVfH=$vf.clientHeight;
+    // Snap the canvas CSS box onto WHOLE device pixels (standard HiDPI canvas
+    // alignment): with a fractional box, even a buffer sized exactly 1:1 to
+    // device pixels is composited sub-pixel-shifted — bilinear again, and
+    // fine grain shows it as slight vertical banding (user report, stills on
+    // a gpuSlow-capped machine where the buffer runs at device resolution).
+    if(!isPhoneNow && !window._pdfDoc){
+      try{
+        const dprS = window.devicePixelRatio || 1;
+        const rW = $gl.getBoundingClientRect().width;
+        if(rW > 50){
+          const snapped = Math.round(rW * dprS) / dprS;
+          if(Math.abs(snapped - rW) > 0.001) $gl.style.width = snapped + 'px';
+        }
+      }catch(e){}
+    }
     needsAspectUpdate=false;
     needsRedraw=true;
     if(!isPhoneNow) setTimeout(()=>{R.updateCropGuide(0,0,0,0);},50);
@@ -1904,7 +1919,11 @@ function _renderInner(){
   // the once-a-second fps block below until the cadence is honored, and
   // decays back when there is headroom. Floor 1.5x; dirty frames and
   // exports are untouched.
-  const animCap = Math.max(1.5, Math.max(3, dpr * 1.5) - (window._animLodBias || 0));
+  // Floor at DPR, not 1.5: a buffer below device resolution gets bilinearly
+  // UPSCALED by the compositor, and resampled grain bands (measured: column
+  // contrast ripple 12% in-buffer -> 22-34% after any bilinear rescale).
+  // At the dpr floor the buffer maps 1:1 to device pixels — no resample.
+  const animCap = Math.max(dpr, Math.max(3, dpr * 1.5) - (window._animLodBias || 0));
   const animScale = Math.min(Math.max(resScale, dpr), animCap);
   // GPU safe mode: BEFORE the first frame has probed the GPU — and forever
   // after on GPUs the probe judged slow, or after repeated context losses —
