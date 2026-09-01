@@ -117,3 +117,42 @@ Measured but deliberately NOT changed (risk > win): still-image loads
 upload the source to BOTH src textures (~10-40 ms + one texture of VRAM,
 once per load) so ghosting has a previous frame — gating it on
 cached.ghosting would touch ~10 upload sites.
+
+## Coverage-split pipeline (2026-09-01)
+
+The fragment pipeline factors at sepInkCMYK/sepInkSpot vs inkPhysics(): the
+separation head is SEED-FREE and bakes to a half-res RGBA FBO (u_covPass=1,
+unit 11); the physics tail re-runs live per shimmer tick (u_covPass=2 fetches
+the head at each plate's misregistered UV — separation is pointwise, so the
+shifted-field fetch is exact). u_covPass=0 is the untouched legacy path
+(exports, prepasses, ?covlive). Auto-engaged by the adaptive-LOD ladder as
+rung 1 — but NOT in screen mode: edgeSoft cellTone/asciiCov still compute
+live ink per fragment, so the bake is pure overhead there (measured 44.5 ->
+48.2ms; grain 155.6 -> 35, lines 196.9 -> 45.5). Redirecting those chains to
+the baked head is the outstanding work that earns screen the split. Shimmer
+ticks REUSE the bake (staleness stamp: dirty/source-frame/dims); pure-still
+shimmer measured 0 rebakes across 15 draws.
+
+Two WebGL rules paid for in blood here: a texture bound on a unit while
+attached to the bound FBO trips the feedback rule and silently invalidates
+the whole draw; and the fullscreen quad's negated Y means FBO passes store
+the field bottom-up (covUV() flips fetches).
+
+## SPOT dark rescue (2026-09-01)
+
+nnlsDecompose (and the sep-lut-worker bake — keep them in sync!) apply a
+deficit push after solving: least squares backs ink OFF for out-of-gamut dark
+targets (black under a 2-ink duo solved at ~55% and printed as a mid-tone).
+Prediction MUST be the multiplicative overprint model — additive deltas go
+negative exactly for the targets the rescue exists for, and clamping reads
+as "dark enough" (the push never fires). K=2.2 in both. Measured: black
+pre-ink 0.71/0.52 -> 0.92/0.68, ramp monotone 96..253.
+
+## Local iteration discipline (hard-won, twice)
+
+Bump the ?v pin on EVERY local edit of a pinned file, not just at deploy —
+same-URL scripts return from the HTTP cache mid-debugging and produce
+impossible measurements. The measurement protocol rules at the top of this
+file apply to the harness too: front the pane tab (hidden tabs suspend rAF
+entirely), and only DRAMATIC probes (sledgehammer returns) count when a
+result looks impossible.
