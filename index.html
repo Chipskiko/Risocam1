@@ -2240,7 +2240,7 @@ float inkPhysics(float ink, vec2 rpx, int idx, float noise1, float pf){
     float strand  = texture2D(u_noise, fract(vec2(along * 0.0004, across * 0.02))).r;
     float strand2 = texture2D(u_noise, fract(vec2(across * 0.031 + 0.37, along * 0.0011))).r;
     float fib = (strand * 0.65 + strand2 * 0.35) - 0.5;
-    ink *= 1.0 + fib * 0.35 * u_fiberAmt;
+    ink *= 1.0 + fib * 0.25 * u_fiberAmt;
 
     // INDIVIDUAL fibre hairs (the part you actually SEE on real stock):
     // sparse discrete filaments, a few tens of rpx long, gently bowed,
@@ -2254,20 +2254,25 @@ float inkPhysics(float ink, vec2 rpx, int idx, float noise1, float pf){
     for(int cy = -1; cy <= 1; cy++) for(int cx = -1; cx <= 1; cx++){
       vec2 c2 = cid + vec2(float(cx), float(cy));
       float h1 = hash(c2 * 17.31);
-      if(h1 > 0.5) continue;                        // half the cells hold a hair
+      if(h1 > 0.35) continue;                       // ~1/3 of cells hold a hair
       vec2 ctr = (c2 + vec2(hash(c2 * 7.7), hash(c2 * 11.3))) * 100.0;
       vec2 dd = fp - ctr;
       float hAng = (hash(c2 * 5.9) - 0.5) * 0.9;    // +/-26 deg off the grain
       float ca2 = cos(hAng), sa2 = sin(hAng);
       float lx = dd.x * ca2 + dd.y * sa2;
       float ly = -dd.x * sa2 + dd.y * ca2;
-      float halfL = mix(22.0, 60.0, hash(c2 * 3.3));
+      float halfL = mix(14.0, 42.0, hash(c2 * 3.3));
       ly -= (hash(c2 * 9.1) - 0.5) * 0.014 * (lx * lx - halfL * halfL); // gentle bow
-      float m = (1.0 - smoothstep(halfL * 0.65, halfL, abs(lx)))
-              * (1.0 - smoothstep(0.45, 1.5, abs(ly)));
-      hairMod += (hash(c2 * 13.7) > 0.3 ? -1.0 : 0.85) * m;
+      float m = (1.0 - smoothstep(halfL * 0.55, halfL, abs(lx)))
+              * (1.0 - smoothstep(0.35, 1.2, abs(ly)));
+      // Per-hair intensity: MOST fibres are barely-there partial skips —
+      // pow-skewed toward faint, occasional stronger one. A fibre never
+      // blanks the ink fully ("too obvious, doesn't look like paper"):
+      // it's a partial hold-out, and the grain dither breaks it up further.
+      float vis = pow(hash(c2 * 21.7), 2.0);
+      hairMod += (hash(c2 * 13.7) > 0.3 ? -1.0 : 0.7) * m * mix(0.15, 1.0, vis);
     }
-    ink *= 1.0 + clamp(hairMod, -1.0, 1.0) * 0.6 * u_fiberAmt;
+    ink *= 1.0 + clamp(hairMod, -1.0, 1.0) * 0.3 * u_fiberAmt;
   }
 
   // Print pressure variation, rebuilt at PRINT scale: a drum lays a few
@@ -3934,7 +3939,7 @@ void main(){
 // toggle path loads them async later, which the presence-guarded call sites
 // (window.RisoAmtGPU && ...) handle.
 (function(){
-  var srcs=['js/riso-amt-webgpu.js?v=6','js/webgpu-live.js?v=12'];
+  var srcs=['js/riso-amt-webgpu.js?v=6','js/webgpu-live.js?v=13'];
   if(/[?&]webgpu\b/.test(location.search)){
     srcs.forEach(function(u){ document.write('<script src="'+u+'"><\/script>'); });
     window._webgpuShimsLoaded=true;
