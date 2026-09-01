@@ -2222,11 +2222,19 @@ float inkPhysics(float ink, vec2 rpx, int idx, float noise1, float pf){
   // Paper fiber modulation: fibers trap ink unevenly
   ink *= pf;
 
-  // Print pressure variation (roller) — use noise to avoid visible wave banding
-  float pressX = (texture2D(u_noise, fract(vec2(rpx.x * 0.0003, 0.2 + float(idx) * 0.31))).r - 0.5) * 0.03 * u_pressVar * u_simNoise;
-  float pressY = (texture2D(u_noise, fract(vec2(0.7 + float(idx) * 0.23, rpx.y * 0.0005))).r - 0.5) * 0.02 * u_pressVar * u_simNoise;
-  float drumNoise = texture2D(u_noise, fract(vec2(0.1 + float(idx) * 0.19, rpx.y * 0.0004 + u_frameSeed * 0.01))).r;
-  float drumBand = (drumNoise - 0.5) * 0.036 * u_pressVar * u_simNoise;
+  // Print pressure variation, rebuilt at PRINT scale: a drum lays a few
+  // BROAD soft streaks per sheet (dominantly horizontal, from rotation) —
+  // the old frequencies swept ~180 noise texels across the sheet, so both
+  // axes rendered per-texel stripes and every plate's offset copy overlaid
+  // into a woven plaid (obvious on a flat-field export; the user's
+  // "it goes away with pressure" pinned the term). New sweeps cross only a
+  // handful of texels — LINEAR interpolation turns them into slow organic
+  // bands: ~5 faint vertical pressure zones, ~7 horizontal, ~12 gentle
+  // drum marks, with the drum term strongest, as on a real print.
+  float pressX = (texture2D(u_noise, fract(vec2(rpx.x * 0.000008 + float(idx) * 0.31, 0.2))).r - 0.5) * 0.02 * u_pressVar * u_simNoise;
+  float pressY = (texture2D(u_noise, fract(vec2(0.7 + float(idx) * 0.23, rpx.y * 0.000012))).r - 0.5) * 0.025 * u_pressVar * u_simNoise;
+  float drumNoise = texture2D(u_noise, fract(vec2(0.1 + float(idx) * 0.19, rpx.y * 0.00002 + u_frameSeed * 0.01))).r;
+  float drumBand = (drumNoise - 0.5) * 0.05 * u_pressVar * u_simNoise;
   ink *= 1.0 + pressX + pressY + drumBand;
 
   // Ink starvation in dense areas — use noise instead of sine.
@@ -3878,7 +3886,7 @@ void main(){
 // toggle path loads them async later, which the presence-guarded call sites
 // (window.RisoAmtGPU && ...) handle.
 (function(){
-  var srcs=['js/riso-amt-webgpu.js?v=6','js/webgpu-live.js?v=9'];
+  var srcs=['js/riso-amt-webgpu.js?v=6','js/webgpu-live.js?v=10'];
   if(/[?&]webgpu\b/.test(location.search)){
     srcs.forEach(function(u){ document.write('<script src="'+u+'"><\/script>'); });
     window._webgpuShimsLoaded=true;
