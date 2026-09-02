@@ -135,6 +135,7 @@ function stopVideo(){
   if(window._gifStream){try{window._gifStream.close();}catch(e){} window._gifStream=null;}
   if(gifFrames){gifFrames.forEach(f=>{f.canvas=null;});gifFrames=null;}
   gifFrameIdx=0;
+  if(R.resetCamFx)R.resetCamFx(); // live FX belong to the feed that just ended
 }
 // Advance the gif clock to wall time 'now'. Called from THREE drivers so
 // gif time keeps flowing wherever any of them is alive: the rAF loop
@@ -231,7 +232,7 @@ function loadGifFallback(f){
     gifCanvas.width=img.naturalWidth;gifCanvas.height=img.naturalHeight;
     gifCtx=gifCanvas.getContext('2d');
     srcImg=gifCanvas;
-    videoOn=true;camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();scheduleRender();
+    videoOn=true;camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();scheduleRender();if(R.updateCamFxUI)R.updateCamFxUI();
     $status.textContent='▶ GIF';
     $res.textContent=img.naturalWidth+'×'+img.naturalHeight;
     gifFrameIdx=0;gifLastTime=performance.now();
@@ -831,7 +832,7 @@ function handleFile(e){
       $vid.onerror=null;
       // (revoke deliberately NOT here — see the Safari note above)
       $vid.play();
-      videoOn=true;camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();scheduleRender();
+      videoOn=true;camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();scheduleRender();if(R.updateCamFxUI)R.updateCamFxUI();
       $status.textContent='▶ VIDEO';
       $res.textContent=$vid.videoWidth+'×'+$vid.videoHeight;
       // Same as camera path — RISO mode's static master would overlay the
@@ -858,7 +859,7 @@ function handleFile(e){
       gifCanvas.width=w;gifCanvas.height=h;
       gifCtx=gifCanvas.getContext('2d');
       srcImg=gifCanvas;
-      videoOn=true;camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();scheduleRender();
+      videoOn=true;camOn=false;hasSrc=true;needsAspectUpdate=true;computeCrop();scheduleRender();if(R.updateCamFxUI)R.updateCamFxUI();
       $status.textContent='▶ GIF';
       $res.textContent=w+'×'+h;
       gifFrameIdx=0;gifLastTime=0; // force immediate first-frame draw
@@ -1095,7 +1096,7 @@ async function toggleCam(){
   if(camOn){
     if(camStream)camStream.getTracks().forEach(t=>t.stop());
     camOn=false;
-    $gl.classList.remove('mirrored');
+    if(R.resetCamFx)R.resetCamFx();
     if(window._camFallback){clearInterval(window._camFallback);window._camFallback=null;}
     el('camBtn').textContent='CAMERA';
     if(srcImg){
@@ -1129,7 +1130,7 @@ async function toggleCam(){
       try { gl.uniform1f(locs.u_useAmt, 0.0); } catch(e) {}
       try { R.toast && R.toast((window._mode==='stipple'?'STIPPLE':'RISO')+' mode: camera shows preview only, mode is static-source.', 3000); } catch(e) {}
     }
-    $gl.classList.toggle('mirrored',facingMode==='user');
+    if(R.setFxMirror)R.setFxMirror(facingMode==='user'); // in-shader mirror: preview == export
     el('camBtn').textContent='STOP CAM';
     $status.textContent='● LIVE';
     // Use requestVideoFrameCallback if available (Chrome/Edge)
@@ -1162,7 +1163,7 @@ function bindCamTrackEnd(stream){
       if(!camOn) return;
       camOn=false;
       if(window._camFallback){clearInterval(window._camFallback);window._camFallback=null;}
-      $gl.classList.remove('mirrored');
+      if(R.resetCamFx)R.resetCamFx();
       try{ el('camBtn').textContent='CAMERA'; }catch(e){}
       $status.textContent='○ CAM ENDED';
       markDirty();scheduleRender();

@@ -14,7 +14,7 @@
 <title>RISO/CAM</title>
 <link rel="manifest" href="manifest.json">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/main.css?v=39">
+<link rel="stylesheet" href="css/main.css?v=40">
 <!-- Styles extracted to css/main.css -->
 <script data-goatcounter="https://chipskiko.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </head>
@@ -44,11 +44,20 @@
     <div class="header-src">
       <button class="header-src-btn" onclick="R.pickFile()" title="Upload">↑</button>
       <button class="header-src-btn" id="camBtn" onclick="R.toggleCam()" title="Camera"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></button>
+      <button class="header-src-btn" id="camFxBtn" onclick="R.toggleCamFx(this)" title="Live FX — mirror, zoom, hue rotation and one pick from NEG / SOLAR / EDGE / PIXEL / SYM / KALEIDO / WAVE / WARP / GLITCH / RGB on the camera or video feed. Applied to the source, so PNG/VID exports match the preview." style="display:none">FX</button>
     </div>
     <button class="header-btn" onclick="R.togglePhoneMode()">📱</button>
   </div>
   </div>
 </header>
+<div class="cam-fx-menu" id="camFxMenu" style="display:none">
+  <div class="cam-fx-row">
+    <button class="cam-fx-chip" id="fxMirrorBtn" onclick="R.toggleFxMirror()" title="Flip horizontally (selfie cameras start mirrored)">MIRROR</button>
+    <button class="cam-fx-chip" id="fxZoomBtn" onclick="R.cycleFxZoom()" title="Centre zoom 1 / 1.5 / 2 / 3×">ZOOM 1×</button>
+    <button class="cam-fx-chip" id="fxHueBtn" onclick="R.cycleFxHue()" title="Rotate source hues — changes which ink takes which region">HUE 0°</button>
+  </div>
+  <div class="cam-fx-grid" id="fxGrid"></div>
+</div>
 <div class="app-container">
   <div class="left-col">
   <div class="viewfinder-wrap">
@@ -342,6 +351,7 @@
   <div class="ph-top">
     <div class="ph-top-left">
       <button class="ph-icon-btn" id="phSwitchCam" onclick="R.phFlipCam()" title="Switch camera"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M21 3l-7 7"/><path d="M8 21H3v-5"/><path d="M3 21l7-7"/></svg></button>
+      <button class="ph-icon-btn" id="phFxBtn" onclick="R.toggleCamFx(this)" title="Live FX" style="display:none">FX</button>
     </div>
     <div class="ph-top-center">
       <!-- RES removed: always max resolution -->
@@ -547,6 +557,17 @@ uniform float u_contrast;   // contrast -30..30
 uniform float u_sat;        // saturation -30..30
 uniform float u_shadows;    // shadow lift/crush -30..30
 uniform float u_highlights; // highlight push/pull -30..30
+// ─── Live FX (camera / video feed) ───
+// Applied at the source fetch, ahead of every adjustment and the separation,
+// so exports and recordings carry the effect exactly as previewed.
+// Catalogue after vfx-js (glitch, rgbShift, sinewave, warp, pixelate) and
+// Seriously.js (kaleidoscope, mirror, edge, invert) — ported, not embedded.
+uniform float u_fx;         // 0 off 1 NEG 2 SOLAR 3 EDGE 4 PIXEL 5 SYM 6 KALEIDO 7 WAVE 8 WARP 9 GLITCH 10 RGB
+uniform float u_fxMirror;   // 1 = horizontal flip (in-shader; the old CSS mirror never reached exports)
+uniform float u_fxZoom;     // centre zoom 1..3
+uniform float u_fxHue;      // hue rotation, radians
+uniform float u_fxTime;     // wall-clock seconds since the effect was picked (animated FX)
+uniform vec2  u_srcTexel;   // 1 / source texture size (EDGE neighbourhood)
 // Post-processing (applied to final composited output)
 uniform float u_postExposure;  // -50..50
 uniform float u_postContrast;  // -50..50
@@ -646,6 +667,58 @@ float hash2(vec2 p){
   return fract((p3.y + p3.z) * p3.x);
 }
 
+// ─── Live FX helpers ───
+// Pixel aspect of the print area, normalised so the long side is 1 — the
+// geometric effects work in this space so circles stay circles and PIXEL
+// cells stay square whatever the paper format.
+vec2 fxAspect(){
+  vec2 px = u_res * vec2(1.0 - u_printArea.x - u_printArea.z, 1.0 - u_printArea.y - u_printArea.w);
+  return px / max(max(px.x, px.y), 1.0);
+}
+float vnoise(vec2 p);                  // smooth value noise, defined with the paper helpers below
+vec3 hueRotate(vec3 c, float a){       // rotation about the grey axis
+  const vec3 k = vec3(0.57735027);
+  float cs = cos(a), sn = sin(a);
+  return c * cs + cross(k, c) * sn + k * dot(k, c) * (1.0 - cs);
+}
+// Geometric FX on the print-area coordinate (0..1 over the printed image),
+// before crop/bleed mapping. Out-of-range results clamp to the edge texel.
+vec2 fxUV(vec2 r){
+  if(u_fxMirror > 0.5) r.x = 1.0 - r.x;
+  if(u_fxZoom > 1.001) r = (r - 0.5) / u_fxZoom + 0.5;
+  int fx = int(u_fx + 0.5);
+  if(fx == 4){                                   // PIXEL: 48 square cells across
+    vec2 asp = fxAspect();
+    vec2 cell = vec2(1.0 / 48.0) * asp.x / asp;
+    r = (floor(r / cell) + 0.5) * cell;
+  } else if(fx == 5){                            // SYM: left half mirrored onto the right
+    r.x = min(r.x, 1.0 - r.x);
+  } else if(fx == 6){                            // KALEIDO: 6-fold mirror wedge, slow spin
+    vec2 asp = fxAspect();
+    vec2 d = (r - 0.5) * asp;
+    float seg = 6.2831853 / 6.0;
+    float a = atan(d.y, d.x) + u_fxTime * 0.12;
+    a = abs(mod(a, seg) - seg * 0.5);
+    r = vec2(cos(a), sin(a)) * length(d) * 0.75 / asp + 0.5;
+  } else if(fx == 7){                            // WAVE (vfx-js sinewave)
+    float t = u_fxTime;
+    r.x += sin(r.y * 18.0 + t * 2.6) * 0.02;
+    r.y += sin(r.x * 13.0 + t * 1.9) * 0.014;
+  } else if(fx == 8){                            // WARP (vfx-js warp): drifting noise field
+    float t = u_fxTime * 0.3;
+    vec2 n = vec2(vnoise(r * 3.5 + vec2(t, 0.0)), vnoise(r * 3.5 + vec2(7.3, 2.1 - t))) - 0.5;
+    r += n * 0.16;
+  } else if(fx == 9){                            // GLITCH (vfx-js glitch): sliced bands + rolls, 10 states/s
+    float t = floor(u_fxTime * 10.0);
+    float band = floor(r.y * 28.0);
+    float g = hash(vec2(band * 0.37, t * 0.61));
+    if(g > 0.82) r.x += (hash(vec2(t * 0.13, band * 0.71)) - 0.5) * 0.18;
+    float roll = step(0.92, hash(vec2(t * 0.29, 3.1)));
+    r.y = fract(r.y + roll * hash(vec2(t * 0.07, 9.2)) * 0.35);
+  }
+  return r;
+}
+
 // ─── Source UV with crop region ───
 // Remap canvas UV so that the print area (u_printArea margins) maps to 0→1,
 // then apply u_crop to select the right region of the source texture.
@@ -661,6 +734,7 @@ vec2 srcUV(vec2 uv){
     (uv.x - paL) / (1.0 - paL - paR),
     (uv.y - paT) / (1.0 - paT - paB)
   );
+  if(u_fx > 0.5 || u_fxMirror > 0.5 || u_fxZoom > 1.001) remapped = fxUV(remapped);
   // Apply bleed: zoom image relative to print area (always >= 0)
   // bleed > 0 = zoom in (image bleeds past edges, less source visible)
   vec2 cropPos = u_crop.xy;
@@ -680,6 +754,11 @@ vec2 srcUV(vec2 uv){
 
 // ─── Image adjustments (applied to source before separation) ───
 vec3 adjustRGB(vec3 rgb, vec2 pix){
+  // Live FX colour stage — ahead of the user's adjustments, like a lens filter
+  int fx = int(u_fx + 0.5);
+  if(fx == 1) rgb = 1.0 - rgb;                                   // NEG
+  else if(fx == 2) rgb = mix(rgb, 1.0 - rgb, step(0.5, rgb));    // SOLAR: per-channel fold above mid
+  if(abs(u_fxHue) > 0.001) rgb = clamp(hueRotate(rgb, u_fxHue), 0.0, 1.0);
   // Brightness: simple offset
   rgb += u_bright * 0.01;
   // Contrast: pivot around mid-gray
@@ -737,6 +816,36 @@ vec3 adjustRGB(vec3 rgb, vec2 pix){
     rgb += tpdf * whiteGate;
   }
   return clamp(rgb, 0.0, 1.0);
+}
+
+// ─── Source fetch with live FX ───
+// Every source read goes through here (geometry via srcUV→fxUV; the
+// neighbourhood effects need the texture, so they live at the fetch).
+float fxLum(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
+vec4 fetchSrc(vec2 uv){
+  vec2 s = srcUV(uv);
+  vec4 c = texture2D(u_src, s);
+  int fx = int(u_fx + 0.5);
+  if(fx == 3){                                   // EDGE: Sobel → dark lines on white
+    vec2 tx = max(u_srcTexel * 1.5, vec2(1.0 / 900.0));
+    float l00 = fxLum(texture2D(u_src, s + vec2(-tx.x, -tx.y)).rgb);
+    float l10 = fxLum(texture2D(u_src, s + vec2( 0.0,  -tx.y)).rgb);
+    float l20 = fxLum(texture2D(u_src, s + vec2( tx.x, -tx.y)).rgb);
+    float l01 = fxLum(texture2D(u_src, s + vec2(-tx.x,  0.0 )).rgb);
+    float l21 = fxLum(texture2D(u_src, s + vec2( tx.x,  0.0 )).rgb);
+    float l02 = fxLum(texture2D(u_src, s + vec2(-tx.x,  tx.y)).rgb);
+    float l12 = fxLum(texture2D(u_src, s + vec2( 0.0,   tx.y)).rgb);
+    float l22 = fxLum(texture2D(u_src, s + vec2( tx.x,  tx.y)).rgb);
+    float gx = (l20 + 2.0 * l21 + l22) - (l00 + 2.0 * l01 + l02);
+    float gy = (l02 + 2.0 * l12 + l22) - (l00 + 2.0 * l10 + l20);
+    float e = smoothstep(0.08, 0.5, length(vec2(gx, gy)));
+    c.rgb = vec3(1.0 - e);
+  } else if(fx == 10){                           // RGB: chromatic split (vfx-js rgbShift)
+    vec2 sh = vec2(0.012, 0.0);
+    c.r = texture2D(u_src, srcUV(uv + sh)).r;
+    c.b = texture2D(u_src, srcUV(uv - sh)).b;
+  }
+  return c;
 }
 
 // ─── RGB to CMYK with UCR (Under Color Removal) ───
@@ -3085,12 +3194,12 @@ float asciiCov(vec2 suv, vec2 srpx, int idx, vec2 boxHalf){
     for(int by = 0; by < 4; by++){
       for(int bx = 0; bx < 4; bx++){
         vec2 f = (vec2(float(bx), float(by)) - 1.5) * 0.5; // stratum midpoints ±0.25, ±0.75
-        src += texture2D(u_src, srcUV(suv + f * boxHalf)).rgb;
+        src += fetchSrc(suv + f * boxHalf).rgb;
       }
     }
     src *= 0.0625;
   } else {
-    src = texture2D(u_src, srcUV(suv)).rgb;
+    src = fetchSrc(suv).rgb;
   }
   src = adjustRGB(src, srpx);
   float ink;
@@ -3338,7 +3447,7 @@ void main(){
     vec2 rpxC = uv * REF;
     vec4 pre = vec4(0.0);
     if(u_sepType == 1){
-      vec3 sA = texture2D(u_src, srcUV(uv)).rgb;
+      vec3 sA = fetchSrc(uv).rgb;
       sA = adjustRGB(sA, rpxC);
       vec4 wA = koExclusive(nnlsDecompose(u_layers, u_paperColor, sA, u_ink0, u_ink1, u_ink2, u_ink3));
       if(u_dens0 >= 0.5) pre.x = sepInkSpot(wA.x, 0, u_dens0);
@@ -3348,19 +3457,19 @@ void main(){
     } else {
       // Per-plate transport-streak blur, matching the live layer blocks
       // (layer 0: +0.0012/0.35, 1: +0.0008/0.25, 2: +0.0004/0.15, 3: none).
-      vec3 sBase = texture2D(u_src, srcUV(uv)).rgb;
-      vec3 s0 = mix(sBase, texture2D(u_src, srcUV(uv + vec2(0.0, 0.0012))).rgb, 0.35);
+      vec3 sBase = fetchSrc(uv).rgb;
+      vec3 s0 = mix(sBase, fetchSrc(uv + vec2(0.0, 0.0012)).rgb, 0.35);
       s0 = adjustRGB(s0, rpxC);
       vec4 k0 = koExclusive(toCMYK(s0));
       if(u_dens0 >= 0.5) pre.x = sepInkCMYK(k0, u_chan0, u_dens0, s0, u_inkGamma0);
       if(u_layers > 1){
-        vec3 s1 = mix(sBase, texture2D(u_src, srcUV(uv + vec2(0.0, 0.0008))).rgb, 0.25);
+        vec3 s1 = mix(sBase, fetchSrc(uv + vec2(0.0, 0.0008)).rgb, 0.25);
         s1 = adjustRGB(s1, rpxC);
         vec4 k1 = koExclusive(toCMYK(s1));
         if(u_dens1 >= 0.5) pre.y = sepInkCMYK(k1, u_chan1, u_dens1, s1, u_inkGamma1);
       }
       if(u_layers > 2){
-        vec3 s2 = mix(sBase, texture2D(u_src, srcUV(uv + vec2(0.0, 0.0004))).rgb, 0.15);
+        vec3 s2 = mix(sBase, fetchSrc(uv + vec2(0.0, 0.0004)).rgb, 0.15);
         s2 = adjustRGB(s2, rpxC);
         vec4 k2 = koExclusive(toCMYK(s2));
         if(u_dens2 >= 0.5) pre.z = sepInkCMYK(k2, u_chan2, u_dens2, s2, u_inkGamma2);
@@ -3382,7 +3491,7 @@ void main(){
     // paperEffect returns 1.0 when u_simNoise=0, so this single call works
   // for all clean / noisy combinations. FLAT also forces simNoise=0 in JS.
   float pf = paperEffect(rpx);
-    vec3 src = texture2D(u_src, srcUV(uv + u_off0)).rgb;
+    vec3 src = fetchSrc(uv + u_off0).rgb;
     src = adjustRGB(src, rpx);
     // Apply post-processing to the source so separations reflect the user's
     // full pre+post grading chain (WYSIWYG with the preview).
@@ -3477,13 +3586,13 @@ void main(){
       // consume the baked head at THIS plate's misregistered position
       cov = (u_dens0 < 0.5) ? 0.0 : inkPhysics(texture2D(u_covTex, covUV(snapUV0)).x, lrpx, 0, n0, pf);
     } else if(u_sepType == 1){
-      vec3 src0a = texture2D(u_src, srcUV(snapUV0)).rgb;
+      vec3 src0a = fetchSrc(snapUV0).rgb;
       src0a = adjustRGB(src0a, lrpx);
       vec4 w0 = koExclusive(nnlsDecompose(u_layers, u_paperColor, src0a, u_ink0, u_ink1, u_ink2, u_ink3));
       cov = getCoverageApprox(w0.x, lrpx, 0, n0, u_dens0, pf);
     } else {
-      vec3 src = texture2D(u_src, srcUV(snapUV0)).rgb;
-      vec3 srcS = texture2D(u_src, srcUV(snapUV0 + vec2(0.0, 0.0012))).rgb;
+      vec3 src = fetchSrc(snapUV0).rgb;
+      vec3 srcS = fetchSrc(snapUV0 + vec2(0.0, 0.0012)).rgb;
       src = mix(src, srcS, 0.35);
       src = adjustRGB(src, lrpx);
       vec4 cmyk = koExclusive(toCMYK(src));
@@ -3540,13 +3649,13 @@ void main(){
     if(u_covPass > 1.5){
       cov = (u_dens1 < 0.5) ? 0.0 : inkPhysics(texture2D(u_covTex, covUV(snapUV1)).y, lrpx, 1, n1, pf);
     } else if(u_sepType == 1){
-      vec3 src1a = texture2D(u_src, srcUV(snapUV1)).rgb;
+      vec3 src1a = fetchSrc(snapUV1).rgb;
       src1a = adjustRGB(src1a, lrpx);
       vec4 w1 = koExclusive(nnlsDecompose(u_layers, u_paperColor, src1a, u_ink0, u_ink1, u_ink2, u_ink3));
       cov = getCoverageApprox(w1.y, lrpx, 1, n1, u_dens1, pf);
     } else {
-      vec3 src = texture2D(u_src, srcUV(snapUV1)).rgb;
-      vec3 srcS = texture2D(u_src, srcUV(snapUV1 + vec2(0.0, 0.0008))).rgb;
+      vec3 src = fetchSrc(snapUV1).rgb;
+      vec3 srcS = fetchSrc(snapUV1 + vec2(0.0, 0.0008)).rgb;
       src = mix(src, srcS, 0.25);
       src = adjustRGB(src, lrpx);
       vec4 cmyk = koExclusive(toCMYK(src));
@@ -3593,13 +3702,13 @@ void main(){
     if(u_covPass > 1.5){
       cov = (u_dens2 < 0.5) ? 0.0 : inkPhysics(texture2D(u_covTex, covUV(snapUV2)).z, lrpx, 2, n2, pf);
     } else if(u_sepType == 1){
-      vec3 src2a = texture2D(u_src, srcUV(snapUV2)).rgb;
+      vec3 src2a = fetchSrc(snapUV2).rgb;
       src2a = adjustRGB(src2a, lrpx);
       vec4 w2 = koExclusive(nnlsDecompose(u_layers, u_paperColor, src2a, u_ink0, u_ink1, u_ink2, u_ink3));
       cov = getCoverageApprox(w2.z, lrpx, 2, n2, u_dens2, pf);
     } else {
-      vec3 src = texture2D(u_src, srcUV(snapUV2)).rgb;
-      vec3 srcS = texture2D(u_src, srcUV(snapUV2 + vec2(0.0, 0.0004))).rgb;
+      vec3 src = fetchSrc(snapUV2).rgb;
+      vec3 srcS = fetchSrc(snapUV2 + vec2(0.0, 0.0004)).rgb;
       src = mix(src, srcS, 0.15);
       src = adjustRGB(src, lrpx);
       vec4 cmyk = koExclusive(toCMYK(src));
@@ -3646,12 +3755,12 @@ void main(){
     if(u_covPass > 1.5){
       cov = (u_dens3 < 0.5) ? 0.0 : inkPhysics(texture2D(u_covTex, covUV(snapUV3)).w, lrpx, 3, n3, pf);
     } else if(u_sepType == 1){
-      vec3 src3a = texture2D(u_src, srcUV(snapUV3)).rgb;
+      vec3 src3a = fetchSrc(snapUV3).rgb;
       src3a = adjustRGB(src3a, lrpx);
       vec4 w3 = koExclusive(nnlsDecompose(u_layers, u_paperColor, src3a, u_ink0, u_ink1, u_ink2, u_ink3));
       cov = getCoverageApprox(w3.w, lrpx, 3, n3, u_dens3, pf);
     } else {
-      vec3 src = texture2D(u_src, srcUV(snapUV3)).rgb;
+      vec3 src = fetchSrc(snapUV3).rgb;
       src = adjustRGB(src, lrpx);
       vec4 cmyk = koExclusive(toCMYK(src));
       cov = getCoverage(cmyk, lrpx, 3, u_chan3, n3, u_dens3, pf, src, u_inkGamma3);
@@ -3927,9 +4036,9 @@ void main(){
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/gen/bnvc256.js?v=2"></script>
-<script src="js/renderer.js?v=223"></script>
+<script src="js/renderer.js?v=224"></script>
 <script src="js/gif-decode.js?v=5"></script>
-<script src="js/source.js?v=64"></script>
+<script src="js/source.js?v=65"></script>
 <script src="js/save.js?v=83"></script>
 <script>
 // WebGPU shims (opt-in experiment): 41KB that only ?webgpu or the debug
@@ -3939,7 +4048,7 @@ void main(){
 // toggle path loads them async later, which the presence-guarded call sites
 // (window.RisoAmtGPU && ...) handle.
 (function(){
-  var srcs=['js/riso-amt-webgpu.js?v=6','js/webgpu-live.js?v=13'];
+  var srcs=['js/riso-amt-webgpu.js?v=6','js/webgpu-live.js?v=14'];
   if(/[?&]webgpu\b/.test(location.search)){
     srcs.forEach(function(u){ document.write('<script src="'+u+'"><\/script>'); });
     window._webgpuShimsLoaded=true;
@@ -3956,9 +4065,9 @@ void main(){
   };
 })();
 </script>
-<script src="js/ui-controls.js?v=87"></script>
+<script src="js/ui-controls.js?v=88"></script>
 <script src="js/ui-paper.js?v=14"></script>
-<script src="js/phone.js?v=35"></script>
+<script src="js/phone.js?v=36"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL
      service workers, and even the attempt makes the browser print a CSP-violation report
      that no .catch can silence. Offline caching works where CSP allows (e.g. localhost).

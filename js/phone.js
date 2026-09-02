@@ -228,7 +228,7 @@ async function phFlipCam(){
       $vid.srcObject=s;
       await $vid.play();
       camOn=true;needsAspectUpdate=true;computeCrop();scheduleRender();
-      $gl.classList.toggle('mirrored',facingMode==='user');
+      if(R.setFxMirror)R.setFxMirror(facingMode==='user');
       if($vid.requestVideoFrameCallback) R.onVideoFrame(); // start the generation-guarded rVFC loop (once)
       else{if(window._camFallback)clearInterval(window._camFallback);window._camFallback=setInterval(()=>{if(camOn&&$vid.readyState>=2){videoFrameReady=true;scheduleRender();}else if(!camOn)clearInterval(window._camFallback);},50);}
       return;
@@ -239,7 +239,7 @@ async function phFlipCam(){
     const s=await navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:R.isPhone()?640:1280}}});
     camStream=s;if(R.bindCamTrackEnd)R.bindCamTrackEnd(s);$vid.srcObject=s;await $vid.play();
     camOn=true;needsAspectUpdate=true;computeCrop();scheduleRender();
-    $gl.classList.toggle('mirrored',facingMode==='user');
+    if(R.setFxMirror)R.setFxMirror(facingMode==='user');
     if($vid.requestVideoFrameCallback) R.onVideoFrame(); // start the generation-guarded rVFC loop (once)
     else{if(window._camFallback)clearInterval(window._camFallback);window._camFallback=setInterval(()=>{if(camOn&&$vid.readyState>=2){videoFrameReady=true;scheduleRender();}else if(!camOn)clearInterval(window._camFallback);},50);}
     R.toast('Only one camera available');

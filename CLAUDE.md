@@ -156,3 +156,20 @@ impossible measurements. The measurement protocol rules at the top of this
 file apply to the harness too: front the pane tab (hidden tabs suspend rAF
 entirely), and only DRAMATIC probes (sledgehammer returns) count when a
 result looks impossible.
+
+## Live FX (camera / video feed, 2026-09-02)
+
+Effects on the live feed live IN the fragment shader, not in a second WebGL
+context (Seriously.js / vfx-js were the catalogue, not a dependency): every
+source read goes through fetchSrc(uv) → srcUV() → fxUV() (geometry: mirror,
+zoom, PIXEL/SYM/KALEIDO/WAVE/WARP/GLITCH) with the colour stage at the top of
+adjustRGB (NEG/SOLAR/hue) and the neighbourhood effects (EDGE Sobel, RGB
+split) at the fetch. That is why exports and VID loops carry the effect for
+free and why the split head bakes it. Rules: a new source fetch must call
+fetchSrc, never texture2D(u_src, …) (the PDF text plate u_srcOrig and the
+ghosting u_prevSrc are the deliberate exceptions); FX state (window._fx,
+_fxMirror, _fxZoom, _fxHue) is a property of the feed — stopVideo() and
+camera-off reset it, the FX button only shows while camOn||videoOn. The
+selfie mirror is now u_fxMirror (preview == export); the old #gl.mirrored CSS
+flip is gone. Animated FX (WAVE/WARP/GLITCH/KALEIDO spin) run on wall-clock
+u_fxTime, so a saved loop cuts visibly at the wrap for those — known.
