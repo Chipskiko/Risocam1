@@ -908,63 +908,55 @@ function cycleFiberDir(){
   markDirty();
 }
 
-// ─── Live FX (camera / video feed) — FX button next to the camera button ───
+// ─── Live FX (camera / video feed) — its own right-column section ───
 // State lives on window.* (the shader reads it every frame via
 // setRenderUniforms). It is a property of the live feed: every source change
-// resets it (stopVideo / camera off), and the button only shows while live.
-const FX_LIST=[{v:0,l:'OFF'},{v:1,l:'NEG'},{v:2,l:'SOLAR'},{v:3,l:'EDGE'},{v:4,l:'PIXEL'},{v:5,l:'SYM'},{v:6,l:'KALEIDO'},{v:7,l:'WAVE'},{v:8,l:'WARP'},{v:9,l:'GLITCH'},{v:10,l:'RGB'}];
-const FX_ZOOMS=[1,1.5,2,3];
-const FX_HUES=[0,90,180,270];
+// resets it (stopVideo / camera off), and the section only shows while live.
+const FX_LIST=[{v:0,l:'OFF'},{v:1,l:'EDGE',amt:'Line'},{v:2,l:'PIXEL',amt:'Cell size'},{v:3,l:'SYM',amt:'Seam'},{v:4,l:'KALEIDO',amt:'Segments',anim:true},{v:5,l:'WAVE',amt:'Depth',anim:true},{v:6,l:'WARP',amt:'Depth',anim:true},{v:7,l:'GLITCH',amt:'Intensity',anim:true},{v:8,l:'RGB',amt:'Split'}];
+const FX_DEFAULTS={_fx:0,_fxAmt:0.5,_fxSpeed:1,_fxNeg:0,_fxSolar:0,_fxHue:0,_fxMirror:0,_fxFlipV:0,_fxZoom:1,_fxPanX:0,_fxPanY:0};
 function fxIsLive(){ return !!(camOn||videoOn); }
-function fxActive(){ return (window._fx||0)>0 || !!window._fxMirror || (window._fxZoom||1)>1 || (window._fxHue||0)!==0; }
-function fxRedraw(){ window._fxT0=performance.now(); markDirty(); scheduleRender(); }
+function fxActive(){ return (window._fx||0)>0 || !!window._fxNeg || !!window._fxSolar || !!window._fxMirror || !!window._fxFlipV || (window._fxZoom||1)>1.001 || (window._fxHue||0)!==0; }
+function fxRedraw(){ markDirty(); scheduleRender(); }
 function setCamFx(v){ window._fx=v; updateCamFxUI(); fxRedraw(); }
-function toggleFxMirror(){ window._fxMirror=window._fxMirror?0:1; updateCamFxUI(); fxRedraw(); }
 function setFxMirror(on){ window._fxMirror=on?1:0; updateCamFxUI(); }   // camera start / flip: selfie cams mirror
-function cycleFxZoom(){ const i=FX_ZOOMS.indexOf(window._fxZoom||1); window._fxZoom=FX_ZOOMS[(i+1)%FX_ZOOMS.length]; updateCamFxUI(); fxRedraw(); }
-function cycleFxHue(){ const i=FX_HUES.indexOf(window._fxHue||0); window._fxHue=FX_HUES[(i+1)%FX_HUES.length]; updateCamFxUI(); fxRedraw(); }
-function resetCamFx(){ window._fx=0; window._fxMirror=0; window._fxZoom=1; window._fxHue=0; closeCamFx(); updateCamFxUI(); }
-function buildCamFxMenu(){
+function resetCamFx(){ Object.assign(window,FX_DEFAULTS); window._fxClock=0; updateCamFxUI(); }
+function fxReset(){ resetCamFx(); fxRedraw(); }
+function fxToggle(key){ window[key]=window[key]?0:1; updateCamFxUI(); fxRedraw(); }
+function fxSlider(key,val){ window[key]=val; updateCamFxUI(); fxRedraw(); }
+// Amount readout per effect: KALEIDO shows the segment count, PIXEL the cell
+// count across, the rest a percentage.
+function fxAmtText(cur,a){
+  if(cur===4) return String(2+2*Math.floor(a*4+0.5));
+  if(cur===2) return String(Math.round(8+112*Math.pow(1-a,1.6)));
+  return String(Math.round(a*100));
+}
+function buildLiveFxUI(){
   const g=el('fxGrid'); if(!g||g.children.length) return;
-  FX_LIST.forEach(f=>{ const b=document.createElement('button'); b.className='cam-fx-chip'; b.textContent=f.l; b.dataset.fx=f.v; b.onclick=()=>setCamFx(f.v); g.appendChild(b); });
+  FX_LIST.forEach(f=>{ const b=document.createElement('button'); b.className='fx-chip'; b.textContent=f.l; b.dataset.fx=f.v; b.onclick=()=>setCamFx(f.v); g.appendChild(b); });
 }
 function updateCamFxUI(){
-  const live=fxIsLive(), on=fxActive();
-  ['camFxBtn','phFxBtn'].forEach(id=>{ const b=el(id); if(!b) return; b.style.display=live?'':'none'; b.classList.toggle('on',on); });
-  if(!live) closeCamFx();
-  const m=el('camFxMenu'); if(!m) return;
-  buildCamFxMenu();
-  const cur=window._fx||0, fxName=(FX_LIST.find(f=>f.v===cur)||FX_LIST[0]).l;
-  m.querySelectorAll('.cam-fx-chip[data-fx]').forEach(b=>b.classList.toggle('on',+b.dataset.fx===cur));
-  const mb=el('fxMirrorBtn'); if(mb) mb.classList.toggle('on',!!window._fxMirror);
-  const zb=el('fxZoomBtn'); if(zb){ const z=window._fxZoom||1; zb.textContent='ZOOM '+z+'×'; zb.classList.toggle('on',z>1); }
-  const hb=el('fxHueBtn'); if(hb){ const h=window._fxHue||0; hb.textContent='HUE '+h+'°'; hb.classList.toggle('on',h!==0); }
-  const fb=el('camFxBtn'); if(fb) fb.textContent=cur>0?'FX·'+fxName:'FX';
+  const sec=el('liveFxSection'); if(!sec) return;
+  const live=fxIsLive();
+  sec.style.display=live?'':'none';
+  buildLiveFxUI();
+  const cur=window._fx||0, def=FX_LIST.find(f=>f.v===cur)||FX_LIST[0];
+  sec.querySelectorAll('.fx-chip[data-fx]').forEach(b=>b.classList.toggle('on',+b.dataset.fx===cur));
+  const a=window._fxAmt??0.5, sp=window._fxSpeed??1, hue=window._fxHue||0, z=window._fxZoom||1;
+  const show=(id,on)=>{ const e=el(id); if(e) e.style.display=on?'':'none'; };
+  const setSl=(id,v,txt)=>{ const s=el(id); if(s&&document.activeElement!==s) s.value=v; const t=el(id+'Val'); if(t) t.textContent=txt; };
+  show('fxAmtRow',cur>0); show('fxSpeedRow',!!def.anim);
+  const al=el('fxAmtLabel'); if(al) al.textContent=def.amt||'Amount';
+  setSl('fxAmt',Math.round(a*100),fxAmtText(cur,a));
+  setSl('fxSpeed',Math.round(sp*100),sp.toFixed(1)+'×');
+  setSl('fxHue',hue,hue+'°');
+  setSl('fxZoom',Math.round(z*100),z.toFixed(1)+'×');
+  show('fxPanXRow',z>1.001); show('fxPanYRow',z>1.001);
+  setSl('fxPanX',Math.round((window._fxPanX||0)*100),String(Math.round((window._fxPanX||0)*100)));
+  setSl('fxPanY',Math.round((window._fxPanY||0)*100),String(Math.round((window._fxPanY||0)*100)));
+  [['fxNegBtn','_fxNeg'],['fxSolarBtn','_fxSolar'],['fxMirrorBtn','_fxMirror'],['fxFlipBtn','_fxFlipV']].forEach(([id,k])=>{ const b=el(id); if(b) b.classList.toggle('on',!!window[k]); });
+  const parts=[]; if(cur>0) parts.push(def.l); if(window._fxNeg) parts.push('NEG'); if(window._fxSolar) parts.push('SOLAR'); if(hue) parts.push('HUE '+hue+'°'); if(window._fxMirror) parts.push('MIRROR'); if(window._fxFlipV) parts.push('FLIP'); if(z>1.001) parts.push(z.toFixed(1)+'×');
+  const badge=el('liveFxBadge'); if(badge) badge.textContent=parts.join(' · ');
 }
-// The menu is position:fixed and placed under whichever FX button opened it
-// (.header-src clips overflow, and phone mode has its own button).
-function toggleCamFx(btn){
-  const m=el('camFxMenu'); if(!m) return;
-  if(m.style.display!=='none'){ closeCamFx(); return; }
-  buildCamFxMenu(); updateCamFxUI();
-  m.style.display='';
-  const a=btn||el('camFxBtn'); const r=a?a.getBoundingClientRect():{left:8,bottom:8};
-  const w=m.offsetWidth||260;
-  m.style.left=Math.max(4,Math.min(r.left,window.innerWidth-w-4))+'px';
-  m.style.top=(r.bottom+4)+'px';
-  setTimeout(()=>{ document.addEventListener('pointerdown',camFxOutside,true); document.addEventListener('keydown',camFxKey,true); },0);
-}
-function closeCamFx(){
-  const m=el('camFxMenu'); if(m) m.style.display='none';
-  document.removeEventListener('pointerdown',camFxOutside,true);
-  document.removeEventListener('keydown',camFxKey,true);
-}
-function camFxOutside(e){
-  const m=el('camFxMenu'); const t=e.target;
-  if(m&&(m.contains(t)||(t&&t.closest&&t.closest('#camFxBtn,#phFxBtn')))) return;
-  closeCamFx();
-}
-function camFxKey(e){ if(e.key==='Escape') closeCamFx(); }
 
 // ANIMATE: precess each plate's line angle (see R._lineSpinOffset). Needs the
 // animation loop ticking — if FPS is STILL when enabling, bump it to 4.
@@ -2337,13 +2329,12 @@ R.toggleKnockout = toggleKnockout;
 R.cycleFiber = cycleFiber;
 R.cycleFiberDir = cycleFiberDir;
 R.setCamFx = setCamFx;
-R.toggleFxMirror = toggleFxMirror;
 R.setFxMirror = setFxMirror;
-R.cycleFxZoom = cycleFxZoom;
-R.cycleFxHue = cycleFxHue;
 R.resetCamFx = resetCamFx;
+R.fxReset = fxReset;
+R.fxToggle = fxToggle;
+R.fxSlider = fxSlider;
 R.updateCamFxUI = updateCamFxUI;
-R.toggleCamFx = toggleCamFx;
 R.toggleLabResidual = toggleLabResidual;
 R.cycleDitherMode = cycleDitherMode;
 R.cycleDitherScale = cycleDitherScale;

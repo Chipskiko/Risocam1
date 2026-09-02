@@ -14,7 +14,7 @@
 <title>RISO/CAM</title>
 <link rel="manifest" href="manifest.json">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/main.css?v=40">
+<link rel="stylesheet" href="css/main.css?v=41">
 <!-- Styles extracted to css/main.css -->
 <script data-goatcounter="https://chipskiko.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </head>
@@ -44,20 +44,11 @@
     <div class="header-src">
       <button class="header-src-btn" onclick="R.pickFile()" title="Upload">↑</button>
       <button class="header-src-btn" id="camBtn" onclick="R.toggleCam()" title="Camera"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg></button>
-      <button class="header-src-btn" id="camFxBtn" onclick="R.toggleCamFx(this)" title="Live FX — mirror, zoom, hue rotation and one pick from NEG / SOLAR / EDGE / PIXEL / SYM / KALEIDO / WAVE / WARP / GLITCH / RGB on the camera or video feed. Applied to the source, so PNG/VID exports match the preview." style="display:none">FX</button>
     </div>
     <button class="header-btn" onclick="R.togglePhoneMode()">📱</button>
   </div>
   </div>
 </header>
-<div class="cam-fx-menu" id="camFxMenu" style="display:none">
-  <div class="cam-fx-row">
-    <button class="cam-fx-chip" id="fxMirrorBtn" onclick="R.toggleFxMirror()" title="Flip horizontally (selfie cameras start mirrored)">MIRROR</button>
-    <button class="cam-fx-chip" id="fxZoomBtn" onclick="R.cycleFxZoom()" title="Centre zoom 1 / 1.5 / 2 / 3×">ZOOM 1×</button>
-    <button class="cam-fx-chip" id="fxHueBtn" onclick="R.cycleFxHue()" title="Rotate source hues — changes which ink takes which region">HUE 0°</button>
-  </div>
-  <div class="cam-fx-grid" id="fxGrid"></div>
-</div>
 <div class="app-container">
   <div class="left-col">
   <div class="viewfinder-wrap">
@@ -197,6 +188,24 @@
           <button class="regmark-btn" id="posterizeBtn" onclick="R.cycleColorQuant()" title="Posterize — quantises the source to N levels (4/3/2/Flat) BEFORE separation, so each region resolves to a flat ink area instead of a blended gradient. Turns plate knockout on so the flat colours tile instead of overlaying."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><rect x="2" y="12" width="5" height="6" fill="currentColor" opacity="0.9"/><rect x="7" y="9" width="5" height="9" fill="currentColor" opacity="0.65"/><rect x="12" y="5" width="5" height="13" fill="currentColor" opacity="0.4"/><line x1="2" y1="3" x2="18" y2="3" stroke="currentColor" stroke-width="1.2"/></svg><span class="regmark-val" id="posterizeBtnVal">Off</span></button>
         </div>
         <input type="range" id="grainStatic" min="0" max="20" value="0" step="1" style="display:none"><span id="grainStaticVal" style="display:none">0</span>
+      </div>
+    </div>
+    <!-- Live FX — camera / video feed only; R.updateCamFxUI shows it while live -->
+    <div class="control-section ctrl-group" data-ctrl="livefx" id="liveFxSection" style="display:none">
+      <div class="section-header section-toggle open ctrl-group__title" onclick="R.toggleSection('liveFxBody',this)">LIVE FX<span class="fx-badge" id="liveFxBadge"></span><span class="toggle-arrow">▸</span></div>
+      <div class="settings-body collapsible" id="liveFxBody">
+        <div class="fx-cap">EFFECT</div>
+        <div class="fx-grid" id="fxGrid"></div>
+        <div class="slider-row" id="fxAmtRow" title="Effect amount — what it controls depends on the effect (line weight, cell size, seam, segments, depth, intensity, split)"><span class="slider-label" id="fxAmtLabel">Amount</span><input type="range" id="fxAmt" min="0" max="100" value="50" step="1" oninput="R.fxSlider('_fxAmt',this.value/100)"><span class="slider-value" id="fxAmtVal">50</span></div>
+        <div class="slider-row" id="fxSpeedRow" title="Animation speed — 0 freezes the effect"><span class="slider-label">Speed</span><input type="range" id="fxSpeed" min="0" max="200" value="100" step="5" oninput="R.fxSlider('_fxSpeed',this.value/100)"><span class="slider-value" id="fxSpeedVal">1.0×</span></div>
+        <div class="fx-cap">COLOUR</div>
+        <div class="fx-row"><button class="fx-chip" id="fxNegBtn" onclick="R.fxToggle('_fxNeg')" title="Invert the feed before separation — combinable with any effect">NEGATIVE</button><button class="fx-chip" id="fxSolarBtn" onclick="R.fxToggle('_fxSolar')" title="Fold tones above mid-grey (Sabattier)">SOLARIZE</button></div>
+        <div class="slider-row" title="Rotate source hues — changes which ink takes which region"><span class="slider-label">Hue</span><input type="range" id="fxHue" min="0" max="360" value="0" step="5" oninput="R.fxSlider('_fxHue',+this.value)"><span class="slider-value" id="fxHueVal">0°</span></div>
+        <div class="fx-cap">FRAME</div>
+        <div class="fx-row"><button class="fx-chip" id="fxMirrorBtn" onclick="R.fxToggle('_fxMirror')" title="Flip horizontally (selfie cameras start mirrored)">MIRROR</button><button class="fx-chip" id="fxFlipBtn" onclick="R.fxToggle('_fxFlipV')" title="Flip vertically">FLIP</button><button class="fx-chip" id="fxResetBtn" onclick="R.fxReset()" title="Back to the plain feed">RESET</button></div>
+        <div class="slider-row" title="Centre zoom"><span class="slider-label">Zoom</span><input type="range" id="fxZoom" min="100" max="300" value="100" step="5" oninput="R.fxSlider('_fxZoom',this.value/100)"><span class="slider-value" id="fxZoomVal">1.0×</span></div>
+        <div class="slider-row" id="fxPanXRow" title="Pan the zoom window (+ = right)"><span class="slider-label">Pan X</span><input type="range" id="fxPanX" min="-100" max="100" value="0" step="2" oninput="R.fxSlider('_fxPanX',this.value/100)"><span class="slider-value" id="fxPanXVal">0</span></div>
+        <div class="slider-row" id="fxPanYRow" title="Pan the zoom window (+ = down)"><span class="slider-label">Pan Y</span><input type="range" id="fxPanY" min="-100" max="100" value="0" step="2" oninput="R.fxSlider('_fxPanY',this.value/100)"><span class="slider-value" id="fxPanYVal">0</span></div>
       </div>
     </div>
     <!-- Post-Processing -->
@@ -351,7 +360,6 @@
   <div class="ph-top">
     <div class="ph-top-left">
       <button class="ph-icon-btn" id="phSwitchCam" onclick="R.phFlipCam()" title="Switch camera"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M21 3l-7 7"/><path d="M8 21H3v-5"/><path d="M3 21l7-7"/></svg></button>
-      <button class="ph-icon-btn" id="phFxBtn" onclick="R.toggleCamFx(this)" title="Live FX" style="display:none">FX</button>
     </div>
     <div class="ph-top-center">
       <!-- RES removed: always max resolution -->
@@ -562,11 +570,16 @@ uniform float u_highlights; // highlight push/pull -30..30
 // so exports and recordings carry the effect exactly as previewed.
 // Catalogue after vfx-js (glitch, rgbShift, sinewave, warp, pixelate) and
 // Seriously.js (kaleidoscope, mirror, edge, invert) — ported, not embedded.
-uniform float u_fx;         // 0 off 1 NEG 2 SOLAR 3 EDGE 4 PIXEL 5 SYM 6 KALEIDO 7 WAVE 8 WARP 9 GLITCH 10 RGB
-uniform float u_fxMirror;   // 1 = horizontal flip (in-shader; the old CSS mirror never reached exports)
-uniform float u_fxZoom;     // centre zoom 1..3
+uniform float u_fx;         // 0 off 1 EDGE 2 PIXEL 3 SYM 4 KALEIDO 5 WAVE 6 WARP 7 GLITCH 8 RGB
+uniform float u_fxAmt;      // 0..1 effect amount (meaning per effect; 0.5 = the tuned default)
+uniform float u_fxNeg;      // colour toggles, combinable with any effect
+uniform float u_fxSolar;
 uniform float u_fxHue;      // hue rotation, radians
-uniform float u_fxTime;     // wall-clock seconds since the effect was picked (animated FX)
+uniform float u_fxMirror;   // frame: horizontal flip (in-shader; the old CSS mirror never reached exports)
+uniform float u_fxFlipV;    //        vertical flip
+uniform float u_fxZoom;     //        centre zoom 1..3
+uniform vec2  u_fxPan;      //        pan inside the zoom window, -1..1 of the available travel
+uniform float u_fxTime;     // effect clock, seconds — accumulated in JS at the chosen speed
 uniform vec2  u_srcTexel;   // 1 / source texture size (EDGE neighbourhood)
 // Post-processing (applied to final composited output)
 uniform float u_postExposure;  // -50..50
@@ -685,35 +698,43 @@ vec3 hueRotate(vec3 c, float a){       // rotation about the grey axis
 // before crop/bleed mapping. Out-of-range results clamp to the edge texel.
 vec2 fxUV(vec2 r){
   if(u_fxMirror > 0.5) r.x = 1.0 - r.x;
-  if(u_fxZoom > 1.001) r = (r - 0.5) / u_fxZoom + 0.5;
+  if(u_fxFlipV > 0.5) r.y = 1.0 - r.y;
+  if(u_fxZoom > 1.001){
+    float iz = 1.0 / u_fxZoom;
+    r = (r - 0.5) * iz + 0.5 + u_fxPan * (0.5 - 0.5 * iz);
+  }
   int fx = int(u_fx + 0.5);
-  if(fx == 4){                                   // PIXEL: 48 square cells across
+  float a = clamp(u_fxAmt, 0.0, 1.0);
+  if(fx == 2){                                   // PIXEL: cell size from amount (~45 across at default)
+    float n = 8.0 + 112.0 * pow(1.0 - a, 1.6);
     vec2 asp = fxAspect();
-    vec2 cell = vec2(1.0 / 48.0) * asp.x / asp;
+    vec2 cell = vec2(1.0 / n) * asp.x / asp;
     r = (floor(r / cell) + 0.5) * cell;
-  } else if(fx == 5){                            // SYM: left half mirrored onto the right
-    r.x = min(r.x, 1.0 - r.x);
-  } else if(fx == 6){                            // KALEIDO: 6-fold mirror wedge, slow spin
+  } else if(fx == 3){                            // SYM: everything left of the seam mirrored onto the right
+    float seam = mix(0.2, 0.8, a);
+    if(r.x > seam) r.x = 2.0 * seam - r.x;
+  } else if(fx == 4){                            // KALEIDO: 2..10 mirror segments, slow spin
+    float segs = 2.0 + 2.0 * floor(a * 4.0 + 0.5);
     vec2 asp = fxAspect();
     vec2 d = (r - 0.5) * asp;
-    float seg = 6.2831853 / 6.0;
-    float a = atan(d.y, d.x) + u_fxTime * 0.12;
-    a = abs(mod(a, seg) - seg * 0.5);
-    r = vec2(cos(a), sin(a)) * length(d) * 0.75 / asp + 0.5;
-  } else if(fx == 7){                            // WAVE (vfx-js sinewave)
+    float seg = 6.2831853 / segs;
+    float ang = atan(d.y, d.x) + u_fxTime * 0.12;
+    ang = abs(mod(ang, seg) - seg * 0.5);
+    r = vec2(cos(ang), sin(ang)) * length(d) * 0.75 / asp + 0.5;
+  } else if(fx == 5){                            // WAVE (vfx-js sinewave)
     float t = u_fxTime;
-    r.x += sin(r.y * 18.0 + t * 2.6) * 0.02;
-    r.y += sin(r.x * 13.0 + t * 1.9) * 0.014;
-  } else if(fx == 8){                            // WARP (vfx-js warp): drifting noise field
+    r.x += sin(r.y * 18.0 + t * 2.6) * 0.04 * a;
+    r.y += sin(r.x * 13.0 + t * 1.9) * 0.028 * a;
+  } else if(fx == 6){                            // WARP (vfx-js warp): drifting noise field
     float t = u_fxTime * 0.3;
     vec2 n = vec2(vnoise(r * 3.5 + vec2(t, 0.0)), vnoise(r * 3.5 + vec2(7.3, 2.1 - t))) - 0.5;
-    r += n * 0.16;
-  } else if(fx == 9){                            // GLITCH (vfx-js glitch): sliced bands + rolls, 10 states/s
+    r += n * 0.32 * a;
+  } else if(fx == 7){                            // GLITCH (vfx-js glitch): sliced bands + rolls, 10 states/s
     float t = floor(u_fxTime * 10.0);
     float band = floor(r.y * 28.0);
     float g = hash(vec2(band * 0.37, t * 0.61));
-    if(g > 0.82) r.x += (hash(vec2(t * 0.13, band * 0.71)) - 0.5) * 0.18;
-    float roll = step(0.92, hash(vec2(t * 0.29, 3.1)));
+    if(g > 1.0 - 0.36 * a) r.x += (hash(vec2(t * 0.13, band * 0.71)) - 0.5) * 0.36 * a;
+    float roll = step(1.0 - 0.16 * a, hash(vec2(t * 0.29, 3.1)));
     r.y = fract(r.y + roll * hash(vec2(t * 0.07, 9.2)) * 0.35);
   }
   return r;
@@ -734,7 +755,7 @@ vec2 srcUV(vec2 uv){
     (uv.x - paL) / (1.0 - paL - paR),
     (uv.y - paT) / (1.0 - paT - paB)
   );
-  if(u_fx > 0.5 || u_fxMirror > 0.5 || u_fxZoom > 1.001) remapped = fxUV(remapped);
+  if(u_fx > 0.5 || u_fxMirror > 0.5 || u_fxFlipV > 0.5 || u_fxZoom > 1.001) remapped = fxUV(remapped);
   // Apply bleed: zoom image relative to print area (always >= 0)
   // bleed > 0 = zoom in (image bleeds past edges, less source visible)
   vec2 cropPos = u_crop.xy;
@@ -755,9 +776,8 @@ vec2 srcUV(vec2 uv){
 // ─── Image adjustments (applied to source before separation) ───
 vec3 adjustRGB(vec3 rgb, vec2 pix){
   // Live FX colour stage — ahead of the user's adjustments, like a lens filter
-  int fx = int(u_fx + 0.5);
-  if(fx == 1) rgb = 1.0 - rgb;                                   // NEG
-  else if(fx == 2) rgb = mix(rgb, 1.0 - rgb, step(0.5, rgb));    // SOLAR: per-channel fold above mid
+  if(u_fxNeg > 0.5) rgb = 1.0 - rgb;                                  // NEGATIVE
+  if(u_fxSolar > 0.5) rgb = mix(rgb, 1.0 - rgb, step(0.5, rgb));      // SOLARIZE: per-channel fold above mid
   if(abs(u_fxHue) > 0.001) rgb = clamp(hueRotate(rgb, u_fxHue), 0.0, 1.0);
   // Brightness: simple offset
   rgb += u_bright * 0.01;
@@ -826,8 +846,9 @@ vec4 fetchSrc(vec2 uv){
   vec2 s = srcUV(uv);
   vec4 c = texture2D(u_src, s);
   int fx = int(u_fx + 0.5);
-  if(fx == 3){                                   // EDGE: Sobel → dark lines on white
-    vec2 tx = max(u_srcTexel * 1.5, vec2(1.0 / 900.0));
+  float a = clamp(u_fxAmt, 0.0, 1.0);
+  if(fx == 1){                                   // EDGE: Sobel → dark lines on white; amount = weight + sensitivity
+    vec2 tx = max(u_srcTexel * mix(0.5, 2.5, a), vec2(1.0 / 900.0));
     float l00 = fxLum(texture2D(u_src, s + vec2(-tx.x, -tx.y)).rgb);
     float l10 = fxLum(texture2D(u_src, s + vec2( 0.0,  -tx.y)).rgb);
     float l20 = fxLum(texture2D(u_src, s + vec2( tx.x, -tx.y)).rgb);
@@ -838,10 +859,10 @@ vec4 fetchSrc(vec2 uv){
     float l22 = fxLum(texture2D(u_src, s + vec2( tx.x,  tx.y)).rgb);
     float gx = (l20 + 2.0 * l21 + l22) - (l00 + 2.0 * l01 + l02);
     float gy = (l02 + 2.0 * l12 + l22) - (l00 + 2.0 * l10 + l20);
-    float e = smoothstep(0.08, 0.5, length(vec2(gx, gy)));
+    float e = smoothstep(mix(0.14, 0.03, a), 0.5, length(vec2(gx, gy)));
     c.rgb = vec3(1.0 - e);
-  } else if(fx == 10){                           // RGB: chromatic split (vfx-js rgbShift)
-    vec2 sh = vec2(0.012, 0.0);
+  } else if(fx == 8){                            // RGB: chromatic split (vfx-js rgbShift)
+    vec2 sh = vec2(0.024 * a, 0.0);
     c.r = texture2D(u_src, srcUV(uv + sh)).r;
     c.b = texture2D(u_src, srcUV(uv - sh)).b;
   }
@@ -4036,7 +4057,7 @@ void main(){
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/gen/bnvc256.js?v=2"></script>
-<script src="js/renderer.js?v=224"></script>
+<script src="js/renderer.js?v=225"></script>
 <script src="js/gif-decode.js?v=5"></script>
 <script src="js/source.js?v=65"></script>
 <script src="js/save.js?v=83"></script>
@@ -4048,7 +4069,7 @@ void main(){
 // toggle path loads them async later, which the presence-guarded call sites
 // (window.RisoAmtGPU && ...) handle.
 (function(){
-  var srcs=['js/riso-amt-webgpu.js?v=6','js/webgpu-live.js?v=14'];
+  var srcs=['js/riso-amt-webgpu.js?v=6','js/webgpu-live.js?v=15'];
   if(/[?&]webgpu\b/.test(location.search)){
     srcs.forEach(function(u){ document.write('<script src="'+u+'"><\/script>'); });
     window._webgpuShimsLoaded=true;
@@ -4065,7 +4086,7 @@ void main(){
   };
 })();
 </script>
-<script src="js/ui-controls.js?v=88"></script>
+<script src="js/ui-controls.js?v=89"></script>
 <script src="js/ui-paper.js?v=14"></script>
 <script src="js/phone.js?v=36"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL

@@ -161,15 +161,21 @@ result looks impossible.
 
 Effects on the live feed live IN the fragment shader, not in a second WebGL
 context (Seriously.js / vfx-js were the catalogue, not a dependency): every
-source read goes through fetchSrc(uv) → srcUV() → fxUV() (geometry: mirror,
-zoom, PIXEL/SYM/KALEIDO/WAVE/WARP/GLITCH) with the colour stage at the top of
-adjustRGB (NEG/SOLAR/hue) and the neighbourhood effects (EDGE Sobel, RGB
-split) at the fetch. That is why exports and VID loops carry the effect for
-free and why the split head bakes it. Rules: a new source fetch must call
-fetchSrc, never texture2D(u_src, …) (the PDF text plate u_srcOrig and the
-ghosting u_prevSrc are the deliberate exceptions); FX state (window._fx,
-_fxMirror, _fxZoom, _fxHue) is a property of the feed — stopVideo() and
-camera-off reset it, the FX button only shows while camOn||videoOn. The
-selfie mirror is now u_fxMirror (preview == export); the old #gl.mirrored CSS
-flip is gone. Animated FX (WAVE/WARP/GLITCH/KALEIDO spin) run on wall-clock
-u_fxTime, so a saved loop cuts visibly at the wrap for those — known.
+source read goes through fetchSrc(uv) → srcUV() → fxUV() (frame: mirror,
+flip, zoom+pan; effect: PIXEL/SYM/KALEIDO/WAVE/WARP/GLITCH) with the colour
+stage at the top of adjustRGB (NEGATIVE/SOLARIZE toggles, hue) and the
+neighbourhood effects (EDGE Sobel, RGB split) at the fetch. That is why
+exports and VID loops carry the effect for free and why the split head bakes
+it. u_fx ids: 0 off 1 EDGE 2 PIXEL 3 SYM 4 KALEIDO 5 WAVE 6 WARP 7 GLITCH
+8 RGB; u_fxAmt (0..1, 0.5 = tuned default) means line weight / cell size /
+seam / segments / depth / intensity / split per effect. Rules: a new source
+fetch must call fetchSrc, never texture2D(u_src, …) (the PDF text plate
+u_srcOrig and the ghosting u_prevSrc are the deliberate exceptions); FX
+state (window._fx, _fxAmt, _fxSpeed, _fxNeg, _fxSolar, _fxHue, _fxMirror,
+_fxFlipV, _fxZoom, _fxPanX/Y) is a property of the feed — stopVideo() and
+camera-off reset it, and the LIVE FX right-column section (id liveFxSection,
+R.updateCamFxUI) only shows while camOn||videoOn. The selfie mirror is now
+u_fxMirror (preview == export); the old #gl.mirrored CSS flip is gone. The
+effect clock u_fxTime is accumulated in setRenderUniforms at _fxSpeed with dt
+clamped to 100 ms (speed changes don't jump, pauses don't fast-forward); a
+saved loop still cuts visibly at the wrap for animated FX — known.
