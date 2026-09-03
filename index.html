@@ -14,7 +14,7 @@
 <title>RISO/CAM</title>
 <link rel="manifest" href="manifest.json">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/main.css?v=41">
+<link rel="stylesheet" href="css/main.css?v=42">
 <!-- Styles extracted to css/main.css -->
 <script data-goatcounter="https://chipskiko.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </head>
@@ -151,7 +151,7 @@
           </div>
           <!-- RISO: master density (FS prepass DPI) -->
           <div id="flatPrimary" style="display:none;gap:6px">
-            <button class="regmark-btn active" id="amtDpiBtn" onclick="R.cycleAmtDpi()" title="Master density — resolution the 1-bit master is burned at. Real Riso = 600 dpi. Lower = faster prepass, coarser dots."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="4" cy="4" r="1.1" fill="currentColor"/><circle cx="10" cy="4" r="1.1" fill="currentColor"/><circle cx="16" cy="4" r="1.1" fill="currentColor"/><circle cx="4" cy="10" r="1.1" fill="currentColor"/><circle cx="10" cy="10" r="1.1" fill="currentColor"/><circle cx="16" cy="10" r="1.1" fill="currentColor"/><circle cx="4" cy="16" r="1.1" fill="currentColor"/><circle cx="10" cy="16" r="1.1" fill="currentColor"/><circle cx="16" cy="16" r="1.1" fill="currentColor"/></svg><span class="regmark-val" id="amtDpiBtnVal">150dpi</span></button>
+            <button class="regmark-btn active" id="amtDpiBtn" onclick="R.cycleAmtDpi()" title="Master density — resolution the 1-bit master is burned at. Real Riso = 600 dpi. Lower = faster prepass, coarser dots. Static sources only: a live camera/video runs the per-fragment preview, where density does not apply."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="4" cy="4" r="1.1" fill="currentColor"/><circle cx="10" cy="4" r="1.1" fill="currentColor"/><circle cx="16" cy="4" r="1.1" fill="currentColor"/><circle cx="4" cy="10" r="1.1" fill="currentColor"/><circle cx="10" cy="10" r="1.1" fill="currentColor"/><circle cx="16" cy="10" r="1.1" fill="currentColor"/><circle cx="4" cy="16" r="1.1" fill="currentColor"/><circle cx="10" cy="16" r="1.1" fill="currentColor"/><circle cx="16" cy="16" r="1.1" fill="currentColor"/></svg><span class="regmark-val" id="amtDpiBtnVal">150dpi</span></button>
           </div>
           
           
@@ -4057,7 +4057,7 @@ void main(){
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/gen/bnvc256.js?v=2"></script>
-<script src="js/renderer.js?v=225"></script>
+<script src="js/renderer.js?v=226"></script>
 <script src="js/gif-decode.js?v=5"></script>
 <script src="js/source.js?v=65"></script>
 <script src="js/save.js?v=83"></script>
@@ -4086,7 +4086,7 @@ void main(){
   };
 })();
 </script>
-<script src="js/ui-controls.js?v=89"></script>
+<script src="js/ui-controls.js?v=90"></script>
 <script src="js/ui-paper.js?v=14"></script>
 <script src="js/phone.js?v=36"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL

@@ -1799,7 +1799,7 @@ function _renderInner(){
   const hasGifData=isGifPlaying&&videoFrameReady;
 
   if((camOn||videoOn) && risoFps > 0){
-    const interval=1000/risoFps;
+    const interval=1000/R.liveFps();
     const vidDue = now - lastRisoFrame >= interval;
     if(!vidDue && !needsRedraw){
       fpsFrames++;
@@ -2107,7 +2107,7 @@ function _renderInner(){
   fpsFrames++;
   const fpsNow=performance.now();
   if(fpsNow-fpsLast>=1000){
-    $fps.textContent=((camOn||videoOn)?risoFps+'fps':fpsFrames+' fps');
+    $fps.textContent=((camOn||videoOn)?R.liveFps()+'fps':fpsFrames+' fps');
     $res.textContent=dw+'×'+dh+(resScale>1?' ('+resScale+'×)':'');
     fpsFrames=0;fpsLast=fpsNow;
     // Adaptive anim LOD controller (see animCap above): compare achieved
@@ -2117,7 +2117,7 @@ function _renderInner(){
     // not the riso-fps clock — with no target, neither covsplit nor the bias
     // ever engaged for a still image on a GPU-bound machine (user: "the fps
     // issue is on grain too").
-    const _lodTarget = (camOn||videoOn) && risoFps>0 ? risoFps
+    const _lodTarget = (camOn||videoOn) && risoFps>0 ? R.liveFps()
                      : (cached.grainStatic > 0 ? Math.max(2, cached.grainStatic) : 0);
     const _lodGot = (window._stDraws||0) - (window._lodLastDraws||0);
     window._lodLastDraws = window._stDraws||0;
@@ -3569,6 +3569,15 @@ R._stippleBindFrame = function(i){
   gl.activeTexture(gl.TEXTURE0);
   try { markDirty(); } catch(e) {}
 };
+// RISO / STIPPLE are static-source modes: a live feed runs the per-fragment
+// fallback (no master — DPI / dot size don't apply) and the choppy print
+// cadence IS the look, so the live preview is capped at 8 fps there whatever
+// the FPS mode says (user: "on riso mode we can limit fps to reasonable
+// levels"). Grain/screen/lines keep the full FPS mode.
+const LIVE_FPS_CAP_STATIC_MODES = 8;
+R.liveFps = function(){
+  return (window._mode === 'flat' || window._mode === 'stipple') ? Math.min(risoFps, LIVE_FPS_CAP_STATIC_MODES) : risoFps;
+};
 // Mode-aware master prepass dispatcher — trigger sites don't need to know
 // which engine builds the plates.
 R.runMasterPrepass = function(){
@@ -4130,7 +4139,7 @@ function toggleStats(force){
       'renders/s '+draws.toFixed(1)+'  cpu '+(window._stMs||0).toFixed(1)+' ms  gpu ~'+(window._stGpuMs||0).toFixed(0)+' ms\n'+
       'tex up/s  '+tex.toFixed(1)+'  gif adv/s '+gAdv.toFixed(1)+'\n'+
       gifLine+
-      'buffer    '+(window._stBuf||'-')+'  '+(typeof risoFps!=='undefined'?risoFps+' anim fps':'')+'\n'+
+      'buffer    '+(window._stBuf||'-')+'  '+(typeof risoFps!=='undefined'?R.liveFps()+' anim fps'+(R.liveFps()!==risoFps?' (capped)':''):'')+'\n'+
       'js heap   '+heap+'\n'+
       'mode      '+(window._mode||mode)+(flags?'  ['+flags+']':'');
   }, 500);

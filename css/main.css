@@ -171,6 +171,7 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
 .pdf-source-opt.selected{background:#3a7;color:#fff}
 /* Disabled state for buttons that don't make sense in PDF mode */
 .header-dl-btn.pdf-disabled,.header-src-btn.pdf-disabled{opacity:0.35;pointer-events:none}
+.regmark-btn.live-disabled{opacity:0.35;pointer-events:none}
 .viewfinder-panel{position:relative;background:transparent;overflow:hidden;display:flex;align-items:center;justify-content:center;transition:outline-color .15s,background .15s}
 .viewfinder-panel.drag-over{outline:2px dashed #3a7;outline-offset:-8px;background:rgba(58,170,119,0.08)}
 .viewfinder-panel.drag-over::after{content:'Drop image, video, GIF, or PDF';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:600 14px/1 system-ui,sans-serif;letter-spacing:.04em;color:#3a7;background:rgba(255,255,255,.55);pointer-events:none;z-index:50}

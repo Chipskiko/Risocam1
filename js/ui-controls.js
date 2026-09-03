@@ -938,6 +938,10 @@ function updateCamFxUI(){
   const sec=el('liveFxSection'); if(!sec) return;
   const live=fxIsLive();
   sec.style.display=live?'':'none';
+  // RISO / STIPPLE bake their masters from a STATIC source; with a live feed
+  // they run the per-fragment fallback, so density / dot size have no effect
+  // — grey those buttons out rather than let them look broken.
+  ['amtDpiBtn','stippleSizeBtn'].forEach(id=>{ const b=el(id); if(b) b.classList.toggle('live-disabled',live); });
   buildLiveFxUI();
   const cur=window._fx||0, def=FX_LIST.find(f=>f.v===cur)||FX_LIST[0];
   sec.querySelectorAll('.fx-chip[data-fx]').forEach(b=>b.classList.toggle('on',+b.dataset.fx===cur));
@@ -1180,6 +1184,8 @@ function setRisoFps(fps){
   if(btn) btn.textContent=fps===0?'STILL':fps;
   const phBtn=el('phFpsBtn');
   if(phBtn) phBtn.textContent=fps===0?'STILL':fps+'FPS';
+  if((window._mode==='flat'||window._mode==='stipple') && (camOn||videoOn) && R.liveFps && R.liveFps()<fps)
+    R.toast((window._mode==='stipple'?'STIPPLE':'RISO')+' live preview runs at '+R.liveFps()+' fps max');
   markDirty();
 }
 function cycleFps(){

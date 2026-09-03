@@ -179,3 +179,16 @@ u_fxMirror (preview == export); the old #gl.mirrored CSS flip is gone. The
 effect clock u_fxTime is accumulated in setRenderUniforms at _fxSpeed with dt
 clamped to 100 ms (speed changes don't jump, pauses don't fast-forward); a
 saved loop still cuts visibly at the wrap for animated FX — known.
+
+## RISO / STIPPLE with a live feed (2026-09-02)
+
+Static-source modes: the master prepass is skipped for camera/video (a
+snapshot master would go stale instantly), the shader runs the per-fragment
+fallback, so DENSITY / DOT SIZE have no effect there — the buttons carry
+.live-disabled while camOn||videoOn (set in updateCamFxUI, the central
+live-state UI hook). The live preview is capped at 8 fps in those modes
+(R.liveFps(): min(risoFps, 8) for flat/stipple, risoFps otherwise; the render
+loop, the fps label and the LOD target all read it; setRisoFps toasts when
+the cap bites). "RISO is broken: dpi doesn't change, dots static" was this —
+the user was on the camera.
+
