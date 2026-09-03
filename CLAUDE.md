@@ -250,4 +250,15 @@ the coverage split directly when the plain mode reads > 40 ms/MP
 screen/flat) — ~4x cheaper before any resolution is given up — and drag /
 animation frames may go down to 0.5x CSS (stills stay >= 1x). Expected on
 that machine: split ~50 ms/MP → 3x stills, 1x drags, 3x animation.
+Model hygiene: samples are the MEDIAN of the last five per key (M.__s), and
+nothing is learned for 1.5 s after a (re)link (window._glReadyAt) — the
+compile stall of the first frame read 565 ms/MP on an M2 (real: 14) and
+flipped the split on. ?stats now carries the full resource picture: gpu
+renderer/vendor (WEBGL_debug_renderer_info), gl caps (highp bits, fence,
+timer query, tex/units/uniforms/varyings, powerPreference), system (cores,
+deviceMemory, heap limit, screen@dpr, platform/browser), apis (webgpu, rVFC,
+webcodecs, ImageDecoder, OffscreenCanvas, FS worker count), tier + losses +
+probe line, the whole model table, capacity (MP/s → max fps at the current
+buffer, budget-allowed scales per kind), main thread (rAF/s, long tasks,
+cov bakes/s) and GPU time (timer-query exec vs fence latency).
 

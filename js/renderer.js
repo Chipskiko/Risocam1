@@ -785,6 +785,7 @@ function initGL(onReady){
   gl.uniform1i(locs.u_prevSrc,3);
 
   window._glReady = true;
+  window._glReadyAt = performance.now();   // cost-model grace: the first frames after a (re)link carry compile stalls
   window._variantBuilding = false;
   R.diag('initGL:done');
   // Anything uploaded while the program was still compiling (sample image,
@@ -938,14 +939,23 @@ R.setDotSpacing = function(v){
 R.drawFullscreenTiled = function(w, h){
   const BAND_PX = (((window._ctxLossLog || []).length > 0) || window._gpuSuspect) ? (1 << 19) : (1 << 21);   // ~2.1 MP per band; 0.5 MP after a loss / on suspect iGPUs
   const bandH = Math.max(64, Math.floor(BAND_PX / Math.max(1, w)) & ~1);
-  if(bandH >= h){ gl.drawArrays(gl.TRIANGLE_STRIP,0,4); return; }
-  gl.enable(gl.SCISSOR_TEST);
-  for(let y = 0; y < h; y += bandH){
-    gl.scissor(0, y, w, Math.min(bandH, h - y));
-    gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
-    gl.flush();
+  // ?stats: GPU timer query (EXT_disjoint_timer_query_webgl2, Chromium) —
+  // true GPU execution time of this draw, as opposed to the fence latency
+  // that also counts queueing. One in flight; polled by the HUD timer.
+  const tq = (window._statsOn && R._tqExt && !window._tqPending) ? R._tqExt : null;
+  let q = null;
+  if(tq){ try { q = gl.createQuery(); gl.beginQuery(tq.TIME_ELAPSED_EXT, q); window._tqPending = q; } catch(e){ q = null; } }
+  if(bandH >= h){ gl.drawArrays(gl.TRIANGLE_STRIP,0,4); }
+  else {
+    gl.enable(gl.SCISSOR_TEST);
+    for(let y = 0; y < h; y += bandH){
+      gl.scissor(0, y, w, Math.min(bandH, h - y));
+      gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+      gl.flush();
+    }
+    gl.disable(gl.SCISSOR_TEST);
   }
-  gl.disable(gl.SCISSOR_TEST);
+  if(q){ try { gl.endQuery(tq.TIME_ELAPSED_EXT); } catch(e){ window._tqPending = null; } }
 };
 
 function genBlueNoise(sz){
@@ -2177,6 +2187,7 @@ function _renderInner(){
   window._stMs=performance.now()-_stT0;                      // real draws only
   window._stDrawT=performance.now();                         // staleness probe (recording)
   window._stBuf=dw+'x'+dh+(resScale>1?' @'+resScale+'x':'');
+  window._stCss=cssW+'x'+cssH;
   fpsFrames++;
   const fpsNow=performance.now();
   if(fpsNow-fpsLast>=1000){
@@ -3665,11 +3676,20 @@ R._gpuKey = function(){
 };
 R._gpuLearn = function(key, v){
   if(!(v > 0) || !isFinite(v)) return;
+  // The first frames after a (re)link include the pipeline compile stall —
+  // measured 565 ms/MP on an M2 for a mode that runs at 15 — and a single
+  // stall (compile, GC, another tab's GPU work) must not flip the split on
+  // or shrink the buffer. Grace period after link, then the MEDIAN of the
+  // last five samples per key is the model value.
+  if(performance.now() - (window._glReadyAt || 0) < 1500) return;
   v = Math.max(0.5, Math.min(5000, v));
-  const M = window._gpuModel || (window._gpuModel = { __max: 0, __n: 0 });
-  M[key] = (M[key] > 0) ? M[key] * 0.7 + v * 0.3 : v;
+  const M = window._gpuModel || (window._gpuModel = { __max: 0, __n: 0, __s: {} });
+  if(!M.__s) M.__s = {};
+  const arr = (M.__s[key] = M.__s[key] || []); arr.push(v); if(arr.length > 5) arr.shift();
+  const sorted = arr.slice().sort((a, b) => a - b);
+  M[key] = sorted[(sorted.length - 1) >> 1];
   M.__n++;
-  let mx = 0; for(const k in M){ if(k.charAt(0) !== '_' && M[k] > mx) mx = M[k]; }
+  let mx = 0; for(const k in M){ if(k.charAt(0) !== '_' && typeof M[k] === 'number' && M[k] > mx) mx = M[k]; }
   M.__max = mx;
 };
 R._gpuMsPerMP = function(key){
@@ -4191,6 +4211,37 @@ R.uploadOriginalSource = uploadOriginalSource;
 // and in the gif advance (_stGifAdv, source.js); this HUD just reads them.
 // texImage2D is wrapped only once the HUD is first enabled, so the normal
 // path pays nothing.
+// What the machine actually offers — read once per session (all cheap
+// getParameter calls) so the HUD can answer "are we getting the full GPU?"
+function _statsSysInfo(){
+  if(window._stSys) return window._stSys;
+  const s = {};
+  try {
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    s.renderer = String(gl.getParameter(dbg ? dbg.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || '');
+    s.vendor = String(gl.getParameter(dbg ? dbg.UNMASKED_VENDOR_WEBGL : gl.VENDOR) || '');
+    s.version = String(gl.getParameter(gl.VERSION) || '');
+    s.gl2 = (typeof WebGL2RenderingContext !== 'undefined') && (gl instanceof WebGL2RenderingContext);
+    s.maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE); s.units = gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS);
+    s.fragUni = gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS); s.varyings = gl.getParameter(gl.MAX_VARYING_VECTORS);
+    const pf = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT); s.highp = pf ? pf.precision : 0;
+    s.fence = !!gl.fenceSync;
+    R._tqExt = s.gl2 ? (gl.getExtension('EXT_disjoint_timer_query_webgl2') || null) : null;
+    s.timerq = !!R._tqExt;
+    const attrs = gl.getContextAttributes() || {}; s.power = attrs.powerPreference || '?';
+  } catch(e){ s.err = String(e).slice(0, 60); }
+  s.cores = navigator.hardwareConcurrency || '?';
+  s.devMem = navigator.deviceMemory || null;
+  s.heapLimit = (performance.memory && performance.memory.jsHeapSizeLimit) ? (performance.memory.jsHeapSizeLimit / 1048576).toFixed(0) : null;
+  s.screen = screen.width + 'x' + screen.height; s.dpr = window.devicePixelRatio || 1;
+  s.platform = navigator.platform || '?';
+  s.ua = (navigator.userAgent.match(/(Chrome|CriOS|Firefox|Edg|Version)\/[\d.]+/g) || []).join(' ') + (/Safari/.test(navigator.userAgent) && !/Chrome|CriOS/.test(navigator.userAgent) ? ' Safari' : '');
+  s.webgpu = !!navigator.gpu; s.rvfc = !!(window.HTMLVideoElement && HTMLVideoElement.prototype.requestVideoFrameCallback);
+  s.webcodecs = typeof VideoEncoder !== 'undefined'; s.imgdec = typeof ImageDecoder !== 'undefined'; s.offscreen = typeof OffscreenCanvas !== 'undefined';
+  try { s.probe = (JSON.parse(localStorage.getItem('risocam_diag') || '[]').filter(x => /probe:/.test(x)).slice(-1)[0] || '').replace(/^\d+ms /, ''); } catch(e){ s.probe = ''; }
+  window._stSys = s;
+  return s;
+}
 function toggleStats(force){
   const en = force !== undefined ? !!force : !window._statsOn;
   window._statsOn = en;
@@ -4198,7 +4249,17 @@ function toggleStats(force){
   if(!en){
     if(el) el.remove();
     if(window._stTimer){ clearInterval(window._stTimer); window._stTimer = 0; }
+    if(window._stLongObs){ try { window._stLongObs.disconnect(); } catch(e){} window._stLongObs = null; }
     return;
+  }
+  // Main-thread health while the HUD is up: rAF callbacks/s (60 = smooth,
+  // suspended tab = 0) and long tasks (Chromium; >50 ms blocks of JS).
+  (function rafTick(){ if(!window._statsOn) return; window._stRaf = (window._stRaf || 0) + 1; requestAnimationFrame(rafTick); })();
+  if(!window._stLongObs && typeof PerformanceObserver !== 'undefined'){
+    try {
+      const po = new PerformanceObserver(list => { const es = list.getEntries(); window._stLong = (window._stLong || 0) + es.length; window._stLongMs = (window._stLongMs || 0) + es.reduce((a, e) => a + e.duration, 0); });
+      po.observe({ entryTypes: ['longtask'] }); window._stLongObs = po;
+    } catch(e){}
   }
   if(!el){
     el = document.createElement('div');
@@ -4214,11 +4275,26 @@ function toggleStats(force){
     gl._stWrap = true;
   }
   let lastDraws = window._stDraws||0, lastTex = window._stTex||0,
-      lastGif = window._stGifAdv||0, lastT = performance.now();
+      lastGif = window._stGifAdv||0, lastT = performance.now(),
+      lastRaf = window._stRaf||0, lastLong = window._stLong||0, lastLongMs = window._stLongMs||0, lastBakes = window._stCovBakes||0;
   if(window._stTimer) clearInterval(window._stTimer);
   window._stTimer = setInterval(() => {
     const t = performance.now(), dt = (t-lastT)/1000; lastT = t;
     const draws = ((window._stDraws||0)-lastDraws)/dt; lastDraws = window._stDraws||0;
+    const rafs  = ((window._stRaf||0)-lastRaf)/dt;      lastRaf   = window._stRaf||0;
+    const longs = ((window._stLong||0)-lastLong)/dt;    lastLong  = window._stLong||0;
+    const longMs= ((window._stLongMs||0)-lastLongMs)/dt; lastLongMs= window._stLongMs||0;
+    const bakes = ((window._stCovBakes||0)-lastBakes)/dt; lastBakes = window._stCovBakes||0;
+    // GPU timer query result (Chromium): true execution time of the last timed draw
+    if(window._tqPending && R._tqExt){
+      try {
+        const q = window._tqPending;
+        const avail = gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE);
+        const disjoint = gl.getParameter(R._tqExt.GPU_DISJOINT_EXT);
+        if(avail){ if(!disjoint) window._stGpuExecMs = gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6; gl.deleteQuery(q); window._tqPending = null; }
+        else if(disjoint){ gl.deleteQuery(q); window._tqPending = null; }
+      } catch(e){ window._tqPending = null; }
+    }
     const tex   = ((window._stTex||0)-lastTex)/dt;     lastTex   = window._stTex||0;
     const gAdv  = ((window._stGifAdv||0)-lastGif)/dt;  lastGif   = window._stGifAdv||0;
     const gf = (typeof gifFrames!=='undefined') && gifFrames && gifFrames.length ? gifFrames : null;
@@ -4247,7 +4323,29 @@ function toggleStats(force){
       'js heap   '+heap+'\n'+
       'mode      '+(window._mode||mode)+(flags?'  ['+flags+']':'')+'\n'+
       (function(){ const P=window._gpuPick, Bg=window._gpuBudget||{}; if(!P) return 'gpu model n/a';
-        return 'gpu model '+P.key+' '+(P.mpp>0?P.mpp.toFixed(1)+' ms/MP':'unmeasured')+' -> '+P.kind+' '+P.scale+'x'+(isFinite(P.budgetScale)?' (budget '+P.budgetScale+'x)':'')+'  budgets i'+(Bg.interact||'-')+' a'+(Bg.animFrac||'-')+' s'+(Bg.still||'-'); })();
+        return 'gpu model '+P.key+' '+(P.mpp>0?P.mpp.toFixed(1)+' ms/MP':'unmeasured')+' -> '+P.kind+' '+P.scale+'x'+(isFinite(P.budgetScale)?' (budget '+P.budgetScale+'x)':'')+'  budgets i'+(Bg.interact||'-')+' a'+(Bg.animFrac||'-')+' s'+(Bg.still||'-'); })()+'\n'+
+      (function(){
+        // ── system / capacity block ──
+        const S = _statsSysInfo(), M = window._gpuModel || {}, P = window._gpuPick || {}, Bg = window._gpuBudget || {};
+        const keys = Object.keys(M).filter(k => k.charAt(0) !== '_').map(k => k + ' ' + M[k].toFixed(0)).join(' | ') || 'no samples yet';
+        const css = (window._stCss || '0x0').split('x').map(Number); const cssMP = (css[0] * css[1]) / 1e6;
+        const buf = (window._stBuf || '0x0').split(/x| /).map(Number); const bufMP = (buf[0] * buf[1]) / 1e6;
+        const mpp = P.mpp > 0 ? P.mpp : 0;
+        const allow = (ms, fl) => (mpp > 0 && cssMP > 0) ? Math.max(fl, Math.floor(Math.sqrt(ms / mpp / cssMP) * 2) / 2) + 'x' : '?';
+        const animFps = (typeof risoFps !== 'undefined' && (camOn || videoOn) && risoFps > 0) ? R.liveFps() : Math.max(2, (cached && cached.grainStatic) || 0);
+        const tier = window._gpuSoftware ? 'SOFTWARE RENDERER' : window._gpuSlow ? 'slow (2x cap)' : window._gpuMid ? 'mid (4x cap)' : window._gpuProbed ? 'full' : 'unprobed';
+        const losses = (window._ctxLossLog || []).length;
+        return 'gpu       ' + (S.renderer || '?').slice(0, 72) + (S.vendor ? ' | ' + S.vendor.slice(0, 24) : '') + '\n' +
+               'gl        ' + (S.gl2 ? 'webgl2' : 'webgl1') + ' | pref ' + S.power + ' | highp ' + S.highp + 'b | fence ' + (S.fence ? 'y' : 'n') + ' timerq ' + (S.timerq ? 'y' : 'n') + ' | tex ' + S.maxTex + ' units ' + S.units + ' fragUni ' + S.fragUni + ' varyings ' + S.varyings + '\n' +
+               'system    ' + S.cores + ' cores | mem ' + (S.devMem ? S.devMem + ' GB' : 'n/a') + ' | heap limit ' + (S.heapLimit ? S.heapLimit + ' MB' : 'n/a') + ' | ' + S.screen + ' @' + S.dpr + ' | ' + S.platform + ' ' + S.ua + '\n' +
+               'apis      webgpu ' + (S.webgpu ? 'y' : 'n') + ' rVFC ' + (S.rvfc ? 'y' : 'n') + ' webcodecs ' + (S.webcodecs ? 'y' : 'n') + ' imgdecoder ' + (S.imgdec ? 'y' : 'n') + ' offscreen ' + (S.offscreen ? 'y' : 'n') + ' | FS workers ' + (typeof _amtWorkerPool !== 'undefined' ? _amtWorkerPool.length : '?') + '\n' +
+               'tier      ' + tier + (window._gpuSuspect ? ' suspect-iGPU' : '') + ' | losses ' + losses + ' | ' + (S.probe || 'no probe yet') + '\n' +
+               'model     ' + keys + '\n' +
+               'capacity  ' + (mpp > 0 ? (1000 / mpp).toFixed(1) + ' MP/s -> buffer ' + (window._stBuf || '?').split(' ')[0] + ' (' + bufMP.toFixed(1) + ' MP) max ' + (1000 / (mpp * Math.max(0.01, bufMP))).toFixed(1) + ' fps' : 'unmeasured') +
+                 ' | budget allows drag ' + allow(Bg.interact || 33, 0.5) + ' anim ' + allow((Bg.animFrac || 0.85) * 1000 / Math.max(1, animFps), 0.5) + ' still ' + allow(Bg.still || 250, 1) + '\n' +
+               'main      rAF ' + rafs.toFixed(0) + '/s | long tasks ' + longs.toFixed(1) + '/s (' + longMs.toFixed(0) + ' ms/s) | cov bakes ' + bakes.toFixed(1) + '/s\n' +
+               'gpu time  exec ' + (window._stGpuExecMs != null ? window._stGpuExecMs.toFixed(1) + ' ms (timer query)' : 'n/a (Chromium only)') + ' | latency ' + (window._stGpuMs || 0).toFixed(0) + ' ms (fence)';
+      })();
   }, 500);
 }
 R.toggleStats = toggleStats;
