@@ -244,4 +244,10 @@ window._gpuBudget / R.setGpuBudget({interact, animFrac, still}), ?smooth
 = {20, 0.7, 120}. ?stats shows "gpu model <key> <ms/MP> -> <kind> <scale>x
 (budget <x>)". The anim-cadence ladder (_animLodBias / covsplit-auto) still
 runs on top as the CPU-side corrective.
+Follow-up (Intel Mac measured 219 ms/MP in grain): the model now engages
+the coverage split directly when the plain mode reads > 40 ms/MP
+(_covSplitByModel; sticky against the ladder's auto-off; dropped on entering
+screen/flat) — ~4x cheaper before any resolution is given up — and drag /
+animation frames may go down to 0.5x CSS (stills stay >= 1x). Expected on
+that machine: split ~50 ms/MP → 3x stills, 1x drags, 3x animation.
 

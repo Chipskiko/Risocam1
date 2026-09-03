@@ -1998,16 +1998,32 @@ function _renderInner(){
   // bind first); slow ones scale down instead of stalling. Exports and
   // recording are untouched. window._gpuBudget / R.setGpuBudget tune it,
   // ?smooth tightens it; the ?stats HUD shows the model and the pick.
+  // Slow GPU → coverage split FIRST, from the cost model (not only when the
+  // anim cadence is missed): it measured ~4x cheaper in grain / lines /
+  // letters with no visible cost, which beats shrinking the buffer. Sticky
+  // while the model says the plain mode is slow (the ladder's auto-off
+  // is bypassed); screen and flat keep their own paths.
+  {
+    const _m = window._mode || mode;
+    const _plainMpp = R._gpuMsPerMP(_m);
+    const _splitOk = !!locs.u_covPass && !_saving && !isRecording && window._covSplit === undefined && _m !== 'screen' && _m !== 'flat';
+    if(_splitOk && _plainMpp > 40 && !window._covSplitAuto){ window._covSplitAuto = true; window._covSplitByModel = true; R.diag('covsplit:model ' + _plainMpp.toFixed(0) + 'ms/MP'); }
+    if(!_splitOk) window._covSplitByModel = false;
+    if((_m === 'screen' || _m === 'flat') && window._covSplitAuto){ window._covSplitAuto = false; window._covSplitByModel = false; }   // those modes never split (measured slower / need the source)
+  }
   const _gpuKey = R._gpuKey();
   const _mpp = R._gpuMsPerMP(_gpuKey);
   const _cssMP = cssW * cssH / 1e6;
-  const scaleFor = (ms) => { if(!(_mpp > 0) || !(_cssMP > 0)) return Infinity; const s = Math.sqrt(ms / _mpp / _cssMP); return Math.max(1, Math.floor(s * 2) / 2); };
+  // floorScale: stills never go below 1x CSS; drags and animation may drop
+  // to 0.5x on a slow GPU (upscaled by the compositor) — motion hides it and
+  // the settle frame restores full quality.
+  const scaleFor = (ms, floorScale) => { if(!(_mpp > 0) || !(_cssMP > 0)) return Infinity; const s = Math.sqrt(ms / _mpp / _cssMP); return Math.max(floorScale, Math.floor(s * 2) / 2); };
   const B = window._gpuBudget || (window._gpuBudget = (window._flags && window._flags.smooth) ? { interact: 20, animFrac: 0.7, still: 120 } : { interact: 33, animFrac: 0.85, still: 250 });
   const _animTargetFps = (camOn || videoOn) && risoFps > 0 ? R.liveFps() : Math.max(2, cached.grainStatic || 0);
   const budgetScale = (isRecording || _saving) ? Infinity
-                    : interacting ? scaleFor(B.interact)
-                    : animTick    ? scaleFor(B.animFrac * 1000 / Math.max(1, _animTargetFps))
-                    : scaleFor(B.still);
+                    : interacting ? scaleFor(B.interact, 0.5)
+                    : animTick    ? scaleFor(B.animFrac * 1000 / Math.max(1, _animTargetFps), 0.5)
+                    : scaleFor(B.still, 1);
   const effScale = Math.min(gpuCap, platCap, liveCap, midCap, budgetScale,
                    interacting ? Math.max(2, dpr)
                  : animTick    ? animScale
@@ -2189,13 +2205,13 @@ function _renderInner(){
       const _lodMode = (window._mode || mode);
       // RISO (flat) live runs the master-density path, which needs the source
       // per fragment — the split's baked coverage can't feed it. Off there too.
-      if(window._covSplitAuto && (_lodMode === 'screen' || _lodMode === 'flat')) window._covSplitAuto = false;
+      if(window._covSplitAuto && (_lodMode === 'screen' || _lodMode === 'flat')){ window._covSplitAuto = false; window._covSplitByModel = false; }
       if(_lodGot < _lodTarget*0.75){
         if(!window._covSplitAuto && window._covSplit === undefined && _lodMode !== 'screen' && _lodMode !== 'flat') window._covSplitAuto = true;
         else if(_bias < 1.5) window._animLodBias = _bias + 0.25;
       }
       else if(_lodGot >= _lodTarget*0.92 && _bias > 0) window._animLodBias = Math.max(0, _bias - 0.125);
-      else if(window._covSplitAuto && _bias === 0 && _lodGot >= _lodTarget) window._covSplitAuto = false;
+      else if(window._covSplitAuto && _bias === 0 && _lodGot >= _lodTarget && !window._covSplitByModel) window._covSplitAuto = false;
     } else if(_bias) window._animLodBias = 0;
   }
 
