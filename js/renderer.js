@@ -63,7 +63,7 @@ R.diag = function(step){
   try {
     const q = new URLSearchParams(location.search);
     const f = window._flags = {};
-    ['safe','noshimmer','noworkers','noamt','nopbr','nowebgpu','minimal','diag','remote','slim','webgpu','grainblue','grainwhite','neutralgate','screenlin'].forEach(k => { f[k] = q.has(k); });
+    ['safe','noshimmer','noworkers','noamt','nopbr','nowebgpu','minimal','diag','remote','slim','webgpu','grainblue','grainwhite','neutralgate','screenlin','smooth'].forEach(k => { f[k] = q.has(k); });
     if(f.neutralgate){ window._neutralGate = true; }
     if(f.minimal){ f.safe = f.noshimmer = f.noworkers = f.noamt = f.nopbr = f.nowebgpu = true; }
     if(f.safe){ window._gpuSlow = true; }
@@ -1989,10 +1989,30 @@ function _renderInner(){
   // export resolution"); a mid-speed GPU (probe 17-50 ms/MP) keeps 4x.
   const liveCap = (camOn || videoOn) ? Math.max(dpr, 3) : Infinity;
   const midCap = window._gpuMid ? 4 : Infinity;
-  const effScale = Math.min(gpuCap, platCap, liveCap, midCap,
+  // ── Adaptive GPU budget ──
+  // A per-mode cost model (ms per megapixel, learned from fenceSync frame
+  // timings and seeded by the boot probe — see R._gpuLearn) turns a target
+  // frame time into the largest buffer this GPU can finish inside it:
+  // interaction 33 ms (a 30 fps feel), animation 85% of its tick, a still
+  // 250 ms. Fast GPUs land on the same scales as before (the caps above
+  // bind first); slow ones scale down instead of stalling. Exports and
+  // recording are untouched. window._gpuBudget / R.setGpuBudget tune it,
+  // ?smooth tightens it; the ?stats HUD shows the model and the pick.
+  const _gpuKey = R._gpuKey();
+  const _mpp = R._gpuMsPerMP(_gpuKey);
+  const _cssMP = cssW * cssH / 1e6;
+  const scaleFor = (ms) => { if(!(_mpp > 0) || !(_cssMP > 0)) return Infinity; const s = Math.sqrt(ms / _mpp / _cssMP); return Math.max(1, Math.floor(s * 2) / 2); };
+  const B = window._gpuBudget || (window._gpuBudget = (window._flags && window._flags.smooth) ? { interact: 20, animFrac: 0.7, still: 120 } : { interact: 33, animFrac: 0.85, still: 250 });
+  const _animTargetFps = (camOn || videoOn) && risoFps > 0 ? R.liveFps() : Math.max(2, cached.grainStatic || 0);
+  const budgetScale = (isRecording || _saving) ? Infinity
+                    : interacting ? scaleFor(B.interact)
+                    : animTick    ? scaleFor(B.animFrac * 1000 / Math.max(1, _animTargetFps))
+                    : scaleFor(B.still);
+  const effScale = Math.min(gpuCap, platCap, liveCap, midCap, budgetScale,
                    interacting ? Math.max(2, dpr)
                  : animTick    ? animScale
                  : Math.max(resScale, dpr));
+  window._gpuPick = { key: _gpuKey, mpp: _mpp, kind: interacting ? 'interact' : animTick ? 'anim' : 'still', scale: effScale, budgetScale: budgetScale };
   const dw=Math.round(cssW*effScale), dh=Math.round(cssH*effScale);
   if($gl.width!==dw||$gl.height!==dh){$gl.width=dw;$gl.height=dh;}
   gl.viewport(0,0,dw,dh);
@@ -2036,6 +2056,7 @@ function _renderInner(){
     const _perMP = _dt / Math.max(0.05, dw * dh / 1e6);
     R.diag('probe:' + Math.round(_dt) + 'ms@' + dw + 'x' + dh + ' ' + _perMP.toFixed(1) + 'ms/MP' + (_perMP > 50 ? ' SLOW' : _perMP > 17 ? ' mid' : ' ok'));
     if(_perMP > 17 && _perMP <= 50) window._gpuMid = true;
+    R._gpuLearn(R._gpuKey(), _perMP);   // seed the cost model with the boot probe
     if(_perMP > 50){
       window._gpuSlow = true;
       console.warn('[gl] slow GPU: probe frame ' + Math.round(_dt) + 'ms at ' + dw + 'x' + dh + ' — supersample capped at 2x, masters at 150dpi');
@@ -2118,13 +2139,18 @@ function _renderInner(){
   // When the GPU is the bottleneck this approximates the true per-frame
   // cost that the CPU-side _stMs (draw submission only) cannot see.
   // fenceSync exists on every WebGL2 (Safari included); one in flight max.
-  if(window._statsOn && gl.fenceSync && !window._stFencePending){
+  // Always on (not just for the HUD): every resolved fence teaches the GPU
+  // cost model (ms per megapixel for this mode) that sizes the next frames.
+  if(gl.fenceSync && !window._stFencePending && !_saving){
     try{
       const _sync=gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE,0);
       const _ft0=performance.now(); window._stFencePending=true;
+      const _fMP=dw*dh/1e6, _fKey=R._gpuKey();
       const _poll=()=>{ let st; try{ st=gl.clientWaitSync(_sync,0,0); }catch(e){ window._stFencePending=false; return; }
         if(st===gl.ALREADY_SIGNALED||st===gl.CONDITION_SATISFIED){
-          window._stGpuMs=performance.now()-_ft0;
+          const _ms=performance.now()-_ft0;
+          window._stGpuMs=_ms;
+          if(_fMP>=0.25 && _ms<5000) R._gpuLearn(_fKey, _ms/_fMP);
           try{ gl.deleteSync(_sync); }catch(e){}
           window._stFencePending=false;
         } else setTimeout(_poll,1); };
@@ -3611,6 +3637,35 @@ const LIVE_FPS_CAP_STATIC_MODES = 8;
 R.liveFps = function(){
   return (window._mode === 'flat' || window._mode === 'stipple') ? Math.min(risoFps, LIVE_FPS_CAP_STATIC_MODES) : risoFps;
 };
+// ── GPU cost model (feeds the adaptive budget in the render loop) ──
+// ms per megapixel per render key (mode, coverage split, live RISO): an EWMA
+// of fence-measured frame costs, seeded by the boot probe. Unknown keys
+// borrow the worst known value (conservative until measured).
+R._gpuKey = function(){
+  const m = window._mode || (typeof mode !== 'undefined' ? mode : 'grain');
+  const split = (window._covSplit === true || (window._covSplit !== false && window._covSplitAuto)) && !(m === 'screen' || m === 'flat');
+  const live = (m === 'flat' || m === 'stipple') && (camOn || videoOn);
+  return m + (split ? '+split' : '') + (live ? '+live' : '');
+};
+R._gpuLearn = function(key, v){
+  if(!(v > 0) || !isFinite(v)) return;
+  v = Math.max(0.5, Math.min(5000, v));
+  const M = window._gpuModel || (window._gpuModel = { __max: 0, __n: 0 });
+  M[key] = (M[key] > 0) ? M[key] * 0.7 + v * 0.3 : v;
+  M.__n++;
+  let mx = 0; for(const k in M){ if(k.charAt(0) !== '_' && M[k] > mx) mx = M[k]; }
+  M.__max = mx;
+};
+R._gpuMsPerMP = function(key){
+  const M = window._gpuModel; if(!M) return 0;
+  return M[key] || M.__max || 0;
+};
+R.setGpuBudget = function(o){
+  window._gpuBudget = Object.assign(window._gpuBudget || { interact: 33, animFrac: 0.85, still: 250 }, o || {});
+  try { markDirty(); } catch(e){}
+  scheduleRender();
+  return window._gpuBudget;
+};
 // Mode-aware master prepass dispatcher — trigger sites don't need to know
 // which engine builds the plates.
 R.runMasterPrepass = function(){
@@ -4174,7 +4229,9 @@ function toggleStats(force){
       gifLine+
       'buffer    '+(window._stBuf||'-')+'  '+(typeof risoFps!=='undefined'?R.liveFps()+' anim fps'+(R.liveFps()!==risoFps?' (capped)':''):'')+'\n'+
       'js heap   '+heap+'\n'+
-      'mode      '+(window._mode||mode)+(flags?'  ['+flags+']':'');
+      'mode      '+(window._mode||mode)+(flags?'  ['+flags+']':'')+'\n'+
+      (function(){ const P=window._gpuPick, Bg=window._gpuBudget||{}; if(!P) return 'gpu model n/a';
+        return 'gpu model '+P.key+' '+(P.mpp>0?P.mpp.toFixed(1)+' ms/MP':'unmeasured')+' -> '+P.kind+' '+P.scale+'x'+(isFinite(P.budgetScale)?' (budget '+P.budgetScale+'x)':'')+'  budgets i'+(Bg.interact||'-')+' a'+(Bg.animFrac||'-')+' s'+(Bg.still||'-'); })();
   }, 500);
 }
 R.toggleStats = toggleStats;

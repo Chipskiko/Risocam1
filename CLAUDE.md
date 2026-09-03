@@ -227,3 +227,21 @@ branch. (2) window._gpuSuspect (Intel renderer on a Mac) probes at 1x with
 alerts the crash trail (gpu string, probe ms/MP, ctx:LOST count); ?safe
 forces the slow-GPU caps; ?slim forces the per-mode slim variants.
 
+## Adaptive GPU budget (2026-09-02)
+
+Replaces "static tiers only" with a closed loop: every real draw arms a
+fenceSync (always on, one in flight, WebGL2) and the resolved latency /
+megapixels teaches window._gpuModel[key] (EWMA 0.3, key = mode + '+split'
++ '+live', unknown keys borrow __max; frames < 0.25 MP and > 5 s are not
+lessons; the boot probe seeds it). The render loop then sizes each frame
+kind to a target: interaction 33 ms, animation 85% of its tick (liveFps /
+grainStatic), still 250 ms — scale = floor2(sqrt(budget / msPerMP / cssMP)),
+floor 1x — and takes the MIN with the old hard caps (gpuCap/midCap/liveCap
+/platCap), so fast GPUs land exactly where they were (M-series: ~15 ms/MP →
+6x stills, 3x anim) and slow ones shrink instead of stalling (120 ms/MP →
+2x still / 1x drag; 600 → 1x). Exports and recording are untouched.
+window._gpuBudget / R.setGpuBudget({interact, animFrac, still}), ?smooth
+= {20, 0.7, 120}. ?stats shows "gpu model <key> <ms/MP> -> <kind> <scale>x
+(budget <x>)". The anim-cadence ladder (_animLodBias / covsplit-auto) still
+runs on top as the CPU-side corrective.
+
