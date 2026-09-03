@@ -261,4 +261,14 @@ webcodecs, ImageDecoder, OffscreenCanvas, FS worker count), tier + losses +
 probe line, the whole model table, capacity (MP/s → max fps at the current
 buffer, budget-allowed scales per kind), main thread (rAF/s, long tasks,
 cov bakes/s) and GPU time (timer-query exec vs fence latency).
+Queue-proof measurement (Intel Mac read 1623 ms/MP for a path the probe put
+at 55): fence LATENCY includes the queue, so a small frame behind a queued
+6x frame reads seconds, the controller shrinks, the same wait spreads over
+fewer pixels, and it collapses to 0.5x. Now EVERY frame is fenced (queue of
+up to 8, one poll loop) and the model learns exec_i = complete_i −
+max(complete_i−1, submit_i) — exact while the GPU is busy back-to-back
+(verified: five 6x frames submitted in 8 ms still read 14.5 ms/MP). The
+model-driven split is A/B guarded: five split samples not ≥20% cheaper than
+the plain path → off for the session (_covSplitBad, also respected by the
+cadence ladder). HUD: "exec N ms (fence delta) | latency | queue".
 

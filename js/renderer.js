@@ -2017,7 +2017,18 @@ function _renderInner(){
     const _m = window._mode || mode;
     const _plainMpp = R._gpuMsPerMP(_m);
     const _splitOk = !!locs.u_covPass && !_saving && !isRecording && window._covSplit === undefined && _m !== 'screen' && _m !== 'flat';
-    if(_splitOk && _plainMpp > 40 && !window._covSplitAuto){ window._covSplitAuto = true; window._covSplitByModel = true; R.diag('covsplit:model ' + _plainMpp.toFixed(0) + 'ms/MP'); }
+    if(_splitOk && _plainMpp > 40 && !window._covSplitAuto && !window._covSplitBad){ window._covSplitAuto = true; window._covSplitByModel = true; R.diag('covsplit:model ' + _plainMpp.toFixed(0) + 'ms/MP'); }
+    // A/B guard: the split must actually be cheaper here. Once it has five
+    // samples of its own, a split that is not at least 20% faster than the
+    // plain path is switched off for the session (some GPUs may not like the
+    // FBO round trip).
+    if(window._covSplitByModel && window._covSplitAuto){
+      const M = window._gpuModel, sk = _m + '+split';
+      if(M && M.__s && M.__s[sk] && M.__s[sk].length >= 5 && M[sk] > _plainMpp * 0.8){
+        window._covSplitAuto = false; window._covSplitByModel = false; window._covSplitBad = true;
+        R.diag('covsplit:off (split ' + M[sk].toFixed(0) + ' vs plain ' + _plainMpp.toFixed(0) + ' ms/MP)');
+      }
+    }
     if(!_splitOk) window._covSplitByModel = false;
     if((_m === 'screen' || _m === 'flat') && window._covSplitAuto){ window._covSplitAuto = false; window._covSplitByModel = false; }   // those modes never split (measured slower / need the source)
   }
@@ -2165,23 +2176,44 @@ function _renderInner(){
   // When the GPU is the bottleneck this approximates the true per-frame
   // cost that the CPU-side _stMs (draw submission only) cannot see.
   // fenceSync exists on every WebGL2 (Safari included); one in flight max.
-  // Always on (not just for the HUD): every resolved fence teaches the GPU
-  // cost model (ms per megapixel for this mode) that sizes the next frames.
-  if(gl.fenceSync && !window._stFencePending && !_saving){
+  // Always on (not just for the HUD): every frame gets a fence, and the
+  // cost model learns the frame's EXECUTION time, not its latency. Latency
+  // (submit → complete) includes the queue: on a slow GPU a small frame
+  // submitted behind a queued 6x frame reads seconds, the controller shrinks
+  // the buffer, the same queue wait is then spread over fewer pixels, and
+  // the loop collapses to 0.5x (Intel Mac: model 1623 ms/MP while the probe
+  // said 55). With every frame fenced, exec_i = complete_i - max(complete_i-1,
+  // submit_i): exact while the GPU is busy back-to-back, an upper bound when
+  // idle. Polled in submission order, one setTimeout(1) loop.
+  if(gl.fenceSync && !_saving){
     try{
-      const _sync=gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE,0);
-      const _ft0=performance.now(); window._stFencePending=true;
-      const _fMP=dw*dh/1e6, _fKey=R._gpuKey();
-      const _poll=()=>{ let st; try{ st=gl.clientWaitSync(_sync,0,0); }catch(e){ window._stFencePending=false; return; }
-        if(st===gl.ALREADY_SIGNALED||st===gl.CONDITION_SATISFIED){
-          const _ms=performance.now()-_ft0;
-          window._stGpuMs=_ms;
-          if(_fMP>=0.25 && _ms<5000) R._gpuLearn(_fKey, _ms/_fMP);
-          try{ gl.deleteSync(_sync); }catch(e){}
-          window._stFencePending=false;
-        } else setTimeout(_poll,1); };
-      setTimeout(_poll,0);
-    }catch(e){ window._stFencePending=false; }
+      const Q = window._fenceQ || (window._fenceQ = []);
+      if(Q.length < 8){
+        Q.push({ sync: gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), t0: performance.now(), mp: dw*dh/1e6, key: R._gpuKey() });
+        if(!window._fencePolling){
+          window._fencePolling = true;
+          const _poll = () => {
+            const Q2 = window._fenceQ;
+            while(Q2.length){
+              const f = Q2[0]; let st;
+              try { st = gl.clientWaitSync(f.sync, 0, 0); } catch(e){ Q2.shift(); continue; }
+              if(st === gl.ALREADY_SIGNALED || st === gl.CONDITION_SATISFIED){
+                const now = performance.now();
+                const exec = now - Math.max(window._fenceLastDone || 0, f.t0);
+                window._fenceLastDone = now;
+                window._stGpuMs = now - f.t0;              // latency (HUD)
+                window._stGpuExecFence = exec;             // execution estimate (HUD)
+                if(f.mp >= 0.25 && exec >= 6 && exec < 5000) R._gpuLearn(f.key, exec / f.mp);
+                try { gl.deleteSync(f.sync); } catch(e){}
+                Q2.shift();
+              } else break;
+            }
+            if(Q2.length) setTimeout(_poll, 1); else window._fencePolling = false;
+          };
+          setTimeout(_poll, 0);
+        }
+      }
+    }catch(e){}
   }
   window._stDraws=(window._stDraws||0)+1;                    // resource monitor:
   window._stMs=performance.now()-_stT0;                      // real draws only
@@ -2218,7 +2250,7 @@ function _renderInner(){
       // per fragment — the split's baked coverage can't feed it. Off there too.
       if(window._covSplitAuto && (_lodMode === 'screen' || _lodMode === 'flat')){ window._covSplitAuto = false; window._covSplitByModel = false; }
       if(_lodGot < _lodTarget*0.75){
-        if(!window._covSplitAuto && window._covSplit === undefined && _lodMode !== 'screen' && _lodMode !== 'flat') window._covSplitAuto = true;
+        if(!window._covSplitAuto && window._covSplit === undefined && _lodMode !== 'screen' && _lodMode !== 'flat' && !window._covSplitBad) window._covSplitAuto = true;
         else if(_bias < 1.5) window._animLodBias = _bias + 0.25;
       }
       else if(_lodGot >= _lodTarget*0.92 && _bias > 0) window._animLodBias = Math.max(0, _bias - 0.125);
@@ -4344,7 +4376,7 @@ function toggleStats(force){
                'capacity  ' + (mpp > 0 ? (1000 / mpp).toFixed(1) + ' MP/s -> buffer ' + (window._stBuf || '?').split(' ')[0] + ' (' + bufMP.toFixed(1) + ' MP) max ' + (1000 / (mpp * Math.max(0.01, bufMP))).toFixed(1) + ' fps' : 'unmeasured') +
                  ' | budget allows drag ' + allow(Bg.interact || 33, 0.5) + ' anim ' + allow((Bg.animFrac || 0.85) * 1000 / Math.max(1, animFps), 0.5) + ' still ' + allow(Bg.still || 250, 1) + '\n' +
                'main      rAF ' + rafs.toFixed(0) + '/s | long tasks ' + longs.toFixed(1) + '/s (' + longMs.toFixed(0) + ' ms/s) | cov bakes ' + bakes.toFixed(1) + '/s\n' +
-               'gpu time  exec ' + (window._stGpuExecMs != null ? window._stGpuExecMs.toFixed(1) + ' ms (timer query)' : 'n/a (Chromium only)') + ' | latency ' + (window._stGpuMs || 0).toFixed(0) + ' ms (fence)';
+               'gpu time  exec ' + (window._stGpuExecMs != null ? window._stGpuExecMs.toFixed(1) + ' ms (timer query)' : (window._stGpuExecFence != null ? window._stGpuExecFence.toFixed(0) + ' ms (fence delta)' : 'n/a')) + ' | latency ' + (window._stGpuMs || 0).toFixed(0) + ' ms (fence) | queue ' + ((window._fenceQ || []).length) + (window._covSplitBad ? ' | split rejected' : '');
       })();
   }, 500);
 }
