@@ -151,7 +151,7 @@
           </div>
           <!-- RISO: master density (FS prepass DPI) -->
           <div id="flatPrimary" style="display:none;gap:6px">
-            <button class="regmark-btn active" id="amtDpiBtn" onclick="R.cycleAmtDpi()" title="Master density — resolution the 1-bit master is burned at. Real Riso = 600 dpi. Lower = faster prepass, coarser dots. Static sources only: a live camera/video runs the per-fragment preview, where density does not apply."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="4" cy="4" r="1.1" fill="currentColor"/><circle cx="10" cy="4" r="1.1" fill="currentColor"/><circle cx="16" cy="4" r="1.1" fill="currentColor"/><circle cx="4" cy="10" r="1.1" fill="currentColor"/><circle cx="10" cy="10" r="1.1" fill="currentColor"/><circle cx="16" cy="10" r="1.1" fill="currentColor"/><circle cx="4" cy="16" r="1.1" fill="currentColor"/><circle cx="10" cy="16" r="1.1" fill="currentColor"/><circle cx="16" cy="16" r="1.1" fill="currentColor"/></svg><span class="regmark-val" id="amtDpiBtnVal">150dpi</span></button>
+            <button class="regmark-btn active" id="amtDpiBtn" onclick="R.cycleAmtDpi()" title="Master density — resolution the 1-bit master is burned at. Real Riso = 600 dpi. Lower = faster prepass, coarser dots. On a live camera/video it sets the dot pitch of the per-fragment preview (no master is burned)."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="4" cy="4" r="1.1" fill="currentColor"/><circle cx="10" cy="4" r="1.1" fill="currentColor"/><circle cx="16" cy="4" r="1.1" fill="currentColor"/><circle cx="4" cy="10" r="1.1" fill="currentColor"/><circle cx="10" cy="10" r="1.1" fill="currentColor"/><circle cx="16" cy="10" r="1.1" fill="currentColor"/><circle cx="4" cy="16" r="1.1" fill="currentColor"/><circle cx="10" cy="16" r="1.1" fill="currentColor"/><circle cx="16" cy="16" r="1.1" fill="currentColor"/></svg><span class="regmark-val" id="amtDpiBtnVal">150dpi</span></button>
           </div>
           
           
@@ -2549,6 +2549,88 @@ float lineSampled(float val, vec2 pix, float cellPx, float angle, int idx){
   return total * 0.125;
 }
 
+// ─── Live RISO: the master's density stage, per fragment ───
+// RISO masters are burned in JS (riso-amt.js) from a chord projection of the
+// source onto each ink, the MZ9 driver tone curve × coverageScale 1.7, a
+// solid-fill lift, then FS. A live feed can't rebuild that master per frame,
+// and the old live fallback thresholded the SEPARATION coverage instead — a
+// different tone pipeline (user: "doesn't look like the same pipeline",
+// "opaque video with dots on top"). This ports the density stage, so live
+// dots carry the master's tone; only the placement differs (blue noise
+// instead of error diffusion).
+float risoToneCurve(float g){   // g: 0 = full ink intent … 1 = paper (TONE_CURVE, riso-amt.js)
+  if(g < 0.0627) return 0.456;
+  if(g < 0.1255) return mix(0.456, 0.395, (g - 0.0627) / 0.0628);
+  if(g < 0.251)  return mix(0.395, 0.274, (g - 0.1255) / 0.1255);
+  if(g < 0.376)  return mix(0.274, 0.206, (g - 0.251) / 0.125);
+  if(g < 0.502)  return mix(0.206, 0.155, (g - 0.376) / 0.126);
+  if(g < 0.627)  return mix(0.155, 0.106, (g - 0.502) / 0.125);
+  if(g < 0.690)  return mix(0.106, 0.0958, (g - 0.627) / 0.063);
+  if(g < 0.878)  return 0.0958;
+  if(g < 0.941)  return mix(0.0958, 0.0886, (g - 0.878) / 0.063);
+  if(g < 0.973)  return mix(0.0886, 0.070, (g - 0.941) / 0.032);
+  if(g < 0.988)  return 0.070;
+  return mix(0.070, 0.011, (g - 0.988) / 0.012);
+}
+float risoLiveDensity(vec3 src, vec3 ink){
+  vec3 d = ink - u_paperColor;
+  float dLen2 = dot(d, d);
+  if(dLen2 < 1e-5) return 0.0;                              // ink ≈ paper: the prepass skips it too
+  float t = clamp(dot(src - u_paperColor, d) / dLen2, 0.0, 1.0);
+  t = (t < 0.02) ? 0.0 : (t - 0.02) / 0.98;                 // master burn floor
+  float v = clamp(risoToneCurve(1.0 - t) * 1.7, 0.0, 1.0);  // tone curve × coverageScale
+  return mix(v, 1.0, clamp((v - 0.55) / 0.15, 0.0, 1.0));   // solid-fill lift (per-fragment stand-in for the 11px box mean)
+}
+// Live grain touch rendered the way the master path renders it: blue-noise
+// ON/OFF per would-be master texel (u_amtTexel = the texel the prepass WOULD
+// burn at the current DPI — JS sets it every live frame), drawn as the same
+// jittered disc union as the static round-dot path. Fine masters (< 1.8 px
+// per texel) fall back to a per-texel threshold, like the averaged master.
+float gpuGrainTouchLive(float density, vec2 pix){
+  density = clamp(density, 0.0, 1.0);
+  vec2 tc = srcUV(pix / u_res) / u_amtTexel;               // position in master texels
+  float pxPerTexel = u_res.x * u_amtTexel.x;
+  if(pxPerTexel < 1.8){
+    // Fine masters: mirror the static path's 8-tap stochastic supersampling
+    // (same footprint: u_amtSuperSample + u_amtInkSpread texels, same jitter
+    // vs ring pattern), deciding ON/OFF per touched texel — the soft coverage
+    // field that feeds calBlend matches the averaged master's statistics.
+    float total = 0.0;
+    float radiusT = u_amtSuperSample + u_amtInkSpread;
+    for(int s = 0; s < 8; s++){
+      vec2 off;
+      if(u_amtJitter > 0.5){
+        off = vec2(hash(gl_FragCoord.xy + vec2(float(s) * 7.13, 0.0)) - 0.5,
+                   hash(gl_FragCoord.xy + vec2(0.0, float(s) * 11.37)) - 0.5);
+      } else {
+        float ringR = (s < 4) ? 0.22 : 0.44;
+        float ringA = float(s) * 1.5707963 + ((s < 4) ? 0.0 : 0.7853982);
+        off = vec2(cos(ringA), sin(ringA)) * ringR;
+      }
+      vec2 cell = floor(tc + off * radiusT);
+      float thr = texture2D(u_bnVC, (cell + 0.5) / max(u_bnSize, 128.0)).g;   // REPEAT wraps the 256 mask
+      total += step(thr, density);
+    }
+    return total * 0.125;
+  }
+  vec2 tBase = floor(tc - 0.5);
+  float rDot = mix(0.50, 0.72, clamp(u_amtInkSpread, 0.0, 1.0));
+  float aa = 0.75 / pxPerTexel;
+  float ink = 0.0;
+  for(int ny = 0; ny <= 2; ny++){
+    for(int nx = 0; nx <= 2; nx++){
+      vec2 cell = tBase + vec2(float(nx), float(ny));
+      float thr = texture2D(u_bnVC, (cell + 0.5) / max(u_bnSize, 128.0)).g;
+      if(density < thr) continue;
+      vec2 jit = vec2(hash(cell * 1.7 + 0.3), hash(cell * 2.3 + 7.0)) - 0.5;
+      float rj = rDot * (0.88 + 0.24 * hash(cell * 3.7 + 5.0));
+      float d = length(tc - (cell + 0.5 + jit * 0.38));
+      ink = max(ink, smoothstep(rj + aa, rj - aa, d));
+    }
+  }
+  return ink;
+}
+
 // Compute grain/halftone texture value for visual effect (0-1).
 // This creates the risograph look without affecting tonal accuracy.
 float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, float pf, float grainMul){
@@ -2699,7 +2781,7 @@ float getGrainTexture(float coverage, vec2 rpx, vec2 pix, int idx, float angle, 
     // STATIC sources this only happens briefly while the fine FS master builds
     // — show smooth continuous tone (not the coarse grain) so it isn't jarring,
     // then the master takes over.
-    return (u_liveSource > 0.5) ? gpuGrainTouch(val, jitPix) : clamp(val, 0.0, 1.0);
+    return (u_liveSource > 0.5) ? gpuGrainTouchLive(val, jitPix) : clamp(val, 0.0, 1.0);
   }
 
   // Paper field perturbs dither threshold — fibers affect where ink lands.
@@ -3603,12 +3685,14 @@ void main(){
     float n0 = hash(lrpx * 1.7);
     vec2 snapUV0 = uv0;
     float cov;
+    vec3 srcP0 = vec3(0.0);            // adjusted source for this plate (live RISO density)
     if(u_covPass > 1.5){
       // consume the baked head at THIS plate's misregistered position
       cov = (u_dens0 < 0.5) ? 0.0 : inkPhysics(texture2D(u_covTex, covUV(snapUV0)).x, lrpx, 0, n0, pf);
     } else if(u_sepType == 1){
       vec3 src0a = fetchSrc(snapUV0).rgb;
       src0a = adjustRGB(src0a, lrpx);
+      srcP0 = src0a;
       vec4 w0 = koExclusive(nnlsDecompose(u_layers, u_paperColor, src0a, u_ink0, u_ink1, u_ink2, u_ink3));
       cov = getCoverageApprox(w0.x, lrpx, 0, n0, u_dens0, pf);
     } else {
@@ -3616,6 +3700,7 @@ void main(){
       vec3 srcS = fetchSrc(snapUV0 + vec2(0.0, 0.0012)).rgb;
       src = mix(src, srcS, 0.35);
       src = adjustRGB(src, lrpx);
+      srcP0 = src;
       vec4 cmyk = koExclusive(toCMYK(src));
       cov = getCoverage(cmyk, lrpx, 0, u_chan0, n0, u_dens0, pf, src, u_inkGamma0);
     }
@@ -3634,9 +3719,13 @@ void main(){
       cov = cellTone(lpix, u_angle0, 0) * mask;
       cov = applyTextRouting(cov, uv, 0);
     }
+    // Live RISO: the dither binarises the MASTER density (chord projection +
+    // tone curve), not the separation coverage — cov still gates calBlend.
+    float gIn0 = cov;
+    if(u_mode == 3 && u_liveSource > 0.5 && u_useAmt < 0.5 && u_covPass < 1.5 && u_dens0 >= 0.5) gIn0 = risoLiveDensity(srcP0, u_ink0) * mask;
     float grain = (u_mode == 1 && u_stampShape == 5)
                 ? asciiStamp(skUV0, off0, 0, cov, pf) * printMask(skUV0, off0, lrpx)
-                : getGrainTexture(cov, lrpx, lpix, 0, u_angle0, pf, u_grainMul0);
+                : getGrainTexture(gIn0, lrpx, lpix, 0, u_angle0, pf, u_grainMul0);
     grain = dissolveInk(grain, uv);
     // Letters legitimately OVERHANG content edges (anchor carries the tone),
     // but calBlend early-returns where the FRAGMENT's coverage is ~0 — which
@@ -3667,11 +3756,13 @@ void main(){
     float n1 = hash(lrpx * 1.7 + 100.0);
     vec2 snapUV1 = uv1;
     float cov;
+    vec3 srcP1 = vec3(0.0);            // adjusted source for this plate (live RISO density)
     if(u_covPass > 1.5){
       cov = (u_dens1 < 0.5) ? 0.0 : inkPhysics(texture2D(u_covTex, covUV(snapUV1)).y, lrpx, 1, n1, pf);
     } else if(u_sepType == 1){
       vec3 src1a = fetchSrc(snapUV1).rgb;
       src1a = adjustRGB(src1a, lrpx);
+      srcP1 = src1a;
       vec4 w1 = koExclusive(nnlsDecompose(u_layers, u_paperColor, src1a, u_ink0, u_ink1, u_ink2, u_ink3));
       cov = getCoverageApprox(w1.y, lrpx, 1, n1, u_dens1, pf);
     } else {
@@ -3679,6 +3770,7 @@ void main(){
       vec3 srcS = fetchSrc(snapUV1 + vec2(0.0, 0.0008)).rgb;
       src = mix(src, srcS, 0.25);
       src = adjustRGB(src, lrpx);
+      srcP1 = src;
       vec4 cmyk = koExclusive(toCMYK(src));
       cov = getCoverage(cmyk, lrpx, 1, u_chan1, n1, u_dens1, pf, src, u_inkGamma1);
     }
@@ -3689,9 +3781,13 @@ void main(){
       cov = cellTone(lpix, u_angle1, 1) * mask;
       cov = applyTextRouting(cov, uv, 1);
     }
+    // Live RISO: the dither binarises the MASTER density (chord projection +
+    // tone curve), not the separation coverage — cov still gates calBlend.
+    float gIn1 = cov;
+    if(u_mode == 3 && u_liveSource > 0.5 && u_useAmt < 0.5 && u_covPass < 1.5 && u_dens1 >= 0.5) gIn1 = risoLiveDensity(srcP1, u_ink1) * mask;
     float grain = (u_mode == 1 && u_stampShape == 5)
                 ? asciiStamp(skUV1, off1, 1, cov, pf) * printMask(skUV1, off1, lrpx)
-                : getGrainTexture(cov, lrpx, lpix, 1, u_angle1, pf, u_grainMul1);
+                : getGrainTexture(gIn1, lrpx, lpix, 1, u_angle1, pf, u_grainMul1);
     grain = dissolveInk(grain, uv);
     // Letters legitimately OVERHANG content edges (anchor carries the tone),
     // but calBlend early-returns where the FRAGMENT's coverage is ~0 — which
@@ -3720,11 +3816,13 @@ void main(){
     float n2 = hash(lrpx * 1.7 + 200.0);
     vec2 snapUV2 = uv2;
     float cov;
+    vec3 srcP2 = vec3(0.0);            // adjusted source for this plate (live RISO density)
     if(u_covPass > 1.5){
       cov = (u_dens2 < 0.5) ? 0.0 : inkPhysics(texture2D(u_covTex, covUV(snapUV2)).z, lrpx, 2, n2, pf);
     } else if(u_sepType == 1){
       vec3 src2a = fetchSrc(snapUV2).rgb;
       src2a = adjustRGB(src2a, lrpx);
+      srcP2 = src2a;
       vec4 w2 = koExclusive(nnlsDecompose(u_layers, u_paperColor, src2a, u_ink0, u_ink1, u_ink2, u_ink3));
       cov = getCoverageApprox(w2.z, lrpx, 2, n2, u_dens2, pf);
     } else {
@@ -3732,6 +3830,7 @@ void main(){
       vec3 srcS = fetchSrc(snapUV2 + vec2(0.0, 0.0004)).rgb;
       src = mix(src, srcS, 0.15);
       src = adjustRGB(src, lrpx);
+      srcP2 = src;
       vec4 cmyk = koExclusive(toCMYK(src));
       cov = getCoverage(cmyk, lrpx, 2, u_chan2, n2, u_dens2, pf, src, u_inkGamma2);
     }
@@ -3742,9 +3841,13 @@ void main(){
       cov = cellTone(lpix, u_angle2, 2) * mask;
       cov = applyTextRouting(cov, uv, 2);
     }
+    // Live RISO: the dither binarises the MASTER density (chord projection +
+    // tone curve), not the separation coverage — cov still gates calBlend.
+    float gIn2 = cov;
+    if(u_mode == 3 && u_liveSource > 0.5 && u_useAmt < 0.5 && u_covPass < 1.5 && u_dens2 >= 0.5) gIn2 = risoLiveDensity(srcP2, u_ink2) * mask;
     float grain = (u_mode == 1 && u_stampShape == 5)
                 ? asciiStamp(skUV2, off2, 2, cov, pf) * printMask(skUV2, off2, lrpx)
-                : getGrainTexture(cov, lrpx, lpix, 2, u_angle2, pf, u_grainMul2);
+                : getGrainTexture(gIn2, lrpx, lpix, 2, u_angle2, pf, u_grainMul2);
     grain = dissolveInk(grain, uv);
     // Letters legitimately OVERHANG content edges (anchor carries the tone),
     // but calBlend early-returns where the FRAGMENT's coverage is ~0 — which
@@ -3773,16 +3876,19 @@ void main(){
     vec2 uv3 = skUV3 + off3;
     vec2 snapUV3 = uv3;
     float cov;
+    vec3 srcP3 = vec3(0.0);            // adjusted source for this plate (live RISO density)
     if(u_covPass > 1.5){
       cov = (u_dens3 < 0.5) ? 0.0 : inkPhysics(texture2D(u_covTex, covUV(snapUV3)).w, lrpx, 3, n3, pf);
     } else if(u_sepType == 1){
       vec3 src3a = fetchSrc(snapUV3).rgb;
       src3a = adjustRGB(src3a, lrpx);
+      srcP3 = src3a;
       vec4 w3 = koExclusive(nnlsDecompose(u_layers, u_paperColor, src3a, u_ink0, u_ink1, u_ink2, u_ink3));
       cov = getCoverageApprox(w3.w, lrpx, 3, n3, u_dens3, pf);
     } else {
       vec3 src = fetchSrc(snapUV3).rgb;
       src = adjustRGB(src, lrpx);
+      srcP3 = src;
       vec4 cmyk = koExclusive(toCMYK(src));
       cov = getCoverage(cmyk, lrpx, 3, u_chan3, n3, u_dens3, pf, src, u_inkGamma3);
     }
@@ -3793,9 +3899,13 @@ void main(){
       cov = cellTone(lpix, u_angle3, 3) * mask;
       cov = applyTextRouting(cov, uv, 3);
     }
+    // Live RISO: the dither binarises the MASTER density (chord projection +
+    // tone curve), not the separation coverage — cov still gates calBlend.
+    float gIn3 = cov;
+    if(u_mode == 3 && u_liveSource > 0.5 && u_useAmt < 0.5 && u_covPass < 1.5 && u_dens3 >= 0.5) gIn3 = risoLiveDensity(srcP3, u_ink3) * mask;
     float grain = (u_mode == 1 && u_stampShape == 5)
                 ? asciiStamp(skUV3, off3, 3, cov, pf) * printMask(skUV3, off3, lrpx)
-                : getGrainTexture(cov, lrpx, lpix, 3, u_angle3, pf, u_grainMul3);
+                : getGrainTexture(gIn3, lrpx, lpix, 3, u_angle3, pf, u_grainMul3);
     grain = dissolveInk(grain, uv);
     // Letters legitimately OVERHANG content edges (anchor carries the tone),
     // but calBlend early-returns where the FRAGMENT's coverage is ~0 — which
@@ -4057,7 +4167,7 @@ void main(){
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/gen/bnvc256.js?v=2"></script>
-<script src="js/renderer.js?v=226"></script>
+<script src="js/renderer.js?v=227"></script>
 <script src="js/gif-decode.js?v=5"></script>
 <script src="js/source.js?v=65"></script>
 <script src="js/save.js?v=83"></script>
@@ -4069,7 +4179,7 @@ void main(){
 // toggle path loads them async later, which the presence-guarded call sites
 // (window.RisoAmtGPU && ...) handle.
 (function(){
-  var srcs=['js/riso-amt-webgpu.js?v=6','js/webgpu-live.js?v=15'];
+  var srcs=['js/riso-amt-webgpu.js?v=6','js/webgpu-live.js?v=16'];
   if(/[?&]webgpu\b/.test(location.search)){
     srcs.forEach(function(u){ document.write('<script src="'+u+'"><\/script>'); });
     window._webgpuShimsLoaded=true;
@@ -4086,7 +4196,7 @@ void main(){
   };
 })();
 </script>
-<script src="js/ui-controls.js?v=90"></script>
+<script src="js/ui-controls.js?v=91"></script>
 <script src="js/ui-paper.js?v=14"></script>
 <script src="js/phone.js?v=36"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL

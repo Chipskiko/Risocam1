@@ -941,7 +941,9 @@ function updateCamFxUI(){
   // RISO / STIPPLE bake their masters from a STATIC source; with a live feed
   // they run the per-fragment fallback, so density / dot size have no effect
   // — grey those buttons out rather than let them look broken.
-  ['amtDpiBtn','stippleSizeBtn'].forEach(id=>{ const b=el(id); if(b) b.classList.toggle('live-disabled',live); });
+  // (RISO density DOES apply live since the live path renders on the
+  // would-be master pitch; stipple's dot size is still bake-only.)
+  ['stippleSizeBtn'].forEach(id=>{ const b=el(id); if(b) b.classList.toggle('live-disabled',live); });
   buildLiveFxUI();
   const cur=window._fx||0, def=FX_LIST.find(f=>f.v===cur)||FX_LIST[0];
   sec.querySelectorAll('.fx-chip[data-fx]').forEach(b=>b.classList.toggle('on',+b.dataset.fx===cur));

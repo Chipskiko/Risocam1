@@ -1325,6 +1325,15 @@ function setRenderUniforms(dw, dh, scale, isPhone){
     else if(gifImg && gifCanvas){ sw = gifCanvas.width || 1; sh = gifCanvas.height || 1; }
     else if(window._lastSourceCanvas){ const c = window._lastSourceCanvas; sw = c.width || c.naturalWidth || 1; sh = c.height || c.naturalHeight || 1; }
     gl.uniform2f(locs.u_srcTexel, 1 / sw, 1 / sh);
+    // Live RISO: no master is burned for a feed, so hand the shader the texel
+    // the prepass WOULD burn at the current DPI (same sizing rule as
+    // _runAmtPrepassImpl) — the live round-dot path renders on that pitch.
+    if((camOn || videoOn) && window._mode === 'flat' && locs.u_amtTexel){
+      let dpi = window._amtScanDpi || 150; if(window._gpuSlow) dpi = Math.min(dpi, 150);
+      const maxEdge = Math.round(dpi * 16.54), asp = sw / sh;
+      const W = asp >= 1 ? maxEdge : Math.round(maxEdge * asp), H = asp >= 1 ? Math.round(maxEdge / asp) : maxEdge;
+      gl.uniform2f(locs.u_amtTexel, 1 / Math.max(1, W), 1 / Math.max(1, H));
+    }
   }
   if(locs.u_screenLin) gl.uniform1f(locs.u_screenLin, (window._screenLin ?? !!(window._flags && window._flags.screenlin)) ? 1.0 : 0.0);
   if(locs.u_uniqueInks){
@@ -2130,9 +2139,11 @@ function _renderInner(){
       // Engaging it first in screen mode was the fps regression the user
       // reported after the ladder reorder. Screen goes straight to bias.
       const _lodMode = (window._mode || mode);
-      if(window._covSplitAuto && _lodMode === 'screen') window._covSplitAuto = false;
+      // RISO (flat) live runs the master-density path, which needs the source
+      // per fragment — the split's baked coverage can't feed it. Off there too.
+      if(window._covSplitAuto && (_lodMode === 'screen' || _lodMode === 'flat')) window._covSplitAuto = false;
       if(_lodGot < _lodTarget*0.75){
-        if(!window._covSplitAuto && window._covSplit === undefined && _lodMode !== 'screen') window._covSplitAuto = true;
+        if(!window._covSplitAuto && window._covSplit === undefined && _lodMode !== 'screen' && _lodMode !== 'flat') window._covSplitAuto = true;
         else if(_bias < 1.5) window._animLodBias = _bias + 0.25;
       }
       else if(_lodGot >= _lodTarget*0.92 && _bias > 0) window._animLodBias = Math.max(0, _bias - 0.125);

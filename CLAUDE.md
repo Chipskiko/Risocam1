@@ -183,12 +183,28 @@ saved loop still cuts visibly at the wrap for animated FX — known.
 ## RISO / STIPPLE with a live feed (2026-09-02)
 
 Static-source modes: the master prepass is skipped for camera/video (a
-snapshot master would go stale instantly), the shader runs the per-fragment
-fallback, so DENSITY / DOT SIZE have no effect there — the buttons carry
-.live-disabled while camOn||videoOn (set in updateCamFxUI, the central
-live-state UI hook). The live preview is capped at 8 fps in those modes
-(R.liveFps(): min(risoFps, 8) for flat/stipple, risoFps otherwise; the render
-loop, the fps label and the LOD target all read it; setRisoFps toasts when
-the cap bites). "RISO is broken: dpi doesn't change, dots static" was this —
-the user was on the camera.
+snapshot master would go stale instantly). The live RISO path now runs the
+MASTER's density stage per fragment — risoLiveDensity(): chord projection of
+the adjusted source onto each ink (paper→ink, 2% burn floor), the MZ9 tone
+curve (risoToneCurve, piecewise port of riso-amt.js TONE_CURVE) × coverage-
+scale 1.7, a per-fragment solid-fill lift (v>0.55 → 1) — fed to the dither
+INSTEAD of the separation coverage (cov still gates calBlend, as it does for
+the static master). gpuGrainTouchLive() then binarises per would-be master
+texel (JS uploads u_amtTexel for the current DPI every live frame, same
+sizing rule as the prepass) and renders the static round-dot disc union
+(≥1.8 px/texel) or the same 8-tap stochastic supersampling (finer). Measured
+on one frame, static vs live: dot area 73.9 vs 73.6 (Chromium), 80.1 vs 80.8
+(Safari); luminance within ~9 — the residual is FS worms vs blue-noise
+placement through calBlend's nonlinearity, inherent. The old fallback
+thresholded the separation coverage at a fixed 4-px NEAREST cell (user:
+"dots are squares", "opaque video with dots on top"). The coverage split is
+OFF in flat mode (the tail needs the source, not baked coverage). DENSITY
+therefore applies live (dot pitch); STIPPLE dot size is still bake-only and
+carries .live-disabled while camOn||videoOn. The live preview is capped at
+8 fps in both modes (R.liveFps(); render loop, fps label and LOD target all
+read it; setRisoFps toasts when the cap bites).
 
+Harness trap met here: R._renderNow() BAILS while _amtPrepassRunning (and
+while a variant compiles) and readPixels then returns the STALE buffer — the
+"washed-out first render" was never a render. Read only after a
+window._stDraws increment (see riso probes).
