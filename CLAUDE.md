@@ -208,3 +208,22 @@ Harness trap met here: R._renderNow() BAILS while _amtPrepassRunning (and
 while a variant compiles) and readPixels then returns the STALE buffer — the
 "washed-out first render" was never a render. Read only after a
 window._stDraws increment (see riso probes).
+
+## Intel-Mac context-loss loop (2026-09-02)
+
+An Intel Mac cycled "GPU restored — rebuilding" after the Live FX / live
+RISO deploy: the megashader inlines every function at every call site, and
+the FX geometry switch rode along on all ~25 srcUV() sites (plus the EDGE
+Sobel on 19 fetchSrc sites) — enough extra shader for the iGPU's first 2x
+frame to outrun the watchdog, and the recovery re-ran the same 2x probe, so
+the loop never converged. Fixes: (1) FX is evaluated ONCE per fragment in
+main() — g_fxDisp (effect displacement, reused by every srcUV; per-plate
+deltas are sub-texel) and g_fxEdge; fetchSrc keeps only the tiny RGB-split
+branch. (2) window._gpuSuspect (Intel renderer on a Mac) probes at 1x with
+0.5 MP bands; ANY context loss this session drops the cap to 1x and bands to
+0.5 MP. (3) The probe is normalised per megapixel: >50 ms/MP slow (2x cap),
+17-50 mid (_gpuMid, 4x cap). (4) Live feeds never render the 6x dirty frame
+(liveCap 3x); exports keep their own sizing. Cheap remote triage: ?diag
+alerts the crash trail (gpu string, probe ms/MP, ctx:LOST count); ?safe
+forces the slow-GPU caps; ?slim forces the per-mode slim variants.
+

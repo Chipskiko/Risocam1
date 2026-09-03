@@ -694,15 +694,25 @@ vec3 hueRotate(vec3 c, float a){       // rotation about the grey axis
   float cs = cos(a), sn = sin(a);
   return c * cs + cross(k, c) * sn + k * dot(k, c) * (1.0 - cs);
 }
-// Geometric FX on the print-area coordinate (0..1 over the printed image),
-// before crop/bleed mapping. Out-of-range results clamp to the edge texel.
-vec2 fxUV(vec2 r){
+// Live FX geometry, split for compile size: the megashader inlines every
+// function at every call site, and srcUV() has ~25 of them — an iGPU
+// (Intel Mac) lost its GL context in a loop when the whole effect switch
+// rode along on each fetch. fxFrame() (mirror / flip / zoom+pan) is cheap
+// and stays per call; the effect displacement is evaluated ONCE per
+// fragment in main() into g_fxDisp (per-plate deltas are sub-texel, so
+// reusing it is visually exact), and EDGE likewise into g_fxEdge.
+vec2 g_fxDisp = vec2(0.0);
+float g_fxEdge = -1.0;
+vec2 fxFrame(vec2 r){
   if(u_fxMirror > 0.5) r.x = 1.0 - r.x;
   if(u_fxFlipV > 0.5) r.y = 1.0 - r.y;
   if(u_fxZoom > 1.001){
     float iz = 1.0 / u_fxZoom;
     r = (r - 0.5) * iz + 0.5 + u_fxPan * (0.5 - 0.5 * iz);
   }
+  return r;
+}
+vec2 fxEffect(vec2 r){
   int fx = int(u_fx + 0.5);
   float a = clamp(u_fxAmt, 0.0, 1.0);
   if(fx == 2){                                   // PIXEL: cell size from amount (~45 across at default)
@@ -745,17 +755,18 @@ vec2 fxUV(vec2 r){
 // then apply u_crop to select the right region of the source texture.
 // u_bleed zooms the image relative to the print area:
 //   bleed > 0 = image extends beyond print edges (zoom in, less source visible)
-vec2 srcUV(vec2 uv){
+vec2 printRemap(vec2 uv){
   // Remap: print area left edge → 0, right edge → 1
   float paL = u_printArea.x;          // left margin
   float paR = u_printArea.z;          // right margin (from right edge)
   float paT = u_printArea.y;          // top margin
   float paB = u_printArea.w;          // bottom margin
-  vec2 remapped = vec2(
-    (uv.x - paL) / (1.0 - paL - paR),
-    (uv.y - paT) / (1.0 - paT - paB)
-  );
-  if(u_fx > 0.5 || u_fxMirror > 0.5 || u_fxFlipV > 0.5 || u_fxZoom > 1.001) remapped = fxUV(remapped);
+  return vec2((uv.x - paL) / (1.0 - paL - paR), (uv.y - paT) / (1.0 - paT - paB));
+}
+vec2 srcUV(vec2 uv){
+  vec2 remapped = printRemap(uv);
+  if(u_fxMirror > 0.5 || u_fxFlipV > 0.5 || u_fxZoom > 1.001) remapped = fxFrame(remapped);
+  remapped += g_fxDisp;               // effect displacement, evaluated once per fragment in main()
   // Apply bleed: zoom image relative to print area (always >= 0)
   // bleed > 0 = zoom in (image bleeds past edges, less source visible)
   vec2 cropPos = u_crop.xy;
@@ -842,27 +853,30 @@ vec3 adjustRGB(vec3 rgb, vec2 pix){
 // Every source read goes through here (geometry via srcUV→fxUV; the
 // neighbourhood effects need the texture, so they live at the fetch).
 float fxLum(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
+// EDGE line value at source uv s: Sobel on luminance → dark lines on white.
+// Called ONCE per fragment from main() (g_fxEdge), never per fetch site.
+float fxEdgeAt(vec2 s){
+  float a = clamp(u_fxAmt, 0.0, 1.0);
+  vec2 tx = max(u_srcTexel * mix(0.5, 2.5, a), vec2(1.0 / 900.0));
+  float l00 = fxLum(texture2D(u_src, s + vec2(-tx.x, -tx.y)).rgb);
+  float l10 = fxLum(texture2D(u_src, s + vec2( 0.0,  -tx.y)).rgb);
+  float l20 = fxLum(texture2D(u_src, s + vec2( tx.x, -tx.y)).rgb);
+  float l01 = fxLum(texture2D(u_src, s + vec2(-tx.x,  0.0 )).rgb);
+  float l21 = fxLum(texture2D(u_src, s + vec2( tx.x,  0.0 )).rgb);
+  float l02 = fxLum(texture2D(u_src, s + vec2(-tx.x,  tx.y)).rgb);
+  float l12 = fxLum(texture2D(u_src, s + vec2( 0.0,   tx.y)).rgb);
+  float l22 = fxLum(texture2D(u_src, s + vec2( tx.x,  tx.y)).rgb);
+  float gx = (l20 + 2.0 * l21 + l22) - (l00 + 2.0 * l01 + l02);
+  float gy = (l02 + 2.0 * l12 + l22) - (l00 + 2.0 * l10 + l20);
+  return 1.0 - smoothstep(mix(0.14, 0.03, a), 0.5, length(vec2(gx, gy)));
+}
 vec4 fetchSrc(vec2 uv){
   vec2 s = srcUV(uv);
   vec4 c = texture2D(u_src, s);
   int fx = int(u_fx + 0.5);
-  float a = clamp(u_fxAmt, 0.0, 1.0);
-  if(fx == 1){                                   // EDGE: Sobel → dark lines on white; amount = weight + sensitivity
-    vec2 tx = max(u_srcTexel * mix(0.5, 2.5, a), vec2(1.0 / 900.0));
-    float l00 = fxLum(texture2D(u_src, s + vec2(-tx.x, -tx.y)).rgb);
-    float l10 = fxLum(texture2D(u_src, s + vec2( 0.0,  -tx.y)).rgb);
-    float l20 = fxLum(texture2D(u_src, s + vec2( tx.x, -tx.y)).rgb);
-    float l01 = fxLum(texture2D(u_src, s + vec2(-tx.x,  0.0 )).rgb);
-    float l21 = fxLum(texture2D(u_src, s + vec2( tx.x,  0.0 )).rgb);
-    float l02 = fxLum(texture2D(u_src, s + vec2(-tx.x,  tx.y)).rgb);
-    float l12 = fxLum(texture2D(u_src, s + vec2( 0.0,   tx.y)).rgb);
-    float l22 = fxLum(texture2D(u_src, s + vec2( tx.x,  tx.y)).rgb);
-    float gx = (l20 + 2.0 * l21 + l22) - (l00 + 2.0 * l01 + l02);
-    float gy = (l02 + 2.0 * l12 + l22) - (l00 + 2.0 * l10 + l20);
-    float e = smoothstep(mix(0.14, 0.03, a), 0.5, length(vec2(gx, gy)));
-    c.rgb = vec3(1.0 - e);
-  } else if(fx == 8){                            // RGB: chromatic split (vfx-js rgbShift)
-    vec2 sh = vec2(0.024 * a, 0.0);
+  if(fx == 1){ if(g_fxEdge >= 0.0) c.rgb = vec3(g_fxEdge); }   // EDGE: shared per-fragment value
+  else if(fx == 8){                                             // RGB: chromatic split (vfx-js rgbShift)
+    vec2 sh = vec2(0.024 * clamp(u_fxAmt, 0.0, 1.0), 0.0);
     c.r = texture2D(u_src, srcUV(uv + sh)).r;
     c.b = texture2D(u_src, srcUV(uv - sh)).b;
   }
@@ -3423,6 +3437,15 @@ float asciiStamp(vec2 skUVL, vec2 offL, int idx, float fragCov, float pf){
 
 void main(){
   vec2 uv = v_uv;
+  // Live FX, once per fragment (see fxEffect / fetchSrc): the effect
+  // displacement and the EDGE value are evaluated at the fragment's own uv
+  // and reused by every source fetch.
+  if(u_fx > 0.5){
+    vec2 r0 = printRemap(uv);
+    if(u_fxMirror > 0.5 || u_fxFlipV > 0.5 || u_fxZoom > 1.001) r0 = fxFrame(r0);
+    g_fxDisp = fxEffect(r0) - r0;
+    if(int(u_fx + 0.5) == 1) g_fxEdge = fxEdgeAt(srcUV(uv));
+  }
 
   // ── ASCII anchor-tone prepass (tiny lattice-resolution FBO) ──
   // One texel per lattice anchor; all 4 plates packed RGBA. Replaces the
@@ -4167,7 +4190,7 @@ void main(){
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/gen/bnvc256.js?v=2"></script>
-<script src="js/renderer.js?v=227"></script>
+<script src="js/renderer.js?v=228"></script>
 <script src="js/gif-decode.js?v=5"></script>
 <script src="js/source.js?v=65"></script>
 <script src="js/save.js?v=83"></script>
@@ -4179,7 +4202,7 @@ void main(){
 // toggle path loads them async later, which the presence-guarded call sites
 // (window.RisoAmtGPU && ...) handle.
 (function(){
-  var srcs=['js/riso-amt-webgpu.js?v=6','js/webgpu-live.js?v=16'];
+  var srcs=['js/riso-amt-webgpu.js?v=6','js/webgpu-live.js?v=17'];
   if(/[?&]webgpu\b/.test(location.search)){
     srcs.forEach(function(u){ document.write('<script src="'+u+'"><\/script>'); });
     window._webgpuShimsLoaded=true;

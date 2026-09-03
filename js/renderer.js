@@ -173,6 +173,12 @@ function initGL(onReady){
       // LUT separation replaces the in-shader solver for EVERY ink count.
       // ?slim forces this path for testing on other platforms.
       window._isD3D = /Direct3D/i.test(rend) || !!(window._flags && window._flags.slim);
+      // Intel Macs (iGPU under ANGLE-Metal): the megashader's first frame at
+      // 2x already outran the GPU watchdog on one, and the context-loss →
+      // rebuild → 2x probe cycle never converged. Suspect GPUs probe at 1x
+      // and draw in half-size bands; the probe still decides the final cap.
+      window._gpuSuspect = /Intel/i.test(rend) && /Mac/i.test(navigator.platform || '');
+      if(window._gpuSuspect) R.diag('gpu:suspect(intel-mac)');
       if(window._isD3D){ window._sepLutMinInk = 1; R.diag('d3d:slim-shaders on'); }
       if(/swiftshader|llvmpipe|software/i.test(rend)){
         console.warn('[gl] software renderer detected:', rend);
@@ -930,7 +936,7 @@ R.setDotSpacing = function(v){
 };
 
 R.drawFullscreenTiled = function(w, h){
-  const BAND_PX = 1 << 21;                                   // ~2.1 MP per band
+  const BAND_PX = (((window._ctxLossLog || []).length > 0) || window._gpuSuspect) ? (1 << 19) : (1 << 21);   // ~2.1 MP per band; 0.5 MP after a loss / on suspect iGPUs
   const bandH = Math.max(64, Math.floor(BAND_PX / Math.max(1, w)) & ~1);
   if(bandH >= h){ gl.drawArrays(gl.TRIANGLE_STRIP,0,4); return; }
   gl.enable(gl.SCISSOR_TEST);
@@ -1967,12 +1973,23 @@ function _renderInner(){
   // Apple GPU runs multiple SECONDS on office iGPUs: enough to freeze every
   // Edge/Chrome window (they share one GPU process) or trip Windows' 2 s
   // TDR driver reset. Exports are unaffected (their own sizing + tiling).
-  const gpuCap = (!window._gpuProbed || window._gpuSlow) ? 2 : Infinity;
+  // After ANY context loss this session, or on a suspect iGPU before the
+  // probe has spoken, the cap drops to 1x (device pixels): a quarter of the
+  // 2x frame — the recovery draw must finish inside the watchdog or the loss
+  // loop never breaks.
+  const _lossy = ((window._ctxLossLog || []).length > 0) || (window._gpuSuspect && !window._gpuProbed);
+  const gpuCap = (!window._gpuProbed || window._gpuSlow) ? (_lossy ? 1 : 2) : Infinity;
   // Phones: cap full-quality frames at 4× CSS — that is already ≥1.3× the
   // DEVICE pixels (dpr-3 screens at CSS-1 sizing), so 6× is invisible extra
   // fill and battery. Exports have their own sizing and are unaffected.
   const platCap = isPhoneNow ? 4 : Infinity;
-  const effScale = Math.min(gpuCap, platCap,
+  // Preview-only caps (exports size themselves): a LIVE feed never needs the
+  // 6x dirty frame — 3x is already >= device pixels on a 2x display and the
+  // next frame replaces it anyway (user: "limit live preview quality but keep
+  // export resolution"); a mid-speed GPU (probe 17-50 ms/MP) keeps 4x.
+  const liveCap = (camOn || videoOn) ? Math.max(dpr, 3) : Infinity;
+  const midCap = window._gpuMid ? 4 : Infinity;
+  const effScale = Math.min(gpuCap, platCap, liveCap, midCap,
                    interacting ? Math.max(2, dpr)
                  : animTick    ? animScale
                  : Math.max(resScale, dpr));
@@ -2013,8 +2030,13 @@ function _renderInner(){
     gl.finish();                       // once, at boot — we need the real GPU time
     const _dt = performance.now() - _t0;
     window._gpuProbed = true;
-    R.diag('probe:' + Math.round(_dt) + 'ms@' + dw + 'x' + dh + (_dt > 90 ? ' SLOW' : ' ok'));
-    if(_dt > 90){
+    // Normalise per megapixel: the probe frame is 2x, or 1x on suspect iGPUs
+    // / after a loss, so a fixed 90 ms would misjudge the smaller frame.
+    // 50 ms/MP (= the old 90 ms at 1.8 MP) → slow, 2x cap; 17-50 → mid, 4x cap.
+    const _perMP = _dt / Math.max(0.05, dw * dh / 1e6);
+    R.diag('probe:' + Math.round(_dt) + 'ms@' + dw + 'x' + dh + ' ' + _perMP.toFixed(1) + 'ms/MP' + (_perMP > 50 ? ' SLOW' : _perMP > 17 ? ' mid' : ' ok'));
+    if(_perMP > 17 && _perMP <= 50) window._gpuMid = true;
+    if(_perMP > 50){
       window._gpuSlow = true;
       console.warn('[gl] slow GPU: probe frame ' + Math.round(_dt) + 'ms at ' + dw + 'x' + dh + ' — supersample capped at 2x, masters at 150dpi');
       try { R.toast('Slower GPU detected — quality reduced for stability'); } catch(e){}
