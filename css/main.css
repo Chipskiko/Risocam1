@@ -88,6 +88,19 @@ header{border-bottom:1px solid var(--border);background:var(--bg);position:stick
   .header-btn{padding:5px 10px;font-size:9px}
 }
 .left-col{display:flex;flex-direction:column;gap:12px;min-width:0}
+/* Desktop (two-column) on a SHORT viewport: the grid container is a fixed
+   calc(100vh - 56px) with overflow:hidden, and the left column had no
+   overflow rule of its own — on a 1440x900 display (~760px CSS viewport)
+   the paper row and profiles fell below the fold with no way to reach them
+   (user: "just not scrolling"). Let the column scroll inside its cell; the
+   right panel already does. Narrow layouts keep their sticky-viewfinder
+   machinery (display:contents) and are unaffected. */
+@media(min-width:901px){
+  .left-col{max-height:calc(100vh - 96px);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-width:thin}
+  /* flex children would otherwise SHRINK to fit the capped column (the profiles
+     section collapsed to 2px, overflow hidden) instead of overflowing into scroll */
+  .left-col>*{flex:0 0 auto}
+}
 .viewfinder-wrap{z-index:10}
 @media(max-width:900px){
   /* AFTER the .left-col base rule by source order, or display:flex wins. */

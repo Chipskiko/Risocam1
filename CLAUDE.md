@@ -272,3 +272,14 @@ model-driven split is A/B guarded: five split samples not ≥20% cheaper than
 the plain path → off for the session (_covSplitBad, also respected by the
 cadence ladder). HUD: "exec N ms (fence delta) | latency | queue".
 
+## Desktop short-viewport scroll (2026-09-02)
+
+Two-column layout on a ~760px-tall viewport (1440x900 Intel MacBook): the
+grid container is calc(100vh - 56px) overflow:hidden and .left-col had no
+overflow of its own, so paper row + profiles fell below the fold, unreachable
+(user: "just not scrolling"). Now @media(min-width:901px) .left-col has
+max-height calc(100vh - 96px) + overflow-y:auto AND .left-col>*{flex:0 0
+auto} — without the latter the flex column SHRANK the last section to 2px
+(overflow hidden) instead of overflowing into scroll. Verified at 1440x740:
+scroll range 222px, profiles fully reachable, back to 0.
+
