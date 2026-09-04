@@ -9,7 +9,7 @@
 // Returning the BLURRED plane (not raw bits) means the main thread only has
 // to do bit-packing into RGBA + texImage2D upload, both of which are fast.
 
-self.importScripts('./riso-amt.js?v=27');
+self.importScripts('./riso-amt.js?v=28');
 
 // Same Gaussian blur as renderer.js gaussianBlurPlane — replicated here so
 // the worker doesn't need a separate import. Two-pass separable filter.

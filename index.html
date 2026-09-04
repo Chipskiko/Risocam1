@@ -2572,28 +2572,38 @@ float lineSampled(float val, vec2 pix, float cellPx, float angle, int idx){
 // "opaque video with dots on top"). This ports the density stage, so live
 // dots carry the master's tone; only the placement differs (blue noise
 // instead of error diffusion).
-float risoToneCurve(float g){   // g: 0 = full ink intent … 1 = paper (TONE_CURVE, riso-amt.js)
-  if(g < 0.0627) return 0.456;
-  if(g < 0.1255) return mix(0.456, 0.395, (g - 0.0627) / 0.0628);
-  if(g < 0.251)  return mix(0.395, 0.274, (g - 0.1255) / 0.1255);
-  if(g < 0.376)  return mix(0.274, 0.206, (g - 0.251) / 0.125);
-  if(g < 0.502)  return mix(0.206, 0.155, (g - 0.376) / 0.126);
-  if(g < 0.627)  return mix(0.155, 0.106, (g - 0.502) / 0.125);
-  if(g < 0.690)  return mix(0.106, 0.0958, (g - 0.627) / 0.063);
-  if(g < 0.878)  return 0.0958;
-  if(g < 0.941)  return mix(0.0958, 0.0886, (g - 0.878) / 0.063);
-  if(g < 0.973)  return mix(0.0886, 0.070, (g - 0.941) / 0.032);
-  if(g < 0.988)  return 0.070;
-  return mix(0.070, 0.011, (g - 0.988) / 0.012);
+float risoToneCurve(float g){   // g: 0 = full ink intent … 1 = paper — MZ9 MEASURED master transfer (riso-amt.js TONE_CURVE_MZ9)
+  float x = g * 255.0;
+  if(x < 8.0)   return 0.70;
+  if(x < 24.0)  return mix(0.70,  0.548, (x - 8.0)   / 16.0);
+  if(x < 40.0)  return mix(0.548, 0.470, (x - 24.0)  / 16.0);
+  if(x < 56.0)  return mix(0.470, 0.405, (x - 40.0)  / 16.0);
+  if(x < 72.0)  return mix(0.405, 0.350, (x - 56.0)  / 16.0);
+  if(x < 88.0)  return mix(0.350, 0.303, (x - 72.0)  / 16.0);
+  if(x < 104.0) return mix(0.303, 0.269, (x - 88.0)  / 16.0);
+  if(x < 120.0) return mix(0.269, 0.238, (x - 104.0) / 16.0);
+  if(x < 136.0) return mix(0.238, 0.215, (x - 120.0) / 16.0);
+  if(x < 152.0) return mix(0.215, 0.187, (x - 136.0) / 16.0);
+  if(x < 168.0) return mix(0.187, 0.165, (x - 152.0) / 16.0);
+  if(x < 184.0) return mix(0.165, 0.156, (x - 168.0) / 16.0);
+  if(x < 200.0) return mix(0.156, 0.152, (x - 184.0) / 16.0);
+  if(x < 216.0) return mix(0.152, 0.147, (x - 200.0) / 16.0);
+  if(x < 232.0) return mix(0.147, 0.140, (x - 216.0) / 16.0);
+  if(x < 248.0) return mix(0.140, 0.123, (x - 232.0) / 16.0);
+  return mix(0.123, 0.0, (x - 248.0) / 7.0);
 }
 float risoLiveDensity(vec3 src, vec3 ink){
   vec3 d = ink - u_paperColor;
   float dLen2 = dot(d, d);
   if(dLen2 < 1e-5) return 0.0;                              // ink ≈ paper: the prepass skips it too
-  float t = clamp(dot(src - u_paperColor, d) / dLen2, 0.0, 1.0);
+  float t;
+  if(fxLum(ink) < 0.25){                                    // near-black ink: the driver burns the DARKNESS (see the bake's projection)
+    t = clamp(1.0 - fxLum(src) / max(fxLum(u_paperColor), 0.01), 0.0, 1.0);
+  } else {
+    t = clamp(dot(src - u_paperColor, d) / dLen2, 0.0, 1.0);
+  }
   t = (t < 0.02) ? 0.0 : (t - 0.02) / 0.98;                 // master burn floor
-  float v = clamp(risoToneCurve(1.0 - t) * 1.7, 0.0, 1.0);  // tone curve × coverageScale
-  return mix(v, 1.0, clamp((v - 0.55) / 0.15, 0.0, 1.0));   // solid-fill lift (per-fragment stand-in for the 11px box mean)
+  return risoToneCurve(1.0 - t);                            // measured transfer IS the burned coverage: no ×1.7, no solid-fill lift
 }
 // Live grain touch rendered the way the master path renders it: blue-noise
 // ON/OFF per would-be master texel (u_amtTexel = the texel the prepass WOULD
@@ -4186,11 +4196,11 @@ void main(){
 <script src="js/state.js?v=22"></script>
 <script src="js/undo.js?v=11"></script>
 <script src="js/compare.js?v=6"></script>
-<script src="js/riso-amt.js?v=27"></script>
+<script src="js/riso-amt.js?v=28"></script>
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/gen/bnvc256.js?v=2"></script>
-<script src="js/renderer.js?v=238"></script>
+<script src="js/renderer.js?v=239"></script>
 <script src="js/gif-decode.js?v=5"></script>
 <script src="js/source.js?v=66"></script>
 <script src="js/save.js?v=83"></script>
@@ -4202,7 +4212,7 @@ void main(){
 // toggle path loads them async later, which the presence-guarded call sites
 // (window.RisoAmtGPU && ...) handle.
 (function(){
-  var srcs=['js/riso-amt-webgpu.js?v=6','js/webgpu-live.js?v=17'];
+  var srcs=['js/riso-amt-webgpu.js?v=6','js/webgpu-live.js?v=18'];
   if(/[?&]webgpu\b/.test(location.search)){
     srcs.forEach(function(u){ document.write('<script src="'+u+'"><\/script>'); });
     window._webgpuShimsLoaded=true;

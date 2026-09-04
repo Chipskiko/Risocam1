@@ -208,8 +208,31 @@ const STENCILS = {
 // CORE PRE-PASS
 // -----------------------------------------------------------------------------
 
+// MZ9 MEASURED transfer (2026-09-04): grey → ink coverage counted from a real
+// MZ970 print-to-file master of a full-page photo (Test images/
+// captured_master_6880x9755.png against its original, 16.7M samples per
+// bin set). This is what the drum actually burns: black stops at ~0.71 (the
+// driver's Table A/B/C threshold dither saturates just above 0.70 — flat
+// fields measured 0.70 → 0.696, 0.75 → 0.971, 0.80 → 1.0), the lights keep a
+// ~12-15% haze, and there is NO solid fill. Capped at 0.70 so the tables
+// never saturate. The balloon-capture curve (max 0.456) is kept as
+// TONE_CURVE_BALLOON; with its ×1.7 coverageScale it overshot black to 0.78
+// → solid, which read as "noise" next to the real master.
+// Index convention as TONE_CURVE: 0 = full ink intent … 255 = paper.
+const TONE_CURVE_BALLOON = TONE_CURVE;
+const TONE_CURVE_MZ9 = new Float32Array(256);
+(function fillMz9() {
+  const K = [[0,0.70],[8,0.70],[24,0.548],[40,0.470],[56,0.405],[72,0.350],[88,0.303],[104,0.269],[120,0.238],[136,0.215],[152,0.187],[168,0.165],[184,0.156],[200,0.152],[216,0.147],[232,0.140],[248,0.123],[255,0.0]];
+  for (let i = 0; i < 256; i++) {
+    let a = K[0], b = K[K.length - 1];
+    for (let k = 0; k < K.length - 1; k++) { if (i >= K[k][0] && i <= K[k + 1][0]) { a = K[k]; b = K[k + 1]; break; } }
+    const f = (b[0] === a[0]) ? 0 : (i - a[0]) / (b[0] - a[0]);
+    TONE_CURVE_MZ9[i] = a[1] + (b[1] - a[1]) * f;
+  }
+})();
+
 const DEFAULTS = {
-  toneCurve: TONE_CURVE,    // 256-entry Float32Array, input gray → target coverage
+  toneCurve: TONE_CURVE_MZ9, // 256-entry Float32Array, input gray → target coverage (measured MZ9 master transfer)
   matrix: HT5_3x3_6x6,      // 8×8 byte matrix
   matrixSize: 8,            // matrix is matrixSize × matrixSize
   // Stencil decision (after some back-and-forth):
@@ -250,7 +273,7 @@ const DEFAULTS = {
   //   solidFillStrength: blend amount toward 1.0 once over threshold (0..1)
   //
   // Set solidFillThreshold > 1 to disable. Default ON.
-  solidFillThreshold: 0.55,
+  solidFillThreshold: 2.0,    // OFF: the real master never solid-fills (measured); print-side gap closing is the shader's ink spread
   solidFillRadius: 5,
   solidFillStrength: 1.0,
   // ── DRIVER-FAITHFUL MODE ──
@@ -863,6 +886,8 @@ const api = {
   STENCILS,
   HT5_3x3_6x6,
   TONE_CURVE,
+  TONE_CURVE_MZ9,
+  TONE_CURVE_BALLOON,
   // Driver-extracted LUTs (rev-engineered from rastertoRISO04A)
   RISO_DRIVER_TABLE_A,
   RISO_DRIVER_TABLE_B,

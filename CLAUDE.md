@@ -345,3 +345,21 @@ would be coverageScale 1.0, solidFill off, projection against BLACK (not
 the ink colour) or a cap on t, and no saturation at the black end — with the
 print-side dot gain left to the shader's ink spread. Open decision.
 
+## RISO bake = measured MZ9 master transfer (2026-09-04)
+
+User call: the real MZ9 master is the target ("ours looks too much like
+noise"). Changed: DEFAULTS.toneCurve = TONE_CURVE_MZ9 (the eye-capture
+transfer, 16 knots, capped at 0.70 so the Table A/B/C threshold dither never
+saturates — flat fields: tables-on is exact to 0.70, then 0.714 → 0.751,
+0.75 → 0.971, 0.80 → 1.0; plain FS is exact everywhere), coverageScale
+default 1.0, solid fill OFF (DEFAULTS.solidFillThreshold 2), and the bake's
+projection uses luminance darkness for near-black inks (lum < 0.25) instead
+of the ink chord. The live shader path (risoToneCurve / risoLiveDensity)
+mirrors all of it. Result on the eye original, Mono 600 dpi: page ink 45.9%
+(driver 45.1%), reference region 55.1% (60.1%), lag-1 autocorr 0.025/0.140
+(driver 0.047/0.144). Bake and live agree (sample: 34.0% vs 34.4% expected).
+Classic sample is lighter and hazier than before — that is the print.
+TONE_CURVE_BALLOON keeps the old curve for reference. Open: dot-pattern
+regularity — the driver's 3x crops look like clean ordered dispersion, ours
+noisier; compare against test_03_gray50.prn (tables amplitude?).
+

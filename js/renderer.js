@@ -2886,7 +2886,7 @@ function _initAmtWorker(){
   _amtWorkerReady = (async () => {
     let blobUrl;
     try {
-      blobUrl = await _buildWorkerBlobUrl('js/riso-amt-worker.js?v=7');
+      blobUrl = await _buildWorkerBlobUrl('js/riso-amt-worker.js?v=8');
     } catch (e) {
       console.warn('[RisoAmt] worker blob build failed, falling back to sync:', e);
       _amtWorkerPool = [];
@@ -3159,7 +3159,7 @@ async function _runAmtPrepassImpl(){
   //   _riso_thresholdNoise: per-pixel jitter on FS threshold to break
   //     sawtooth artifact at high-contrast edges. 0..0.15 typical.
   const _runOpts = {
-    coverageScale: (typeof window._riso_maxCoverage === 'number') ? window._riso_maxCoverage : 1.7,
+    coverageScale: (typeof window._riso_maxCoverage === 'number') ? window._riso_maxCoverage : 1.0,   // 1.0: the MZ9 measured curve already IS the burned coverage
     thresholdNoise: (typeof window._riso_thresholdNoise === 'number') ? window._riso_thresholdNoise : 0.0,
   };
   // Solid-fill lift is a PRINT-side effect modelled in the master domain; the
@@ -3274,7 +3274,10 @@ async function _runAmtPrepassImpl(){
                          : (Math.round(IR) + ',' + Math.round(IG) + ',' + Math.round(IB));
     let p = projByKey.get(key);
     if(!p){
-      p = { buf: new Uint8Array(W * H), dr, dg, db, inv: 1 / dLen2,
+      // Near-black inks: the driver converts to grey and burns the DARKNESS,
+      // so project on luminance (the chord against RGB 26 over-read dark greys
+      // by 1.11x → black end saturated). Coloured inks keep the chord.
+      p = { buf: new Uint8Array(W * H), dr, dg, db, inv: 1 / dLen2, dark: (0.299*IR + 0.587*IG + 0.114*IB) < 64,
             rgbCh: isRgbSep ? Math.min(chIdx, 2) : -1 };
       projByKey.set(key, p);
       projJobs.push(p);
@@ -3295,6 +3298,8 @@ async function _runAmtPrepassImpl(){
         let t;
         if(p.rgbCh >= 0){
           t = 1 - src[i + p.rgbCh] / 255;      // RGB sep: inverse channel
+        } else if(p.dark){
+          t = 1 - (0.299*src[i] + 0.587*src[i+1] + 0.114*src[i+2]) / Math.max(1, 0.299*PR + 0.587*PG + 0.114*PB);
         } else {
           t = (vr*p.dr + vg*p.dg + vb*p.db) * p.inv;
         }
@@ -3953,7 +3958,7 @@ R.setRisoParams = function(opts){
   return {
     dpi: window._amtScanDpi || 150,
     inkSpread: window._inkSpread != null ? window._inkSpread : 0.7,
-    maxCoverage: window._riso_maxCoverage != null ? window._riso_maxCoverage : 1.7,
+    maxCoverage: window._riso_maxCoverage != null ? window._riso_maxCoverage : 1.0,
     thresholdNoise: window._riso_thresholdNoise != null ? window._riso_thresholdNoise : 0.0
   };
 };
