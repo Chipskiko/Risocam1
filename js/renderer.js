@@ -3162,6 +3162,11 @@ async function _runAmtPrepassImpl(){
     coverageScale: (typeof window._riso_maxCoverage === 'number') ? window._riso_maxCoverage : 1.7,
     thresholdNoise: (typeof window._riso_thresholdNoise === 'number') ? window._riso_thresholdNoise : 0.0,
   };
+  // Solid-fill lift is a PRINT-side effect modelled in the master domain; the
+  // real driver never does it (measured: a black region burns ~71% dispersed
+  // dots, not solid). window._riso_solidFillThreshold overrides the worker's
+  // DEFAULTS (>= 1 disables) — R.setRisoParams({solidFill:false}).
+  if(typeof window._riso_solidFillThreshold === 'number') _runOpts.solidFillThreshold = window._riso_solidFillThreshold;
 
   await _yield(); await _yield();
 
@@ -3205,7 +3210,7 @@ async function _runAmtPrepassImpl(){
           const D = window.RisoAmt.DEFAULTS;
           const res = await window.RisoAmtGPU.runChannelsFromRGBA(src, W, H, chans, {
             coverageScale: _runOpts.coverageScale,
-            solidFillThreshold: D.solidFillThreshold,
+            solidFillThreshold: (typeof _runOpts.solidFillThreshold === 'number') ? _runOpts.solidFillThreshold : D.solidFillThreshold,
             solidFillRadius: (typeof D.solidFillRadius === 'number') ? D.solidFillRadius : 5,
             solidFillStrength: (typeof D.solidFillStrength === 'number') ? D.solidFillStrength : 1.0,
           });
@@ -3933,6 +3938,10 @@ R.setRisoParams = function(opts){
   }
   if(typeof opts.thresholdNoise === 'number'){
     window._riso_thresholdNoise = Math.max(0, Math.min(0.5, opts.thresholdNoise));
+    fsAffected = true;
+  }
+  if(opts.solidFill !== undefined){            // false = off (driver-exact), true = default 0.55, number = threshold
+    window._riso_solidFillThreshold = (opts.solidFill === false) ? 2 : (opts.solidFill === true ? 0.55 : Math.max(0, Math.min(2, +opts.solidFill)));
     fsAffected = true;
   }
   if(fsAffected){

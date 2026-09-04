@@ -298,3 +298,50 @@ shrinks their animation budget to 60% of the tick (UI headroom); the camera
 is also requested at 640 px wide instead of 1280. The HUD tier line says
 "low-power: live 1x, stills once". Fast GPUs keep the 3x live cap.
 
+## WebGPU master bake — measured (2026-09-02, M2 Pro, sample image, 4 plates)
+
+R.setAmtWebGPU(true) (raster wavefront FS + Tables A/B/C, projection and
+solid fill on GPU) vs the CPU driver path (serpentine FS, 8 workers, 2
+bands/ch): 150 dpi 406 vs 253 ms (GPU incl. pipeline init), 300 dpi 610 vs
+609 ms, 600 dpi 1976 vs 2251 ms — i.e. NO practical speed-up on the machines
+that have WebGPU; the CPU path's cost is projection(main) 809 + FS 1434 at
+600 dpi, the GPU's is dominated by the 4 x 74 MP master readback/upload into
+WebGL. Fidelity: tone identical (ON fraction 46.3/48.7% both), pixel
+agreement 69/75% (different arrangements), GPU pattern more isotropic
+(lag-1 autocorr H/V 0.22/0.23 vs CPU 0.28/0.34 — the CPU serpentine shows a
+slight vertical worm bias), visually interchangeable at 1:1. Conclusion:
+WebGPU-for-RISO only pays if the masters stay GPU-side (the webgpu-live
+project), and the machines that need speed (Intel Mac, Safari 17) have no
+WebGPU at all. Parked.
+
+## Real-driver parity check (2026-09-04)
+
+The Mac filter (/Library/Printers/RISO/Filters/04A/rastertoRISO04A) is a
+ppc/i386 binary — no current macOS can run it (Rosetta 2 is x86_64 only), so
+the only ground truth is the print-to-file captures in "Test images/"
+(Windows MZ970 driver; captured_master_6880x9755.png = the eye artwork
+original_a763….png at 600 dpi, page offset (70, ~100)). Measured against it:
+
+- Driver transfer on that capture (grey → ink): 8→0.71, 40→0.47, 72→0.35,
+  120→0.24, 184→0.16, 248→0.12; whole page darkness 0.74 → ink 0.45. Our
+  TONE_CURVE×1.7 sits 10-30% above it in the mid/darks and matches the lights.
+- Our master of the same image (Mono, 600 dpi): ink 0.71 whole / 0.85 in the
+  reference region vs the driver's 0.45 / 0.60. Causes, in order: (1) near
+  black our driverFaithful FS saturates to 100% (flat gray 8 → cov 1.0 at
+  ×1.7; 0.453 at ×1.0) where the driver burns ~71% dispersed dots; (2) the
+  chord projection normalises to the INK colour (Mono ink RGB 26 → t gain
+  1.114 → dark greys become full ink intent); (3) solid-fill lift (~2 pts on
+  this image; now switchable: R.setRisoParams({solidFill:false}) →
+  window._riso_solidFillThreshold plumbs to workers and the GPU path).
+- Dot structure: driver lag-1 autocorr H/V 0.05/0.14 (dispersed, slight
+  vertical bias); ours 0.49/0.53 (clumped by saturation). FS itself is
+  mean-preserving (flat fields: cov = TONE_CURVE×scale exactly).
+- WebGPU raster wavefront vs CPU serpentine (sample image, 4 plates): tone
+  identical, pattern more isotropic on GPU, no speed win on an M2 Pro (600
+  dpi 1976 vs 2251 ms; readback-bound).
+
+So "driver parity" today = the tone curve's shape. A driver-exact preset
+would be coverageScale 1.0, solidFill off, projection against BLACK (not
+the ink colour) or a cap on t, and no saturation at the black end — with the
+print-side dot gain left to the shader's ink spread. Open decision.
+
