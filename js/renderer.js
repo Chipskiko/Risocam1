@@ -1975,7 +1975,14 @@ function _renderInner(){
   // UPSCALED by the compositor, and resampled grain bands (measured: column
   // contrast ripple 12% in-buffer -> 22-34% after any bilinear rescale).
   // At the dpr floor the buffer maps 1:1 to device pixels — no resample.
-  const animCap = Math.max(dpr, Math.max(3, dpr * 1.5) - (window._animLodBias || 0));
+  // RISO / STIPPLE: the master is a 600 dpi bitmap — a 3x animation buffer
+  // cannot resolve it and every tick came out soft next to the crisp 6x
+  // still (user: "ink spread 0 looks perfect paused, blurry unpaused"). Those
+  // modes animate misregistration only, so their ticks keep full resolution;
+  // the GPU budget below still shrinks them on machines that can't afford it.
+  const _crispMode = (window._mode || mode) === 'flat' || (window._mode || mode) === 'stipple';
+  const animCap = _crispMode ? Math.max(resScale, dpr)
+                             : Math.max(dpr, Math.max(3, dpr * 1.5) - (window._animLodBias || 0));
   const animScale = Math.min(Math.max(resScale, dpr), animCap);
   // GPU safe mode: BEFORE the first frame has probed the GPU — and forever
   // after on GPUs the probe judged slow, or after repeated context losses —
@@ -2050,7 +2057,10 @@ function _renderInner(){
   const _animTargetFps = (camOn || videoOn) && risoFps > 0 ? R.liveFps() : Math.max(2, cached.grainStatic || 0);
   const budgetScale = (isRecording || _saving) ? Infinity
                     : interacting ? scaleFor(B.interact, 0.5)
-                    : animTick    ? scaleFor(B.animFrac * (lowPower ? 0.6 : 1) * 1000 / Math.max(1, _animTargetFps), 0.5)
+                    // crisp modes (RISO/STIPPLE) never trade resolution for cadence: a
+                    // tick gets the STILL budget; if the GPU can't afford it the tick rate
+                    // drops instead (the scheduler skips, never stretches).
+                    : animTick    ? (_crispMode ? scaleFor(B.still, 1) : scaleFor(B.animFrac * (lowPower ? 0.6 : 1) * 1000 / Math.max(1, _animTargetFps), 0.5))
                     : scaleFor(B.still, 1);
   const effScale = Math.min(gpuCap, platCap, liveCap, midCap, budgetScale,
                    interacting ? Math.max(2, dpr)
@@ -3128,7 +3138,22 @@ async function _runAmtPrepassImpl(){
   const tctx = tmp.getContext('2d');
   tctx.imageSmoothingEnabled = true;
   tctx.imageSmoothingQuality = 'high';
-  try { tctx.drawImage(srcCanvas, 0, 0, W, H); }
+  // Master softness (debug "Softness" / R.setRisoParams({softness:k})): the
+  // reference MZ9 print correlated best with the page blurred ~16 px at
+  // 600 dpi (it was printed from a low-res copy). k > 1 reproduces that by
+  // drawing the source through a 1/k intermediate (a cheap, engine-neutral
+  // low-pass — canvas filter support differs between engines). Default 1.
+  try {
+    const k = Math.max(1, Math.min(32, +window._riso_softness || 1));
+    if(k > 1.01){
+      const mid = document.createElement('canvas'); mid.width = Math.max(1, Math.round(W / k)); mid.height = Math.max(1, Math.round(H / k));
+      const mctx = mid.getContext('2d'); mctx.imageSmoothingEnabled = true; mctx.imageSmoothingQuality = 'high';
+      mctx.drawImage(srcCanvas, 0, 0, mid.width, mid.height);
+      tctx.drawImage(mid, 0, 0, W, H);
+    } else {
+      tctx.drawImage(srcCanvas, 0, 0, W, H);
+    }
+  }
   catch(e){ gl.uniform1f(locs.u_useAmt, 0.0); return; }
   const src = tctx.getImageData(0, 0, W, H).data;
   console.log(`[RisoAmt] AMT@${scanDpi}dpi → ${W}×${H} (source was ${srcCanvas.width}×${srcCanvas.height})`);
@@ -3943,6 +3968,10 @@ R.setRisoParams = function(opts){
   }
   if(typeof opts.thresholdNoise === 'number'){
     window._riso_thresholdNoise = Math.max(0, Math.min(0.5, opts.thresholdNoise));
+    fsAffected = true;
+  }
+  if(typeof opts.softness === 'number'){        // master softness: 1 = off, k = source drawn through a 1/k intermediate (≈ σ k/2 px at the master's dpi)
+    window._riso_softness = Math.max(1, Math.min(32, opts.softness));
     fsAffected = true;
   }
   if(opts.solidFill !== undefined){            // false = off (driver-exact), true = default 0.55, number = threshold

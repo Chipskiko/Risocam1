@@ -374,3 +374,16 @@ correlates best with the page darkness blurred σ≈16 px (0.68 mm at 600 dpi;
 Baking a σ=16 pre-blurred source reproduces the soft-blob look. Not baked in
 by default — it is a property of that job, not of the driver.
 
+## Crisp modes animate at full resolution (2026-09-04)
+
+RISO/STIPPLE ticks used the 3x anim cap, so every unpaused frame was a
+downsampled 600 dpi master next to the crisp 6x still (user: "ink spread 0
+looks perfect paused, blurry unpaused"). Now _crispMode (flat/stipple): animCap
+= max(resScale, dpr) and the tick takes the STILL budget (250 ms) — resolution
+is never traded for cadence there; the scheduler skips ticks instead.
+Verified: RISO still 5x → tick 5x (same buffer); grain tick still on the anim
+budget. Also added: master softness — R.setRisoParams({softness:k}) /
+DEBUG "Softness" slider (1 = off): the bake draws the source through a 1/k
+intermediate before FS (the reference MZ9 print measured ~16 px of source
+blur at 600 dpi; k≈24 ≈ that look). window._riso_softness, fsAffected.
+

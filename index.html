@@ -279,6 +279,9 @@
             <div class="slider-row" title="Gaussian σ in master pixels for soft round dot edges (ink spread on paper).">
               <span class="slider-label">Ink Spread</span><input type="range" id="risoInkSpread" min="0" max="20" value="5" step="1" oninput="R.setRisoParams({inkSpread:this.value/10}); document.getElementById('risoInkSpreadVal').textContent=(this.value/10).toFixed(1);"><span class="slider-value" id="risoInkSpreadVal">0.5</span>
             </div>
+            <div class="slider-row" title="Master softness — the source is low-passed before the master is burned (k = draw through a 1/k intermediate). The reference MZ9 print measured ≈16 px of blur at 600 dpi (printed from a low-res copy); 1 = off, sharp source.">
+              <span class="slider-label">Softness</span><input type="range" id="risoSoft" min="1" max="24" value="1" step="1" oninput="R.setRisoParams({softness:parseInt(this.value)}); document.getElementById('risoSoftVal').textContent=this.value;"><span class="slider-value" id="risoSoftVal">1</span>
+            </div>
             <div class="slider-row" title="Master resolution (DPI). Real Riso = 600. Higher = finer dots but slower prepass.">
               <span class="slider-label">DPI</span><input type="range" id="risoDpi" min="100" max="600" value="150" step="50" oninput="R.setRisoParams({dpi:parseInt(this.value)}); document.getElementById('risoDpiVal').textContent=this.value;"><span class="slider-value" id="risoDpiVal">150</span>
             </div>
@@ -4200,7 +4203,7 @@ void main(){
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/gen/bnvc256.js?v=2"></script>
-<script src="js/renderer.js?v=240"></script>
+<script src="js/renderer.js?v=242"></script>
 <script src="js/gif-decode.js?v=5"></script>
 <script src="js/source.js?v=66"></script>
 <script src="js/save.js?v=83"></script>
