@@ -1114,7 +1114,7 @@ async function toggleCam(){
   window._camBusy=true;
   try{
     stopVideo(); // stop any uploaded video before starting camera
-    camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:R.isPhone()?640:1280}}});
+    camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:(R.isPhone()||window._lowPower)?640:1280}}}); // low-power GPUs: smaller frames to upload
     $vid.srcObject=camStream;
     bindCamTrackEnd(camStream);
     // Wait for video to actually start playing

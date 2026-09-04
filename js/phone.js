@@ -217,8 +217,8 @@ async function phFlipCam(){
   camOn=false;
   // Try exact constraint first, then ideal as fallback
   const constraints=[
-    {video:{facingMode:{exact:newFacing},width:{ideal:R.isPhone()?640:1280}}},
-    {video:{facingMode:newFacing,width:{ideal:R.isPhone()?640:1280}}}
+    {video:{facingMode:{exact:newFacing},width:{ideal:(R.isPhone()||window._lowPower)?640:1280}}},
+    {video:{facingMode:newFacing,width:{ideal:(R.isPhone()||window._lowPower)?640:1280}}}
   ];
   for(const c of constraints){
     try{
@@ -237,7 +237,7 @@ async function phFlipCam(){
   }
   // All failed — try to restore previous camera
   try{
-    const s=await navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:R.isPhone()?640:1280}}});
+    const s=await navigator.mediaDevices.getUserMedia({video:{facingMode,width:{ideal:(R.isPhone()||window._lowPower)?640:1280}}});
     camStream=s;if(R.bindCamTrackEnd)R.bindCamTrackEnd(s);$vid.srcObject=s;await $vid.play();
     camOn=true;needsAspectUpdate=true;computeCrop();scheduleRender();
     if(R.setFxMirror)R.setFxMirror(facingMode==='user');

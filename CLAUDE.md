@@ -291,4 +291,10 @@ once per session (window._lowPowerStill, toast), so the engine renders one
 full frame and idles (user: "on low power computers no live grain
 animations, just stuck to still"). An explicit FPS click sets
 window._userSetFps and is never overridden; live feeds keep their liveFps.
+Live feeds on low-power GPUs: window._lowPower (= probe tier mid/slow, or
+the current mode > 30 ms/MP — 30 so a busy moment on an M2 at 14-15 can't
+trip the sticky auto-STILL) caps camera/video/GIF frames at 1x CSS and
+shrinks their animation budget to 60% of the tick (UI headroom); the camera
+is also requested at 640 px wide instead of 1280. The HUD tier line says
+"low-power: live 1x, stills once". Fast GPUs keep the 3x live cap.
 

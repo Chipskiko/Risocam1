@@ -1997,7 +1997,6 @@ function _renderInner(){
   // 6x dirty frame — 3x is already >= device pixels on a 2x display and the
   // next frame replaces it anyway (user: "limit live preview quality but keep
   // export resolution"); a mid-speed GPU (probe 17-50 ms/MP) keeps 4x.
-  const liveCap = (camOn || videoOn) ? Math.max(dpr, 3) : Infinity;
   const midCap = window._gpuMid ? 4 : Infinity;
   // ── Adaptive GPU budget ──
   // A per-mode cost model (ms per megapixel, learned from fenceSync frame
@@ -2035,6 +2034,14 @@ function _renderInner(){
   const _gpuKey = R._gpuKey();
   const _mpp = R._gpuMsPerMP(_gpuKey);
   const _cssMP = cssW * cssH / 1e6;
+  // Low-power GPUs (probe tier mid/slow, or the current mode > 17 ms/MP):
+  // live feeds run at 1x CSS max (half the device pixels on a 2x display)
+  // and their animation budget shrinks to 60% of the tick, leaving headroom
+  // for the UI (user: "on videos and live camera low rez"). Fast GPUs keep
+  // the 3x live cap. Same criterion as the auto-STILL for stills.
+  const lowPower = !!(window._gpuSlow || window._gpuMid || _mpp > 30);   // 30: twice an M2's 14-15, so a busy moment on a fast GPU can't trip it
+  window._lowPower = lowPower;
+  const liveCap = (camOn || videoOn) ? (lowPower ? 1 : Math.max(dpr, 3)) : Infinity;
   // floorScale: stills never go below 1x CSS; drags and animation may drop
   // to 0.5x on a slow GPU (upscaled by the compositor) — motion hides it and
   // the settle frame restores full quality.
@@ -2043,7 +2050,7 @@ function _renderInner(){
   const _animTargetFps = (camOn || videoOn) && risoFps > 0 ? R.liveFps() : Math.max(2, cached.grainStatic || 0);
   const budgetScale = (isRecording || _saving) ? Infinity
                     : interacting ? scaleFor(B.interact, 0.5)
-                    : animTick    ? scaleFor(B.animFrac * 1000 / Math.max(1, _animTargetFps), 0.5)
+                    : animTick    ? scaleFor(B.animFrac * (lowPower ? 0.6 : 1) * 1000 / Math.max(1, _animTargetFps), 0.5)
                     : scaleFor(B.still, 1);
   const effScale = Math.min(gpuCap, platCap, liveCap, midCap, budgetScale,
                    interacting ? Math.max(2, dpr)
@@ -2236,11 +2243,11 @@ function _renderInner(){
     // Low-power GPUs: no grain animation for STILLS — one full frame, then
     // idle (user: "on low power computers no live grain animations, just
     // stuck to still"). Fires once per session when the probe tier is
-    // mid/slow or the current mode measures > 17 ms/MP; an explicit FPS
+    // mid/slow or the current mode measures > 30 ms/MP; an explicit FPS
     // click (window._userSetFps) always wins, and live feeds are untouched.
     if(!(camOn || videoOn) && cached.grainStatic > 0 && !window._userSetFps && !window._lowPowerStill && window._gpuProbed){
       const _mppNow = R._gpuMsPerMP(R._gpuKey());
-      if(window._gpuSlow || window._gpuMid || _mppNow > 17){
+      if(window._gpuSlow || window._gpuMid || _mppNow > 30){
         window._lowPowerStill = true;
         R.diag('lowpower:still ' + Math.round(_mppNow) + 'ms/MP');
         if(R.setRisoFps) R.setRisoFps(0);
@@ -4379,7 +4386,7 @@ function toggleStats(force){
         const mpp = P.mpp > 0 ? P.mpp : 0;
         const allow = (ms, fl) => (mpp > 0 && cssMP > 0) ? Math.max(fl, Math.floor(Math.sqrt(ms / mpp / cssMP) * 2) / 2) + 'x' : '?';
         const animFps = (typeof risoFps !== 'undefined' && (camOn || videoOn) && risoFps > 0) ? R.liveFps() : Math.max(2, (cached && cached.grainStatic) || 0);
-        const tier = window._gpuSoftware ? 'SOFTWARE RENDERER' : window._gpuSlow ? 'slow (2x cap)' : window._gpuMid ? 'mid (4x cap)' : window._gpuProbed ? 'full' : 'unprobed';
+        const tier = (window._gpuSoftware ? 'SOFTWARE RENDERER' : window._gpuSlow ? 'slow (2x cap)' : window._gpuMid ? 'mid (4x cap)' : window._gpuProbed ? 'full' : 'unprobed') + (window._lowPower ? ' | low-power: live 1x, stills once' : '');
         const losses = (window._ctxLossLog || []).length;
         return 'gpu       ' + (S.renderer || '?').slice(0, 72) + (S.vendor ? ' | ' + S.vendor.slice(0, 24) : '') + '\n' +
                'gl        ' + (S.gl2 ? 'webgl2' : 'webgl1') + ' | pref ' + S.power + ' | highp ' + S.highp + 'b | fence ' + (S.fence ? 'y' : 'n') + ' timerq ' + (S.timerq ? 'y' : 'n') + ' | tex ' + S.maxTex + ' units ' + S.units + ' fragUni ' + S.fragUni + ' varyings ' + S.varyings + '\n' +
