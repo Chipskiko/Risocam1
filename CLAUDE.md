@@ -387,3 +387,16 @@ DEBUG "Softness" slider (1 = off): the bake draws the source through a 1/k
 intermediate before FS (the reference MZ9 print measured ~16 px of source
 blur at 600 dpi; k≈24 ≈ that look). window._riso_softness, fsAffected.
 
+## Live video went soft in grain (2026-09-04)
+
+Cause: the boot probe timed the FIRST draw after link, which carries the
+Metal pipeline compile — fast machines read as "mid"/"slow", and the
+low-power rules then capped live feeds at 1x CSS. Fixes: (1) the probe does
+an untimed warm-up draw first; (2) tiering is model-first — once the cost
+model has ≥3 samples for the current key, a fast reading (< 17 ms/MP, no
+context loss, not ?safe; R._gpuModelFast) lifts the mid/slow caps and
+low-power follows the model (> 30 ms/MP) rather than the probe; (3) before
+the model has samples only the SLOW tier counts as low power (mid keeps its
+4x cap but never pushes live video to 1x). Verified: mid tier + no model →
+live 3x; slow → 1x; fast model → caps lifted.
+

@@ -1995,7 +1995,11 @@ function _renderInner(){
   // 2x frame — the recovery draw must finish inside the watchdog or the loss
   // loop never breaks.
   const _lossy = ((window._ctxLossLog || []).length > 0) || (window._gpuSuspect && !window._gpuProbed);
-  const gpuCap = (!window._gpuProbed || window._gpuSlow) ? (_lossy ? 1 : 2) : Infinity;
+  // Once the cost model has real samples for this mode it outranks the boot
+  // probe's tier: a fast reading (< 17 ms/MP, median of the last five, no
+  // context loss this session) lifts the mid/slow caps; a slow one keeps them.
+  const _modelFast = R._gpuModelFast();
+  const gpuCap = (!window._gpuProbed || (window._gpuSlow && !_modelFast)) ? (_lossy ? 1 : 2) : Infinity;
   // Phones: cap full-quality frames at 4× CSS — that is already ≥1.3× the
   // DEVICE pixels (dpr-3 screens at CSS-1 sizing), so 6× is invisible extra
   // fill and battery. Exports have their own sizing and are unaffected.
@@ -2004,7 +2008,7 @@ function _renderInner(){
   // 6x dirty frame — 3x is already >= device pixels on a 2x display and the
   // next frame replaces it anyway (user: "limit live preview quality but keep
   // export resolution"); a mid-speed GPU (probe 17-50 ms/MP) keeps 4x.
-  const midCap = window._gpuMid ? 4 : Infinity;
+  const midCap = (window._gpuMid && !_modelFast) ? 4 : Infinity;
   // ── Adaptive GPU budget ──
   // A per-mode cost model (ms per megapixel, learned from fenceSync frame
   // timings and seeded by the boot probe — see R._gpuLearn) turns a target
@@ -2046,7 +2050,8 @@ function _renderInner(){
   // and their animation budget shrinks to 60% of the tick, leaving headroom
   // for the UI (user: "on videos and live camera low rez"). Fast GPUs keep
   // the 3x live cap. Same criterion as the auto-STILL for stills.
-  const lowPower = !!(window._gpuSlow || window._gpuMid || _mpp > 30);   // 30: twice an M2's 14-15, so a busy moment on a fast GPU can't trip it
+  // Before the model has samples only the SLOW probe tier counts as low power (mid keeps its 4x cap but must not push live video to 1x on a stalled first frame).
+  const lowPower = R._gpuModelSamples(_gpuKey) >= 3 ? (_mpp > 30) : !!(window._gpuSlow || _mpp > 30);   // model-first; 30 = twice an M2's 14-15
   window._lowPower = lowPower;
   const liveCap = (camOn || videoOn) ? (lowPower ? 1 : Math.max(dpr, 3)) : Infinity;
   // floorScale: stills never go below 1x CSS; drags and animation may drop
@@ -2099,6 +2104,11 @@ function _renderInner(){
     // First frame doubles as the GPU speed probe. It renders at ≤2× (gpuCap
     // above) ≈ 1/9th of full-quality fragments; if even that needs >90 ms,
     // a 6× frame would run seconds — keep the cap for the whole session.
+    // Warm-up draw first: the very first draw after a (re)link carries the
+    // pipeline compile (Metal builds the PSO on first use), which read as a
+    // "mid/slow" tier on fast machines and pushed live video to 1x.
+    R.drawFullscreenTiled(dw, dh);
+    gl.finish();
     const _t0 = performance.now();
     R.drawFullscreenTiled(dw, dh);
     gl.finish();                       // once, at boot — we need the real GPU time
@@ -2257,7 +2267,7 @@ function _renderInner(){
     // click (window._userSetFps) always wins, and live feeds are untouched.
     if(!(camOn || videoOn) && cached.grainStatic > 0 && !window._userSetFps && !window._lowPowerStill && window._gpuProbed){
       const _mppNow = R._gpuMsPerMP(R._gpuKey());
-      if(window._gpuSlow || window._gpuMid || _mppNow > 30){
+      if(R._gpuModelSamples(R._gpuKey()) >= 3 ? (_mppNow > 30) : (window._gpuSlow || _mppNow > 30)){
         window._lowPowerStill = true;
         R.diag('lowpower:still ' + Math.round(_mppNow) + 'ms/MP');
         if(R.setRisoFps) R.setRisoFps(0);
@@ -3779,6 +3789,16 @@ R._gpuLearn = function(key, v){
   M.__n++;
   let mx = 0; for(const k in M){ if(k.charAt(0) !== '_' && typeof M[k] === 'number' && M[k] > mx) mx = M[k]; }
   M.__max = mx;
+};
+R._gpuModelSamples = function(key){
+  const M = window._gpuModel; return (M && M.__s && M.__s[key]) ? M.__s[key].length : 0;
+};
+R._gpuModelFast = function(){
+  const M = window._gpuModel; if(!M || !M.__s) return false;
+  if((window._ctxLossLog || []).length) return false;
+  if(window._flags && window._flags.safe) return false;
+  const k = R._gpuKey(); const s = M.__s[k];
+  return !!(s && s.length >= 3 && M[k] < 17);
 };
 R._gpuMsPerMP = function(key){
   const M = window._gpuModel; if(!M) return 0;
