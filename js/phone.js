@@ -75,6 +75,7 @@ function phCycleAspect(){
 const FPS_CYCLE=[0,4,8,12,24];
 let fpsIdx=1; // default 4fps
 function phCycleFps(){
+  window._userSetFps=true;
   fpsIdx=(fpsIdx+1)%FPS_CYCLE.length;
   R.setRisoFps(FPS_CYCLE[fpsIdx]);
 }

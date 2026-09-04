@@ -1191,6 +1191,7 @@ function setRisoFps(fps){
   markDirty();
 }
 function cycleFps(){
+  window._userSetFps=true;   // an explicit choice: the low-power auto-STILL must not override it
   const i=fpsSteps.indexOf(risoFps);
   setRisoFps(fpsSteps[(i+1)%fpsSteps.length]);
 }

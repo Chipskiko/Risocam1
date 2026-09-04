@@ -2233,6 +2233,20 @@ function _renderInner(){
     // not the riso-fps clock — with no target, neither covsplit nor the bias
     // ever engaged for a still image on a GPU-bound machine (user: "the fps
     // issue is on grain too").
+    // Low-power GPUs: no grain animation for STILLS — one full frame, then
+    // idle (user: "on low power computers no live grain animations, just
+    // stuck to still"). Fires once per session when the probe tier is
+    // mid/slow or the current mode measures > 17 ms/MP; an explicit FPS
+    // click (window._userSetFps) always wins, and live feeds are untouched.
+    if(!(camOn || videoOn) && cached.grainStatic > 0 && !window._userSetFps && !window._lowPowerStill && window._gpuProbed){
+      const _mppNow = R._gpuMsPerMP(R._gpuKey());
+      if(window._gpuSlow || window._gpuMid || _mppNow > 17){
+        window._lowPowerStill = true;
+        R.diag('lowpower:still ' + Math.round(_mppNow) + 'ms/MP');
+        if(R.setRisoFps) R.setRisoFps(0);
+        try { R.toast('Slower GPU: grain animation off — stills render once (FPS button re-enables)', 5000); } catch(e){}
+      }
+    }
     const _lodTarget = (camOn||videoOn) && risoFps>0 ? R.liveFps()
                      : (cached.grainStatic > 0 ? Math.max(2, cached.grainStatic) : 0);
     const _lodGot = (window._stDraws||0) - (window._lodLastDraws||0);

@@ -283,3 +283,12 @@ auto} — without the latter the flex column SHRANK the last section to 2px
 (overflow hidden) instead of overflowing into scroll. Verified at 1440x740:
 scroll range 222px, profiles fully reachable, back to 0.
 
+## Low-power stills (2026-09-02)
+
+On mid/slow GPUs (probe tier, or the current mode measuring > 17 ms/MP) a
+STILL image no longer shimmers: the fps block flips the FPS mode to STILL
+once per session (window._lowPowerStill, toast), so the engine renders one
+full frame and idles (user: "on low power computers no live grain
+animations, just stuck to still"). An explicit FPS click sets
+window._userSetFps and is never overridden; live feeds keep their liveFps.
+
