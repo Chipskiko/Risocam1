@@ -2886,7 +2886,7 @@ function _initAmtWorker(){
   _amtWorkerReady = (async () => {
     let blobUrl;
     try {
-      blobUrl = await _buildWorkerBlobUrl('js/riso-amt-worker.js?v=8');
+      blobUrl = await _buildWorkerBlobUrl('js/riso-amt-worker.js?v=9');
     } catch (e) {
       console.warn('[RisoAmt] worker blob build failed, falling back to sync:', e);
       _amtWorkerPool = [];

@@ -282,7 +282,11 @@ const DEFAULTS = {
   //   (LCG position permutation × position-tone scaling × tent envelope).
   // This is what rastertoRISO04A's FUN_0x608b actually does on every pixel.
   // When false, falls back to the simpler "tone curve then plain FS" path.
-  driverFaithful: true,
+  // MEASURED (2026-09-04, test_03_gray50.prn): the real MZ9 master of a flat
+  // 50% grey has lag-1 autocorrelation H/V/diag -0.1865, i.e. it IS plain
+  // serpentine Floyd-Steinberg (ours: -0.186); the Table A/B/C threshold
+  // modulation port reads -0.175/-0.098 — visibly noisier than the drum. Off.
+  driverFaithful: false,
 };
 
 /**

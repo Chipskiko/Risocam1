@@ -362,4 +362,15 @@ Classic sample is lighter and hazier than before — that is the print.
 TONE_CURVE_BALLOON keeps the old curve for reference. Open: dot-pattern
 regularity — the driver's 3x crops look like clean ordered dispersion, ours
 noisier; compare against test_03_gray50.prn (tables amplitude?).
+Dot pattern (same day): the driver's flat-50% capture (test_03_gray50.prn,
+15.7% ink) has lag-1 autocorrelation H/V/diag −0.1865 — identical to plain
+serpentine FS (−0.186); the wedge's 47.5% step reads H −0.79 / V −0.23 /
+diag +0.12 vs plain FS −0.82 / −0.11 / +0.09. The Table A/B/C port reads
+−0.175 / −0.098 at 15.7% and ≈ −0.19 everywhere: visibly noisier than the
+drum. DEFAULTS.driverFaithful is now false (plain 7/3/5/1 serpentine). What
+remains between our eye master and the capture is the INPUT: the capture
+correlates best with the page darkness blurred σ≈16 px (0.68 mm at 600 dpi;
+0.61 → 0.71 from σ 0 → 16), i.e. that print was made from a low-res copy.
+Baking a σ=16 pre-blurred source reproduces the soft-blob look. Not baked in
+by default — it is a property of that job, not of the driver.
 
