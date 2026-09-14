@@ -207,6 +207,15 @@ const STENCILS = {
 // -----------------------------------------------------------------------------
 // CORE PRE-PASS
 // -----------------------------------------------------------------------------
+// BIT PACKING (fixed 2026-09-14): a master bit lives at byte (i >> 3), bit
+// (7 - (i & 7)) with i = y*W + x — the LINEAR index, which is what every
+// reader (worker unpack, bitsToImageData, the renderer) uses. The packers
+// used (x & 7) for the bit position: correct only when W is a multiple of 8.
+// Every A3 master width (1241/2481/4961/9921) is ≡ 1 mod 8, so each row's
+// dots were circularly shifted inside 8-px cells by (y mod 8): a diagonal
+// shear resetting every 8 rows — the 8-row "sawtooth" on every vertical
+// edge, at every dpi (0.3 mm at 600, 1.4 mm at 75), and a spurious vertical
+// worm bias in the flat-field statistics.
 
 // MZ9 MEASURED transfer (2026-09-04, re-measured 2026-09-07): grey → ink
 // coverage of the real MZ970 driver, from two independent print-to-file jobs
@@ -392,7 +401,7 @@ function _runFsDriver(dens, W, H, serpentine, globalRowOffset) {
         const base = (errCur[x + 1] >> 8) + pInv;
         let newErr;
         if (base + ditherAdj > 254) {
-          bits[(row + x) >> 3] |= 1 << (7 - (x & 7));
+          bits[(row + x) >> 3] |= 1 << (7 - ((row + x) & 7));
           newErr = base - 255;
         } else {
           newErr = base;
@@ -417,7 +426,7 @@ function _runFsDriver(dens, W, H, serpentine, globalRowOffset) {
         const base = (errCur[x + 1] >> 8) + pInv;
         let newErr;
         if (base + ditherAdj > 254) {
-          bits[(row + x) >> 3] |= 1 << (7 - (x & 7));
+          bits[(row + x) >> 3] |= 1 << (7 - ((row + x) & 7));
           newErr = base - 255;
         } else {
           newErr = base;
@@ -782,7 +791,7 @@ function runAmt(input, W, H, opts) {
       for (let x = 0; x < W; x++) {
         const i = rowOff + x;
         if (multiByte[i] > o.matrix[matRow + (x & Mmask)]) {
-          bits[i >> 3] |= 1 << (7 - (x & 7));
+          bits[i >> 3] |= 1 << (7 - (i & 7));
         }
       }
     }
@@ -823,7 +832,7 @@ function runAmt(input, W, H, opts) {
       if (tNoiseAmt > 0) t += (Math.random() - 0.5) * tNoiseAmt;
       const v = buf[i];
       const out = v > t ? 1 : 0;
-      if (out) bits[i >> 3] |= 1 << (7 - (x & 7));
+      if (out) bits[i >> 3] |= 1 << (7 - (i & 7));
 
       const err = v - out;
       if (err === 0) continue;

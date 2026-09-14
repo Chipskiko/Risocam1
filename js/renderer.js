@@ -2932,7 +2932,7 @@ function _initAmtWorker(){
   _amtWorkerReady = (async () => {
     let blobUrl;
     try {
-      blobUrl = await _buildWorkerBlobUrl('js/riso-amt-worker.js?v=10');
+      blobUrl = await _buildWorkerBlobUrl('js/riso-amt-worker.js?v=13');
     } catch (e) {
       console.warn('[RisoAmt] worker blob build failed, falling back to sync:', e);
       _amtWorkerPool = [];
@@ -3153,12 +3153,12 @@ async function _runAmtPrepassImpl(){
   //   300 dpi → 4961 px max edge   (high-res scan; ~25s for 4-color)
   //   600 dpi → 9921 px max edge   (DEFAULT — matches real RISO native res; ~100s for 4-color)
   // Set via console:  R.setAmtScanDpi(300)
-  // The REAL driver masters at 600 dpi, where FS's diagonal limit-cycle
-  // 'ladders' at AA edge ramps are 0.04 mm — invisible. At 150 dpi-equivalent
-  // the same (authentic!) structure magnifies into visible sawtooth teeth
-  // along soft edges. 300 dpi puts the ladders at/below display-pixel scale
-  // (the grain-touch supersample melts the rest) at ~4× bake cost — still
-  // well under a second on the worker pool. Phones keep 150 (CPU + memory).
+  // The 8-row "sawtooth" that used to ride every vertical edge at every dpi
+  // was NOT FS: riso-amt.js packed bits at (x & 7) while readers unpack at
+  // (i & 7), and every A3 width is ≡ 1 mod 8, so each row's dots were
+  // circularly shifted inside 8-px cells by (y mod 8) — fixed 2026-09-14.
+  // What remains at coarse dpi is real FS behaviour on soft edges, which is
+  // why magnification below uses nearest-neighbour at ≤150 dpi.
   let scanDpi = window._amtScanDpi || 150;
   if(window._gpuSlow) scanDpi = Math.min(scanDpi, 150); // GPU safe mode: half-res masters (phone parity)
   const A3_LONG_INCHES = 16.54;
@@ -3172,7 +3172,18 @@ async function _runAmtPrepassImpl(){
   if(!tmp){ tmp = document.createElement('canvas'); window._amtScratch = tmp; }
   tmp.width = W; tmp.height = H;
   const tctx = tmp.getContext('2d');
-  tctx.imageSmoothingEnabled = true;
+  // Resampling (2026-09-14, "sawtooth at low dpi"): MAGNIFYING a sharp source
+  // through the smoothing filter turns every hard edge into a multi-texel
+  // ramp (WebKit's 'high' 1.94x upscale measured 8 texels wide, Blink 3) and
+  // serpentine FS renders a ramp as diagonal ladder worms — at 75/150 dpi
+  // those are the teeth along every edge (the drum has the same ladders at
+  // 600 dpi, 0.04 mm, invisible). Nearest-neighbour keeps edges hard and is
+  // byte-identical across engines; minification keeps the quality filter
+  // (area averaging is what a scan does); 300/600 dpi keep it too — the
+  // ladders are sub-display-pixel there and a low-res source would go blocky.
+  const _mag = W / srcCanvas.width;
+  const _nearestUp = (typeof window._riso_nearestUp === 'boolean') ? window._riso_nearestUp : (_mag > 1.001 && scanDpi <= 150);
+  tctx.imageSmoothingEnabled = !_nearestUp;
   tctx.imageSmoothingQuality = 'high';
   // Master softness (debug "Softness" / R.setRisoParams({softness:k})): the
   // reference MZ9 print correlated best with the page blurred ~16 px at
@@ -3185,6 +3196,7 @@ async function _runAmtPrepassImpl(){
       const mid = document.createElement('canvas'); mid.width = Math.max(1, Math.round(W / k)); mid.height = Math.max(1, Math.round(H / k));
       const mctx = mid.getContext('2d'); mctx.imageSmoothingEnabled = true; mctx.imageSmoothingQuality = 'high';
       mctx.drawImage(srcCanvas, 0, 0, mid.width, mid.height);
+      tctx.imageSmoothingEnabled = true;            // the softness path WANTS the blur
       tctx.drawImage(mid, 0, 0, W, H);
     } else {
       tctx.drawImage(srcCanvas, 0, 0, W, H);

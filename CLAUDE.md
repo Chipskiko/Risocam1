@@ -458,6 +458,41 @@ GPU: flat mode with 4 × 74 MP masters legitimately reads ~68 ms/MP on an
 M2 Pro. If Safari ever loops again: quit Safari (not just the tab) — the
 GPU process is what needs restarting — and read risocam_diag_prev.
 
+## The sawtooth was a bit-packing bug (2026-09-14)
+
+User: "really need to fix this sawtooth issue" (teeth along every vertical
+edge in RISO mode, worst at low dpi). Chased as FS edge physics for a while
+(edge-damped carries, threshold noise, an "edge isolation" experiment — all
+measured, none moved the real chart's edge), until the captured worker band
+input was replayed through riso-amt.js in Node and matched the Safari master
+bit for bit: the swatch's 4-texel SOLID border strip came out 68% ink with
+a 25% halo on the paper side, 7.9-row period, no matter what the FS did.
+Cause: every packer wrote `bits[i >> 3] |= 1 << (7 - (x & 7))` while every
+reader unpacks `(bits[i >> 3] >> (7 - (i & 7)))` — identical only when W is
+a multiple of 8. Every A3 master width (1241 / 2481 / 4961 / 9921) is ≡ 1
+mod 8, so row y's dots were circularly shifted inside 8-px cells by y mod 8:
+a diagonal shear resetting every 8 rows — the sawtooth, at EVERY dpi (0.3 mm
+at 600, 1.4 mm at 75), in the driver-faithful, plain and multi-level paths
+alike. Tone was preserved (bit counts), which is why coverage checks passed.
+Fixed (all four packers use the linear index). Measured on the real chart at
+75 dpi, Safari: strip 0.68 → 1.00, halo 0.25 → 0.07 (= paper baseline),
+edge wobble std 2.68 → 1.05 texels, periodic power gone; flat fields at
+W=1241 now read the plain-FS statistics (the old packer had given V +0.29
+at 47.8% and asymmetric diagonals — the "vertical worm bias" and "ours looks
+noisier than the drum" notes above were this bug, not the dither). Every
+earlier master-vs-drum comparison made on the LIVE app was contaminated;
+the Node harness numbers (W multiple of 8) were right.
+Also kept: the prepass magnifies with nearest-neighbour at ≤150 dpi (a 1.94x
+smoothing upscale leaves a 1-px ramp column that a mid-tone block's FS turns
+into a wobbly boundary: swatch-2 edge std 2.12 bilinear vs 1.33 nearest;
+solid edges equal). window._riso_nearestUp overrides. Softness k>1 keeps
+smoothing. Harness traps met: readPixels from a texture-attached FBO comes
+back in TEXTURE row order (no flip — check with a block correlation before
+assuming); zsh does not word-split an unquoted $var, so `node x.mjs $cfg`
+passed "a=1 b=2" as ONE argument and every multi-flag run silently ran the
+defaults — use bash -c or ${=cfg}. Probes: edge-probe-2.html (captures the
+worker band inputs + the plate-1 master), scratchpad replay.mjs.
+
 ## Crisp modes animate at full resolution (2026-09-04)
 
 RISO/STIPPLE ticks used the 3x anim cap, so every unpaused frame was a
