@@ -142,6 +142,7 @@ function initGL(onReady){
   window._isWebGL2 = isWebGL2;
   if(!gl){
     gl=c.getContext('webgl',{preserveDrawingBuffer:true,antialias:false,powerPreference:'high-performance'});
+    if(gl) try { gl.getExtension('OES_standard_derivatives'); } catch(e){}   // fwidth() in the RISO fine path (core in WebGL2)
   }
   if(!gl){R.toast('WebGL not supported — cannot render');R.diag('ctx:FAILED');return;}
   R.diag('ctx:' + (isWebGL2 ? 'webgl2' : 'webgl1'));
@@ -310,7 +311,7 @@ function initGL(onReady){
    'u_driverLUT','u_useDriverLUT',
    'u_ht5Matrix',
    'u_amtMaster0','u_amtMaster1','u_amtMaster2','u_amtMaster3','u_useAmt','u_liveSource',
-   'u_amtTexel','u_amtSuperSample','u_amtInkSpread','u_amtCrisp','u_amtJitter','u_grainBlue',
+   'u_amtTexel','u_amtSuperSample','u_amtInkSpread','u_amtCrisp','u_amtJitter','u_amtLinear','u_grainBlue',
    'u_bnVC','u_bnSize','u_risoGamma','u_risoGrainScale','u_risoDebugBaseline',
    // T3-F: pre-baked per-ink coverage→color LUT texture
    'u_calLutTex','u_useCalLutTex'
@@ -602,6 +603,7 @@ function initGL(onReady){
   if(locs.u_amtTexel) gl.uniform2f(locs.u_amtTexel, 1/1241, 1/931);  // placeholder
   if(locs.u_amtSuperSample) gl.uniform1f(locs.u_amtSuperSample, 1.5);
   if(locs.u_amtCrisp) gl.uniform1f(locs.u_amtCrisp, RISO_DOT_CRISP);
+  if(locs.u_amtLinear) gl.uniform1f(locs.u_amtLinear, 0.0);
   if(locs.u_amtJitter) gl.uniform1f(locs.u_amtJitter, 1.0);
   // (D) GPU ink-spread radius in master texels. 0 = no spread (CPU blur path).
   // Set per-prepass from the ink-spread slider; default seeded here.
@@ -3303,6 +3305,7 @@ async function _runAmtPrepassImpl(){
         const totalMsG = performance.now() - t0;
         console.log(`[RisoAmt] all channels done in ${totalMsG.toFixed(0)} ms (WebGPU full pipeline: projection+solidfill+FS on GPU)`);
         gl.uniform1f(locs.u_useAmt, 1.0);
+        if(locs.u_amtLinear) gl.uniform1f(locs.u_amtLinear, 0.0);   // this path's masters keep their own filtering
         markDirty();
         try { R.toast && R.toast('RISO ready (GPU)', 1200); } catch(e){}
         return;
@@ -3479,6 +3482,19 @@ async function _runAmtPrepassImpl(){
     const cov = (chOn[chIdx] / (W * H) * 100);
     console.log(`[RisoAmt]   ch${chIdx} ink RGB(${(ink[0]*255)|0},${(ink[1]*255)|0},${(ink[2]*255)|0}) → cov ${cov.toFixed(1)}%`);
   }
+  // LINEAR-filter the finished FS masters: the shader's fine path then
+  // area-averages with a regular grid of bilinear taps (see u_amtLinear) —
+  // an exact-enough box prefilter instead of 8 stochastic taps that blotched
+  // and moiréd the light tones. Texel-centre fetches (the coarse round-dot
+  // path) are unaffected by LINEAR. Works on WebGL1 too (no mipmaps).
+  for(let chIdx = 0; chIdx < 4; chIdx++){
+    if(!channelMeta[chIdx]) continue;
+    gl.activeTexture(gl.TEXTURE9 + chIdx);
+    gl.bindTexture(gl.TEXTURE_2D, window._amtMasterTex[chIdx]);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  }
+  if(locs.u_amtLinear) gl.uniform1f(locs.u_amtLinear, 1.0);
   const tPar = performance.now() - tPar0;
   const totalMs = performance.now() - t0;
   console.log(`[RisoAmt] all channels done in ${totalMs.toFixed(0)} ms (pool=${_amtWorkerPool.length}, bands/ch=${K}, gpuSpread=${gpuSpread}) — projection(main,serial) ${tProj.toFixed(0)}ms, FS+pack+upload(parallel) ${tPar.toFixed(0)}ms`);
@@ -3773,6 +3789,7 @@ async function _runStipplePrepassImpl(){
   if(locs.u_amtInkSpread) gl.uniform1f(locs.u_amtInkSpread, 0.0);
   if(locs.u_amtCrisp) gl.uniform1f(locs.u_amtCrisp, _edgeW);
   gl.uniform1f(locs.u_useAmt, 1.0);
+  if(locs.u_amtLinear) gl.uniform1f(locs.u_amtLinear, 0.0);   // this path's masters keep their own filtering
   try { R.toast && R.toast(window._stippleLive ? 'LIVE loop ready' : 'STIPPLE ready', 1200); } catch(e){}
 }
 R.runStipplePrepass = runStipplePrepass;
@@ -3880,6 +3897,7 @@ R.invalidateAmt = function(){
   try {
     if (gl && locs && locs.u_useAmt) {
       gl.uniform1f(locs.u_useAmt, 0.0);
+      if(locs.u_amtLinear) gl.uniform1f(locs.u_amtLinear, 0.0);
     }
   } catch(e) {}
   try { markDirty(); } catch(e) {}

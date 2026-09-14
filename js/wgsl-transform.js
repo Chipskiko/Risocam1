@@ -74,6 +74,7 @@
     fs = '#version 310 es\nprecision highp float;\nprecision highp int;\n' +
          'layout(location=0) out vec4 rc_fragColor;\n' +
          'vec4 rcTex(highp texture2D t, highp sampler s, vec2 uv){ return textureLod(sampler2D(t, s), uv, 0.0); }\n' +
+         'vec4 rcTex(highp texture2D t, highp sampler s, vec2 uv, float bias){ return textureLod(sampler2D(t, s), uv, 0.0); }\n' +   // texture2D(s, uv, bias): the WebGPU path has no mipmaps (u_amtMip is never 1 there), LOD 0 is exact
          block + fs;
     return {src: fs, uniforms: uniforms, samplers: samplers};
   }

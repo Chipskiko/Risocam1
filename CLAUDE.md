@@ -505,6 +505,46 @@ nearest-neighbour magnification rule (≤150 dpi) therefore only touches
 phones, safe mode and the DEBUG slider. Verified: boot 300 → 4962-px
 masters, cycle 600 → 300, phone toggle 150 → back 300.
 
+## Light-tone blotches were the master SAMPLER (2026-09-14)
+
+User (Mono Black, 600 dpi): "the blurring process introduces artifacts?" —
+horizontal dotted lines and random darker spots in the lightest patches.
+Measured on the sample's grey strip (blank paper, pure white, misreg 0,
+render registered to the master through the black patch's bounds): the
+render's 15-px box-mean std was 1.0-1.3 where an exact box average of the
+same master gives 0.3-0.5, its low-frequency structure was UNCORRELATED
+with the master (box-8 corr ~0), identical with every physics parameter
+zeroed, and worse with the ink spread OFF — so not the blur, not paper,
+not physics: the 8 stochastic taps of the fine path (pxPerTexel < 1.8)
+sampled a quasi-periodic FS lattice (period 2.5-4 texels at 5-30% ink)
+with a 2.2-texel box on a 2.4-3.8-texel pixel → moiré blotches + row
+lines. The master itself is fine (its 3.6% patch is MORE isotropic than
+the drum's 3.5% wedge patch: anisotropy 1.9 vs 31). Fix: FS masters are
+LINEAR-filtered after the bake (u_amtLinear=1) and the fine path
+area-averages with a REGULAR 4x4 grid of bilinear taps over a box F =
+max(supersample + spread, 1.25 × texels-per-pixel); beyond F = 8 (zoomed-
+out previews, ≥6 texels/px) the 8 stochastic taps stay but with the same
+footprint-aware radius. The footprint g_amtFoot is derived analytically in
+main() from srcUV's affine chain (print area, crop, bleed) / u_res /
+u_amtTexel. Two dead ends worth remembering: (1) mipmaps + implicit-LOD /
+bias sampling blotched exactly like the taps — the sampled uv inside
+getGrainTexture carries a per-fragment slip, so derivatives there are
+garbage; (2) fwidth() is UNAVAILABLE in an ESSL 1.00 shader under WebGL2
+(ANGLE: "'fwidth' : no matching overloaded function", the extension
+directive is "not supported") — the megashader is ESSL 1.00, so no
+derivatives at all; the WGSL transform also chokes on an #extension line.
+Result (Safari, 6x): blotch 0.93/1.00/1.07/0.85 → 0.53/0.51/0.52/0.47 on
+the 33/18/5/2% patches (ideal 0.40/0.40/0.47/0.36), tone unchanged to 0.5
+levels; Chromium at 1x (17 texels/px) 1.45 → 1.02 on the 2% patch via the
+footprint-aware radius. The residual horizontal structure in the lightest
+tones is the FS lattice itself, which the real drum shows even more
+strongly (its 3.5% patch: λ 7.4 px, anisotropy 31).
+Harness traps: the render-vs-master registration must come from geometry
+(the black patch's bounds) — a boundary detector on the strip mis-paired
+edges and produced nonsense; and a fresh Safari shader compile of the
+changed megashader takes ~60 s the first time (probes that wait 100 s for
+'done' time out on the first run and pass on the second).
+
 ## Crisp modes animate at full resolution (2026-09-04)
 
 RISO/STIPPLE ticks used the 3x anim cap, so every unpaused frame was a
