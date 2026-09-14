@@ -181,7 +181,7 @@ let paperOrient='landscape'; // 'landscape' or 'portrait'
 // master was baked at 300 (measured: 4962 texels across A3 = 300 dpi).
 // Presence of this value does NOT mean 'user chose it': the export raise
 // gates on _amtDpiUserSet, which only explicit choices set.
-window._amtScanDpi = window._amtScanDpi || 150;
+window._amtScanDpi = window._amtScanDpi || 300;   // desktop default; phone.js drops to 150 at init
 let phoneActive=false;
 function isPhone(){return phoneActive;}
 
@@ -192,9 +192,12 @@ function togglePhoneMode(){
     _desktopMargin=cached.margin;
     cached.margin=10;
     el('margin').value=10;el('marginVal').textContent=10;
+    // Phones keep 150-dpi masters (CPU + memory) unless the user picked a density; desktop defaults to 300.
+    if(!window._amtDpiUserSet && (window._amtScanDpi||300) > 150){ window._amtScanDpi = 150; if(R.invalidateAmt) try{ R.invalidateAmt(); }catch(e){} }
   } else {
     cached.margin=_desktopMargin;
     el('margin').value=_desktopMargin;el('marginVal').textContent=_desktopMargin;
+    if(!window._amtDpiUserSet && (window._amtScanDpi||300) < 300){ window._amtScanDpi = 300; if(R.invalidateAmt) try{ R.invalidateAmt(); }catch(e){} }
   }
   document.body.classList.toggle('phone-mode',phoneActive);
   markDirty();needsAspectUpdate=true;

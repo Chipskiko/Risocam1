@@ -151,7 +151,7 @@
           </div>
           <!-- RISO: master density (FS prepass DPI) -->
           <div id="flatPrimary" style="display:none;gap:6px">
-            <button class="regmark-btn active" id="amtDpiBtn" onclick="R.cycleAmtDpi()" title="Master density — resolution the 1-bit master is burned at. Real Riso = 600 dpi. Lower = faster prepass, coarser dots. On a live camera/video it sets the dot pitch of the per-fragment preview (no master is burned)."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="4" cy="4" r="1.1" fill="currentColor"/><circle cx="10" cy="4" r="1.1" fill="currentColor"/><circle cx="16" cy="4" r="1.1" fill="currentColor"/><circle cx="4" cy="10" r="1.1" fill="currentColor"/><circle cx="10" cy="10" r="1.1" fill="currentColor"/><circle cx="16" cy="10" r="1.1" fill="currentColor"/><circle cx="4" cy="16" r="1.1" fill="currentColor"/><circle cx="10" cy="16" r="1.1" fill="currentColor"/><circle cx="16" cy="16" r="1.1" fill="currentColor"/></svg><span class="regmark-val" id="amtDpiBtnVal">150dpi</span></button>
+            <button class="regmark-btn active" id="amtDpiBtn" onclick="R.cycleAmtDpi()" title="Master density — resolution the 1-bit master is burned at. Real Riso = 600 dpi. Lower = faster prepass, coarser dots. On a live camera/video it sets the dot pitch of the per-fragment preview (no master is burned)."><svg class="regmark-icon" width="20" height="20" viewBox="0 0 20 20"><circle cx="4" cy="4" r="1.1" fill="currentColor"/><circle cx="10" cy="4" r="1.1" fill="currentColor"/><circle cx="16" cy="4" r="1.1" fill="currentColor"/><circle cx="4" cy="10" r="1.1" fill="currentColor"/><circle cx="10" cy="10" r="1.1" fill="currentColor"/><circle cx="16" cy="10" r="1.1" fill="currentColor"/><circle cx="4" cy="16" r="1.1" fill="currentColor"/><circle cx="10" cy="16" r="1.1" fill="currentColor"/><circle cx="16" cy="16" r="1.1" fill="currentColor"/></svg><span class="regmark-val" id="amtDpiBtnVal">300dpi</span></button>
           </div>
           
           
@@ -283,7 +283,7 @@
               <span class="slider-label">Softness</span><input type="range" id="risoSoft" min="1" max="24" value="1" step="1" oninput="R.setRisoParams({softness:parseInt(this.value)}); document.getElementById('risoSoftVal').textContent=this.value;"><span class="slider-value" id="risoSoftVal">1</span>
             </div>
             <div class="slider-row" title="Master resolution (DPI). Real Riso = 600. Higher = finer dots but slower prepass.">
-              <span class="slider-label">DPI</span><input type="range" id="risoDpi" min="100" max="600" value="150" step="50" oninput="R.setRisoParams({dpi:parseInt(this.value)}); document.getElementById('risoDpiVal').textContent=this.value;"><span class="slider-value" id="risoDpiVal">150</span>
+              <span class="slider-label">DPI</span><input type="range" id="risoDpi" min="100" max="600" value="300" step="50" oninput="R.setRisoParams({dpi:parseInt(this.value)}); document.getElementById('risoDpiVal').textContent=this.value;"><span class="slider-value" id="risoDpiVal">300</span>
             </div>
             <div style="margin-top:6px" title="Driver-faithful mode applies the LCG threshold modulation from the real RISO driver (Tables A/B/C) — stochastic dot placement, grainy/noisy look. Plain FS gives clean orderly Floyd-Steinberg dot patterns without the LCG noise — closer to ImageMagick / Photoshop FS output.">
               <label style="display:flex;gap:6px;align-items:center;font-size:10px;cursor:pointer">
@@ -4220,17 +4220,17 @@ void main(){
 <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.min.js"></script>
 <script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
 <script src="js/data.js?v=24"></script>
-<script src="js/state.js?v=22"></script>
+<script src="js/state.js?v=25"></script>
 <script src="js/undo.js?v=11"></script>
 <script src="js/compare.js?v=6"></script>
 <script src="js/riso-amt.js?v=33"></script>
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/gen/bnvc256.js?v=2"></script>
-<script src="js/renderer.js?v=250"></script>
+<script src="js/renderer.js?v=251"></script>
 <script src="js/gif-decode.js?v=5"></script>
 <script src="js/source.js?v=66"></script>
-<script src="js/save.js?v=83"></script>
+<script src="js/save.js?v=84"></script>
 <script>
 // WebGPU shims (opt-in experiment): 41KB that only ?webgpu or the debug
 // toggle ever executes — loaded on demand instead of parsed on every visit.
@@ -4256,9 +4256,9 @@ void main(){
   };
 })();
 </script>
-<script src="js/ui-controls.js?v=94"></script>
+<script src="js/ui-controls.js?v=95"></script>
 <script src="js/ui-paper.js?v=14"></script>
-<script src="js/phone.js?v=38"></script>
+<script src="js/phone.js?v=40"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL
      service workers, and even the attempt makes the browser print a CSP-violation report
      that no .catch can silence. Offline caching works where CSP allows (e.g. localhost).

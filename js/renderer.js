@@ -1367,7 +1367,7 @@ function setRenderUniforms(dw, dh, scale, isPhone){
     // the prepass WOULD burn at the current DPI (same sizing rule as
     // _runAmtPrepassImpl) — the live round-dot path renders on that pitch.
     if((camOn || videoOn) && window._mode === 'flat' && locs.u_amtTexel){
-      let dpi = window._amtScanDpi || 150; if(window._gpuSlow) dpi = Math.min(dpi, 150);
+      let dpi = window._amtScanDpi || 300; if(window._gpuSlow) dpi = Math.min(dpi, 150);
       const maxEdge = Math.round(dpi * 16.54), asp = sw / sh;
       const W = asp >= 1 ? maxEdge : Math.round(maxEdge * asp), H = asp >= 1 ? Math.round(maxEdge / asp) : maxEdge;
       gl.uniform2f(locs.u_amtTexel, 1 / Math.max(1, W), 1 / Math.max(1, H));
@@ -3151,7 +3151,8 @@ async function _runAmtPrepassImpl(){
   //   75 dpi  → 1240 px max edge   (fastest preview, ~1-2s prepass)
   //   150 dpi → 2481 px max edge   (medium quality, ~6s for 4-color)
   //   300 dpi → 4961 px max edge   (high-res scan; ~25s for 4-color)
-  //   600 dpi → 9921 px max edge   (DEFAULT — matches real RISO native res; ~100s for 4-color)
+  //   600 dpi → 9921 px max edge   (matches real RISO native res)
+  //   Desktop default 300 (DENSITY button: 300 / 600); phones 150.
   // Set via console:  R.setAmtScanDpi(300)
   // The 8-row "sawtooth" that used to ride every vertical edge at every dpi
   // was NOT FS: riso-amt.js packed bits at (x & 7) while readers unpack at
@@ -3159,7 +3160,7 @@ async function _runAmtPrepassImpl(){
   // circularly shifted inside 8-px cells by (y mod 8) — fixed 2026-09-14.
   // What remains at coarse dpi is real FS behaviour on soft edges, which is
   // why magnification below uses nearest-neighbour at ≤150 dpi.
-  let scanDpi = window._amtScanDpi || 150;
+  let scanDpi = window._amtScanDpi || 300;
   if(window._gpuSlow) scanDpi = Math.min(scanDpi, 150); // GPU safe mode: half-res masters (phone parity)
   const A3_LONG_INCHES = 16.54;
   const targetMaxEdge = Math.round(scanDpi * A3_LONG_INCHES);
@@ -4049,7 +4050,7 @@ R.setRisoParams = function(opts){
     }
   }
   return {
-    dpi: window._amtScanDpi || 150,
+    dpi: window._amtScanDpi || 300,
     inkSpread: window._inkSpread != null ? window._inkSpread : 0.7,
     maxCoverage: window._riso_maxCoverage != null ? window._riso_maxCoverage : 1.0,
     thresholdNoise: window._riso_thresholdNoise != null ? window._riso_thresholdNoise : 0.0
@@ -4219,7 +4220,7 @@ R.setGpuInkSpread = function(on){
 };
 R.amtInfo = function(){
   return {
-    scanDpi: window._amtScanDpi || 150,
+    scanDpi: window._amtScanDpi || 300,
     rendererVersion: 40,
     module: window.RisoAmt && window.RisoAmt.CALIBRATION
   };

@@ -493,6 +493,18 @@ passed "a=1 b=2" as ONE argument and every multi-flag run silently ran the
 defaults — use bash -c or ${=cfg}. Probes: edge-probe-2.html (captures the
 worker band inputs + the plate-1 master), scratchpad replay.mjs.
 
+## DENSITY steps are 300 / 600 (2026-09-14)
+
+User: "we don't need 150 at all, just keep 300 and 600". AMT_DPI_STEPS is
+[300, 600] on desktop with a 300 default (state.js; every `|| 150` fallback
+in renderer/save/ui-controls is now 300; the button label and DEBUG slider
+start at 300). Phones keep 150: togglePhoneMode drops to 150 on entry and
+restores 300 on exit unless the user picked a density (_amtDpiUserSet), and
+their step list is [150, 300, 600]. GPU safe mode still clamps to 150. The
+nearest-neighbour magnification rule (≤150 dpi) therefore only touches
+phones, safe mode and the DEBUG slider. Verified: boot 300 → 4962-px
+masters, cycle 600 → 300, phone toggle 150 → back 300.
+
 ## Crisp modes animate at full resolution (2026-09-04)
 
 RISO/STIPPLE ticks used the 3x anim cap, so every unpaused frame was a

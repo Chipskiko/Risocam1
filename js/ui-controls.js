@@ -1783,7 +1783,7 @@ function copyDebugValues(){
       const tc=A.DEFAULTS.toneCurve;
       const K=[0,2,4,8,16,24,32,40,56,72,88,104,120,136,152,168,184,200,216,232,240,248,255];
       return {
-        dpi:window._amtScanDpi||150, ditherMode:(window._ditherModeVal!==undefined)?window._ditherModeVal:null,
+        dpi:window._amtScanDpi||300, ditherMode:(window._ditherModeVal!==undefined)?window._ditherModeVal:null,
         inkSpread:(typeof window._inkSpread==='number')?window._inkSpread:null, softness:window._riso_softness||1,
         coverageScale:(typeof window._riso_maxCoverage==='number')?window._riso_maxCoverage:1,
         solidFillThreshold:(typeof window._riso_solidFillThreshold==='number')?window._riso_solidFillThreshold:A.DEFAULTS.solidFillThreshold,
@@ -1887,13 +1887,17 @@ function cycleInkSpread() {
 }
 // RISO master density — DPI the 1-bit FS master is burned at. Cycles the same
 // _amtScanDpi the debug slider drives; setRisoParams invalidates + rebakes.
-const AMT_DPI_STEPS = [150, 300, 600];
+// Desktop steps are 300 / 600 (2026-09-14, user: "we don't need 150 at all");
+// 150 stays available on phones (CPU + memory) and via the DEBUG slider.
+const AMT_DPI_STEPS = [300, 600];
+const AMT_DPI_STEPS_PHONE = [150, 300, 600];
 function cycleAmtDpi() {
-  const cur = window._amtScanDpi || 150;
+  const steps = (typeof isPhone === 'function' && isPhone()) ? AMT_DPI_STEPS_PHONE : AMT_DPI_STEPS;
+  const cur = window._amtScanDpi || 300;
   // nearest step, then advance (handles odd values set via debug slider/console)
   let idx = 0, best = Infinity;
-  AMT_DPI_STEPS.forEach((v, i) => { const d = Math.abs(v - cur); if (d < best) { best = d; idx = i; } });
-  const next = AMT_DPI_STEPS[(idx + 1) % AMT_DPI_STEPS.length];
+  steps.forEach((v, i) => { const d = Math.abs(v - cur); if (d < best) { best = d; idx = i; } });
+  const next = steps[(idx + 1) % steps.length];
   R.setRisoParams({ dpi: next });
   const lbl = el('amtDpiBtnVal'); if (lbl) lbl.textContent = next + 'dpi';
   const plbl = el('phAmtDpiBtnVal'); if (plbl) plbl.textContent = next + 'dpi';
