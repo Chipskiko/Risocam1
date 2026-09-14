@@ -547,6 +547,7 @@ uniform float u_useCalLutTex;
 // u_ink0..3 = 100% coverage (reused)
 uniform float u_inkGamma0, u_inkGamma1, u_inkGamma2, u_inkGamma3;
 uniform float u_grainMul0, u_grainMul1, u_grainMul2, u_grainMul3;
+uniform float u_opacMul0, u_opacMul1, u_opacMul2, u_opacMul3; // per-ink opacity multiplier (RISO_CAL.opacityMul; Black 1.15 so a solid film reaches the 100% swatch at Opacity 88)
 uniform float u_hasCal0, u_hasCal1, u_hasCal2, u_hasCal3;
 uniform float u_opaque0, u_opaque1, u_opaque2, u_opaque3; // 1.0 for metallic/opaque inks
 uniform float u_transparent0, u_transparent1, u_transparent2, u_transparent3; // 1.0 for fully transparent inks (process CMYK) — skips opaque crossfade
@@ -2575,25 +2576,30 @@ float lineSampled(float val, vec2 pix, float cellPx, float angle, int idx){
 // "opaque video with dots on top"). This ports the density stage, so live
 // dots carry the master's tone; only the placement differs (blue noise
 // instead of error diffusion).
-float risoToneCurve(float g){   // g: 0 = full ink intent … 1 = paper — MZ9 MEASURED master transfer (riso-amt.js TONE_CURVE_MZ9)
+float risoToneCurve(float g){   // g: 0 = full ink intent … 1 = paper — MZ9 MEASURED master transfer, SAME knots as riso-amt.js TONE_CURVE_MZ9 (bake == live)
   float x = g * 255.0;
-  if(x < 8.0)   return 0.70;
-  if(x < 24.0)  return mix(0.70,  0.548, (x - 8.0)   / 16.0);
-  if(x < 40.0)  return mix(0.548, 0.470, (x - 24.0)  / 16.0);
-  if(x < 56.0)  return mix(0.470, 0.405, (x - 40.0)  / 16.0);
-  if(x < 72.0)  return mix(0.405, 0.350, (x - 56.0)  / 16.0);
-  if(x < 88.0)  return mix(0.350, 0.303, (x - 72.0)  / 16.0);
-  if(x < 104.0) return mix(0.303, 0.269, (x - 88.0)  / 16.0);
-  if(x < 120.0) return mix(0.269, 0.238, (x - 104.0) / 16.0);
-  if(x < 136.0) return mix(0.238, 0.215, (x - 120.0) / 16.0);
-  if(x < 152.0) return mix(0.215, 0.187, (x - 136.0) / 16.0);
-  if(x < 168.0) return mix(0.187, 0.165, (x - 152.0) / 16.0);
-  if(x < 184.0) return mix(0.165, 0.156, (x - 168.0) / 16.0);
-  if(x < 200.0) return mix(0.156, 0.152, (x - 184.0) / 16.0);
-  if(x < 216.0) return mix(0.152, 0.147, (x - 200.0) / 16.0);
-  if(x < 232.0) return mix(0.147, 0.140, (x - 216.0) / 16.0);
-  if(x < 248.0) return mix(0.140, 0.123, (x - 232.0) / 16.0);
-  return mix(0.123, 0.0, (x - 248.0) / 7.0);
+  if(x < 2.0) return mix(1.000, 0.920, (x - 0.0) / 2.0);
+  if(x < 4.0) return mix(0.920, 0.860, (x - 2.0) / 2.0);
+  if(x < 8.0) return mix(0.860, 0.780, (x - 4.0) / 4.0);
+  if(x < 16.0) return mix(0.780, 0.645, (x - 8.0) / 8.0);
+  if(x < 24.0) return mix(0.645, 0.551, (x - 16.0) / 8.0);
+  if(x < 32.0) return mix(0.551, 0.485, (x - 24.0) / 8.0);
+  if(x < 40.0) return mix(0.485, 0.429, (x - 32.0) / 8.0);
+  if(x < 56.0) return mix(0.429, 0.338, (x - 40.0) / 16.0);
+  if(x < 72.0) return mix(0.338, 0.275, (x - 56.0) / 16.0);
+  if(x < 88.0) return mix(0.275, 0.233, (x - 72.0) / 16.0);
+  if(x < 104.0) return mix(0.233, 0.204, (x - 88.0) / 16.0);
+  if(x < 120.0) return mix(0.204, 0.175, (x - 104.0) / 16.0);
+  if(x < 136.0) return mix(0.175, 0.148, (x - 120.0) / 16.0);
+  if(x < 152.0) return mix(0.148, 0.127, (x - 136.0) / 16.0);
+  if(x < 168.0) return mix(0.127, 0.099, (x - 152.0) / 16.0);
+  if(x < 184.0) return mix(0.099, 0.077, (x - 168.0) / 16.0);
+  if(x < 200.0) return mix(0.077, 0.056, (x - 184.0) / 16.0);
+  if(x < 216.0) return mix(0.056, 0.039, (x - 200.0) / 16.0);
+  if(x < 232.0) return mix(0.039, 0.021, (x - 216.0) / 16.0);
+  if(x < 240.0) return mix(0.021, 0.011, (x - 232.0) / 8.0);
+  if(x < 248.0) return mix(0.011, 0.000, (x - 240.0) / 8.0);
+  return 0.0;
 }
 float risoLiveDensity(vec3 src, vec3 ink){
   vec3 d = ink - u_paperColor;
@@ -3000,6 +3006,14 @@ vec3 lutBlend(float d, vec3 paper, vec3 p10, vec3 p30, vec3 p50, vec3 p70, vec3 
   return cubicHermite(p70, p100, m4, m5, t, 0.30);
 }
 
+// Effective ink-film opacity for a plate: the global Opacity slider × the
+// ink's own multiplier (carbon Black 1.15 → a solid reaches its 100% swatch
+// at the default 88; every other ink 1.0).
+float inkOpacityFor(float layerIdx){
+  float m = layerIdx < 0.5 ? u_opacMul0 : layerIdx < 1.5 ? u_opacMul1 : layerIdx < 2.5 ? u_opacMul2 : u_opacMul3;
+  return u_inkOpacity * m;
+}
+
 // ─── Apply calibrated ink — Beer-Lambert with debug toggles ───
 // Default: Beer-Lambert with p100 + dotMin (original V8 behavior).
 // Debug toggles allow bypassing each pipeline stage to isolate issues.
@@ -3053,7 +3067,7 @@ vec3 calBlend(vec3 result, vec3 paper, float coverage, float grain, vec3 p10, ve
     d = grain > 0.01 ? 1.0 : 0.0;
   } else {
     d = grain;
-    d = clamp(d * u_inkOpacity, 0.0, 1.0);
+    d = clamp(d * inkOpacityFor(layerIdx), 0.0, 1.0);
 
     // ── Stage 2: dotMin (toggle-able) ──
     // SCREEN mode: skip this. The clustered dot is SOLID ink — its tone is
@@ -3076,6 +3090,16 @@ vec3 calBlend(vec3 result, vec3 paper, float coverage, float grain, vec3 p10, ve
     float lutMix = smoothstep(0.3, 0.7, coverage);
     vec3 lutInk = lutBlend(coverage, paper, p10, p30, p50, p70, p100, layerIdx);
     ink = mix(p100, lutInk, lutMix);
+  }
+  // RISO (binary master / grain-touch dots): an ON texel is SOLID ink. As the
+  // local master coverage (grain) approaches 1 the fragment must render the
+  // 100% swatch with no dotMin thinning — not the LUT at the SEPARATION
+  // coverage, which painted a solid Black master at density 88 as a 0.14 film
+  // (RGB 65, "full black is grey"). Partial coverage keeps the tuned look.
+  if (u_mode == 3) {
+    float solid = smoothstep(0.7, 1.0, grain);
+    ink = mix(ink, p100, solid);
+    d = mix(d, clamp(grain * inkOpacityFor(layerIdx), 0.0, 1.0), solid);
   }
 
   // ── Stage 4: Beer-Lambert with Yule-Nielsen n=2 ──
@@ -4195,15 +4219,15 @@ void main(){
 <!-- mp4-muxer for proper MP4 (H.264) output via WebCodecs in Chrome/Edge -->
 <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.min.js"></script>
 <script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}</script>
-<script src="js/data.js?v=23"></script>
+<script src="js/data.js?v=24"></script>
 <script src="js/state.js?v=22"></script>
 <script src="js/undo.js?v=11"></script>
 <script src="js/compare.js?v=6"></script>
-<script src="js/riso-amt.js?v=29"></script>
+<script src="js/riso-amt.js?v=30"></script>
 <script src="js/stipple-core.js?v=1"></script>
 <script src="js/heic-decode.js?v=2"></script>
 <script src="js/gen/bnvc256.js?v=2"></script>
-<script src="js/renderer.js?v=244"></script>
+<script src="js/renderer.js?v=247"></script>
 <script src="js/gif-decode.js?v=5"></script>
 <script src="js/source.js?v=66"></script>
 <script src="js/save.js?v=83"></script>
@@ -4215,7 +4239,7 @@ void main(){
 // toggle path loads them async later, which the presence-guarded call sites
 // (window.RisoAmtGPU && ...) handle.
 (function(){
-  var srcs=['js/riso-amt-webgpu.js?v=6','js/webgpu-live.js?v=18'];
+  var srcs=['js/riso-amt-webgpu.js?v=7','js/webgpu-live.js?v=20'];
   if(/[?&]webgpu\b/.test(location.search)){
     srcs.forEach(function(u){ document.write('<script src="'+u+'"><\/script>'); });
     window._webgpuShimsLoaded=true;
@@ -4232,7 +4256,7 @@ void main(){
   };
 })();
 </script>
-<script src="js/ui-controls.js?v=92"></script>
+<script src="js/ui-controls.js?v=94"></script>
 <script src="js/ui-paper.js?v=14"></script>
 <script src="js/phone.js?v=38"></script>
 <!-- Skip SW registration on Neocities entirely: their CSP (worker-src blob:) blocks ALL

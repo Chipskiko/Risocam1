@@ -202,7 +202,27 @@ function initGL(onReady){
       (window._ctxLossLog = (window._ctxLossLog||[]).filter(t=>performance.now()-t<60000)).push(performance.now());
       R.diag('ctx:LOST (' + window._ctxLossLog.length + ' in 60s)');
       R.toast('GPU context lost — will recover');});
-    c.addEventListener('webglcontextrestored',()=>{R.toast('GPU restored — rebuilding');_recoverGLState();});
+    c.addEventListener('webglcontextrestored',()=>{
+      // Loop breaker with backoff. A context that dies again right after
+      // every rebuild (Safari, 2026-09-11: 866 losses a minute, then the tab
+      // crashed — and while it spun, every OTHER WebGL context in the
+      // browser was evicted within 200 ms of creation, new tabs included)
+      // must not be rebuilt at full speed: 2nd loss within a minute → 1 s
+      // wait, then 3 / 8 / 15 s; from the 6th on stop rebuilding and ask for
+      // a reload — a dead canvas beats a frozen browser.
+      const n = (window._ctxLossLog || []).length;
+      const waits = [0, 0, 1000, 3000, 8000, 15000];
+      if(n >= 6){
+        window._glDead = true;
+        R.diag('recover:abandoned after ' + n + ' losses in 60s');
+        try { R.toast('GPU context keeps dying (' + n + '× in a minute) — reload this tab, or restart the browser if it repeats', 60000); } catch(e){}
+        return;
+      }
+      const wait = waits[n] || 0;
+      R.toast(wait ? ('GPU restored — rebuilding in ' + Math.round(wait / 1000) + ' s') : 'GPU restored — rebuilding');
+      clearTimeout(window._recoverTimer);
+      window._recoverTimer = setTimeout(_recoverGLState, wait);
+    });
   }
 
   // Compile + link WITHOUT any status query — getShaderParameter /
@@ -273,6 +293,7 @@ function initGL(onReady){
    'u_lutC0','u_lutC1','u_lutC2','u_lutC3',
    'u_lutD0','u_lutD1','u_lutD2','u_lutD3',
    'u_grainMul0','u_grainMul1','u_grainMul2','u_grainMul3',
+   'u_opacMul0','u_opacMul1','u_opacMul2','u_opacMul3',
    'u_inkGamma0','u_inkGamma1','u_inkGamma2','u_inkGamma3',
    'u_hasCal0','u_hasCal1','u_hasCal2','u_hasCal3',
    'u_opaque0','u_opaque1','u_opaque2','u_opaque3',
@@ -840,6 +861,7 @@ function _releaseGLObjects(){
 }
 
 function _recoverGLState(){
+  if(window._glDead) return;
   R.diag('recover:start');
   // Live-context rebuild (D3D variant switch): free the outgoing generation
   // first. On context-loss recovery the objects are already gone — dropping
@@ -1560,6 +1582,7 @@ function setRenderUniforms(dw, dh, scale, isPhone){
         gl.uniform3f(lutDLocs[i],lt[3][0],lt[3][1],lt[3][2]);
         gl.uniform1f(grainMulLocs[i],cal.grainMul);
         gl.uniform1f(locs['u_inkGamma'+i],cal.gamma||1.0);
+        gl.uniform1f(locs['u_opacMul'+i],(typeof cal.opacityMul==='number')?cal.opacityMul:1.0);
         gl.uniform1f(hasCalLocs[i],1.0);
       } else {
         const rgb=cached.inkRGB[i];
@@ -1570,6 +1593,7 @@ function setRenderUniforms(dw, dh, scale, isPhone){
         gl.uniform3f(lutDLocs[i],0,0,0);
         gl.uniform1f(grainMulLocs[i],1.0);
         gl.uniform1f(locs['u_inkGamma'+i],1.0);
+        gl.uniform1f(locs['u_opacMul'+i],1.0);
         gl.uniform1f(hasCalLocs[i],0.0);
         gl.uniform1f(opaqueLocs[i],0.0);
         gl.uniform1f(locs['u_transparent'+i],0.0);
@@ -1655,6 +1679,7 @@ function setRenderUniforms(dw, dh, scale, isPhone){
 // ======================== RENDER LOOP ========================
 let _renderErrorCount=0;
 function render(){
+  if(window._glDead) return;                 // loop breaker: the context was abandoned after repeated losses
   _rafId=0;
   if(_saving){return;} // block render during save
   if(gl.isContextLost()){return;} // GPU lost — wait for restore
@@ -1717,6 +1742,7 @@ R.togglePause=function(){
   return window._paused;
 };
 function _renderInner(){
+  if(window._glDead) return;
   const _stT0 = performance.now();   // resource-monitor frame timer
   window._stExit='?';                // breadcrumb: which gate ended this call
   // Program still compiling (KHR_parallel_shader_compile poll in initGL) —
@@ -2100,7 +2126,7 @@ function _renderInner(){
   // with the export paths in save.js via R._runTonePrepass.
   _runTonePrepass(dw, dh);
 
-  if(!window._gpuProbed){
+  if(!window._gpuProbed && !document.hidden){   // never time a hidden tab's frame (GPU work is deprioritised there)
     // First frame doubles as the GPU speed probe. It renders at ≤2× (gpuCap
     // above) ≈ 1/9th of full-quality fragments; if even that needs >90 ms,
     // a 6× frame would run seconds — keep the cap for the whole session.
@@ -2271,7 +2297,7 @@ function _renderInner(){
         window._lowPowerStill = true;
         R.diag('lowpower:still ' + Math.round(_mppNow) + 'ms/MP');
         if(R.setRisoFps) R.setRisoFps(0);
-        try { R.toast('Slower GPU: grain animation off — stills render once (FPS button re-enables)', 5000); } catch(e){}
+        try { R.toast('Heavy render (' + Math.round(_mppNow) + ' ms/MP): grain animation off — stills render once (FPS button re-enables)', 5000); } catch(e){}
       }
     }
     const _lodTarget = (camOn||videoOn) && risoFps>0 ? R.liveFps()
@@ -2906,7 +2932,7 @@ function _initAmtWorker(){
   _amtWorkerReady = (async () => {
     let blobUrl;
     try {
-      blobUrl = await _buildWorkerBlobUrl('js/riso-amt-worker.js?v=9');
+      blobUrl = await _buildWorkerBlobUrl('js/riso-amt-worker.js?v=10');
     } catch (e) {
       console.warn('[RisoAmt] worker blob build failed, falling back to sync:', e);
       _amtWorkerPool = [];
@@ -3780,6 +3806,11 @@ R._gpuLearn = function(key, v){
   // or shrink the buffer. Grace period after link, then the MEDIAN of the
   // last five samples per key is the model value.
   if(performance.now() - (window._glReadyAt || 0) < 1500) return;
+  // Hidden tabs: rAF is suspended and GPU work is deprioritised, so fence
+  // timings there measure the browser's scheduling, not the GPU (a hidden
+  // M2 Pro read 163-4900 ms/MP and switched itself to low-power, toast and
+  // all). Nothing is learned while hidden or within 1.5 s of becoming visible.
+  if(document.hidden || performance.now() - (window._lastVisibleAt || 0) < 1500) return;
   v = Math.max(0.5, Math.min(5000, v));
   const M = window._gpuModel || (window._gpuModel = { __max: 0, __n: 0, __s: {} });
   if(!M.__s) M.__s = {};
@@ -3790,6 +3821,7 @@ R._gpuLearn = function(key, v){
   let mx = 0; for(const k in M){ if(k.charAt(0) !== '_' && typeof M[k] === 'number' && M[k] > mx) mx = M[k]; }
   M.__max = mx;
 };
+document.addEventListener('visibilitychange', function(){ if(!document.hidden) window._lastVisibleAt = performance.now(); });
 R._gpuModelSamples = function(key){
   const M = window._gpuModel; return (M && M.__s && M.__s[key]) ? M.__s[key].length : 0;
 };

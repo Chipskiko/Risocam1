@@ -31,6 +31,7 @@ function monoIdx(){
 }
 
 function pickColor(ch, name){
+  const before=channels.slice();
   if(isMono()||ch==='mono'){
     // In mono: write to whatever slot the surviving ink is in (not always 0)
     const idx=monoIdx();
@@ -48,6 +49,11 @@ function pickColor(ch, name){
     }
   } else {
     channels[ch]=name;
+  }
+  // A slot still at its previous ink's default density follows the new ink's
+  // default (Black → 100); a density the user set by hand is left alone.
+  for(let i=0;i<4;i++){
+    if(channels[i]!==before[i] && channels[i]!==null && cached.layerDens[i]===defaultDensFor(before[i])) cached.layerDens[i]=defaultDensFor(channels[i]);
   }
   openPicker=-1;
   onChannelsChanged();
@@ -77,6 +83,11 @@ function setMonoAngle(deg){
 }
 
 // Map profile colors to 4 CMYK slots (always fill all 4)
+// Calibrated default plate density for an ink (RISO_CAL[name].dens), 88 otherwise.
+function defaultDensFor(name){
+  const cal=name&&(typeof RISO_CAL!=='undefined')?RISO_CAL[name]:null;
+  return (cal&&typeof cal.dens==='number')?cal.dens:88;
+}
 function mapProfileToSlots(colors){
   if(colors.length===1) return [colors[0],null,null,null];
   if(colors.length===2) return [colors[0],colors[1],colors[1],colors[0]]; // dark on C+K, warm on M+Y
@@ -555,12 +566,10 @@ function applyProf(p){
   } else {
     channels=mapProfileToSlots(p.colors);
   }
-  // Apply density presets if profile has them
-  if(p.dens){
-    for(let i=0;i<4;i++) cached.layerDens[i]=p.dens[i]||88;
-  } else {
-    for(let i=0;i<4;i++) cached.layerDens[i]=88;
-  }
+  // Apply density presets if profile has them; otherwise each slot takes its
+  // ink's calibrated default (RISO_CAL[ink].dens — Black 100, so a solid black
+  // is a solid master) and 88 for everything else.
+  for(let i=0;i<4;i++) cached.layerDens[i]=(p.dens && p.dens[i]) || defaultDensFor(channels[i]);
   // Assign classic halftone angles per unique ink, then sync same-color plates
   const defaultAngles=[15,75,0,45];
   layerAngles=[...defaultAngles];
@@ -1766,7 +1775,27 @@ function copyDebugValues(){
     ghosting:cached.ghosting,
     margin:cached.margin, bcs:[cached.imgBright,cached.imgContrast,cached.imgSat,cached.imgShadows],
     cmyk:{ucr:cached.ucrStr, balC:cached.balC, balM:cached.balM, balY:cached.balY, balK:cached.balK, tac:cached.tac},
-    physics:{inkOpacity:cached.inkOpacity, layerDeplete:cached.layerDeplete, pressVar:cached.pressVar, densFlicker:cached.densFlicker, ghostMul:cached.ghostMul}
+    physics:{inkOpacity:cached.inkOpacity, layerDeplete:cached.layerDeplete, pressVar:cached.pressVar, densFlicker:cached.densFlicker, ghostMul:cached.ghostMul},
+    // RISO master bake state — the tone curve actually burned (grey → ink
+    // coverage, 0 = solid) so a debug dump pins which transfer a print used.
+    riso:(function(){
+      const A=window.RisoAmt; if(!A||!A.DEFAULTS) return null;
+      const tc=A.DEFAULTS.toneCurve;
+      const K=[0,2,4,8,16,24,32,40,56,72,88,104,120,136,152,168,184,200,216,232,240,248,255];
+      return {
+        dpi:window._amtScanDpi||150, ditherMode:(window._ditherModeVal!==undefined)?window._ditherModeVal:null,
+        inkSpread:(typeof window._inkSpread==='number')?window._inkSpread:null, softness:window._riso_softness||1,
+        coverageScale:(typeof window._riso_maxCoverage==='number')?window._riso_maxCoverage:1,
+        solidFillThreshold:(typeof window._riso_solidFillThreshold==='number')?window._riso_solidFillThreshold:A.DEFAULTS.solidFillThreshold,
+        thresholdNoise:(typeof window._riso_thresholdNoise==='number')?window._riso_thresholdNoise:null,
+        driverFaithful:!!A.DEFAULTS.driverFaithful,
+        toneCurve:{ id:(tc===A.TONE_CURVE_MZ9)?'MZ9 measured — calibration charts + aligned eye capture (2026-09-07)':(tc===A.TONE_CURVE_BALLOON?'balloon (legacy)':'custom'),
+                    knots:K.map(g=>[g,+tc[g].toFixed(3)]) }
+      };
+    })(),
+    // Per-ink calibration in play (Black: default density 100, opacity ×1.15 → solid = jet).
+    inks:layers.map((l,i)=>{ const cal=(typeof RISO_CAL!=='undefined')?RISO_CAL[l.color]:null; const slot=(typeof l.slot==='number')?l.slot:i;
+      return { name:l.color, hex:cal?cal.hex:null, dens:cached.layerDens[slot], defaultDens:(cal&&typeof cal.dens==='number')?cal.dens:88, opacityMul:(cal&&typeof cal.opacityMul==='number')?cal.opacityMul:1 }; })
   };
   const txt=JSON.stringify(vals,null,2);
   navigator.clipboard.writeText(txt).then(()=>toast('Copied!')).catch(()=>{

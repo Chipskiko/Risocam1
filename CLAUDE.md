@@ -347,6 +347,9 @@ print-side dot gain left to the shader's ink spread. Open decision.
 
 ## RISO bake = measured MZ9 master transfer (2026-09-04)
 
+**Superseded in part — see "RISO tone curve: re-measured" (2026-09-07): the
+0.70 black cap and the 12-15% highlight haze below were a misaligned read.**
+
 User call: the real MZ9 master is the target ("ours looks too much like
 noise"). Changed: DEFAULTS.toneCurve = TONE_CURVE_MZ9 (the eye-capture
 transfer, 16 knots, capped at 0.70 so the Table A/B/C threshold dither never
@@ -373,6 +376,87 @@ correlates best with the page darkness blurred σ≈16 px (0.68 mm at 600 dpi;
 0.61 → 0.71 from σ 0 → 16), i.e. that print was made from a low-res copy.
 Baking a σ=16 pre-blurred source reproduces the soft-blob look. Not baked in
 by default — it is a property of that job, not of the driver.
+
+## RISO tone curve: re-measured, gradients fixed (2026-09-07)
+
+The 2026-09-04 curve was read from the eye capture at page offset (70,100).
+The true alignment is (65,80) (correlation search, 0.896 at full res); 20 px
+of misregistration blurred the per-grey averages into a 12-15% haze plateau
+over grey 184-248, a cliff at paper and a 0.70 cap at black — gradients
+rendered as paper → hard step → flat band, and never went solid (user:
+"flat, cut off"). Reading the capture at the OLD offset reproduces the old
+knots exactly, which pins the cause. Re-measured at (65,80) the eye print
+agrees with the calibration charts (test_05 gradient band per column,
+test_06 wedge per patch) within 0.02 RMS over grey 24..248: paper 0, grey
+232 → 2%, 184 → 8%, 128 → 16%, 40 → 43%, 8 → 78%, 0 → SOLID (black chart
+99.9%). The two jobs differ only in the last 8 grey levels (chart darker by
+~0.07-0.12); the knots average them. The 0.70 cap and the highlight haze the
+2026-09-04 notes call "the print" were the misalignment. TONE_CURVE_MZ9
+(riso-amt.js) and risoToneCurve (shader) carry the same 23 knots; the WebGPU
+shim now uploads DEFAULTS.toneCurve (it was still uploading the balloon
+TONE_CURVE). Verified with riso-probe-1.html (bakes a white→black ramp
+through the real prepass, Mono, blank paper, pure white, ink spread 0, reads
+the plate-0 master back per column band): Chromium AND Safari within 0.013
+of the band-integrated curve everywhere (bias positive = Jensen on a convex
+curve; the two engines agree band by band within 0.006).
+The old whole-page check passed only because highlight surplus and black
+deficit cancelled (45.9% vs 45.1%). Mid-tones are now lighter (50% grey →
+16% ink) — that is the drum. Reference strip: scratchpad
+riso-gradient-transfer.png (driver capture / old / new on one ramp).
+
+## Black ink retune: full black is jet (2026-09-07)
+
+Measured (Mono, blank paper, pure white, defaults): a solid-black source
+rendered RGB 53 in grain and 65 in RISO — three multiplicative lighteners:
+(1) every profile without a dens list put its plates at density 88, so the
+separation coverage of a solid was 0.88; in RISO the master itself ignores
+density (solid) but calBlend painted the solid texel with the LUT at the
+SEPARATION coverage (0.88 → Black's 0.14 swatch) thinned by dotMin; (2)
+u_inkOpacity 0.88 is the ink-film exponent, so even p100 (0.03) came out as
+0.03^0.79 plus the opaque crossfade's 12% paper leak; (3) real riso black IS
+~RGB 50 on paper (density ~1.5) — but the user wants jet. Retune: RISO_CAL
+entries may carry dens (default plate density, Black 100 — applyProf and
+pickColor use defaultDensFor(ink) unless the profile lists dens or the user
+set the slider) and opacityMul (per-ink u_opacMul0..3, inkOpacityFor(layer)
+= u_inkOpacity × mul; Black 1.15 so 0.88 → 1.0); and in RISO mode (u_mode 3)
+calBlend blends to ink = p100 with no dotMin thinning as the local master
+coverage → 1 (smoothstep 0.7..1 on grain) — a solid master texel is solid
+ink whatever the density slider says; partial dots keep the tuned look.
+Result (Safari + Chromium agree): solid black → grain 11 / RISO 10; 50% grey
+→ grain 136 (was 160: the Black plate now runs at 100 instead of 88), RISO
+229 (unchanged — the master governs). Probe: black-probe-1.html. Note the
+CMYK profiles keep their explicit K density (75) in grain; in RISO their
+solid K areas now print jet too.
+
+## Context-loss cascade in Safari (2026-09-11)
+
+User report: the deployed site in Safari (M2 Pro) showed "GPU restored —
+rebuilding" in a loop and the tab crashed; the trail read ctx:LOST 2 ms
+after every recover:done, 866 losses in 60 s. Reproduced from a probe in
+the SAME Safari: the context was lost at boot, before any image — while 40
+min earlier the identical build had run clean. After quitting Safari (fresh
+GPU process) the same probe ran a 47 MP source and 600-dpi A3 masters (4 ×
+7000×9924) with zero losses in both engines. So: one tab spinning on
+loss→rebuild poisons Safari's shared GPU process and every new WebGL
+context in the browser (new tabs included) is evicted within ~200 ms of
+creation — and the spinning tab was our own recovery path, which rebuilt at
+full speed forever (the old "loop breaker" only lowered quality). What
+started the first loss is unknown (the crashed tab's trail lives in the
+neocities origin's localStorage risocam_diag_prev). Fixes: (1) the
+webglcontextrestored handler backs off — 2nd loss within a minute waits
+1 s, then 3 / 8 / 15 s, and from the 6th loss it abandons recovery
+(window._glDead: render() and _renderInner bail, toast asks for a reload);
+a later loss clears a pending rebuild timer, so a burst never rebuilds mid-
+burst. Verified with WEBGL_lose_context (loss-probe-1.html): single loss →
+recover:done; six rapid losses → recover:abandoned, no rebuild after it,
+both engines. (2) Hidden-tab hygiene: the boot probe skips hidden tabs and
+R._gpuLearn learns nothing while document.hidden or within 1.5 s of
+becoming visible — a hidden pane read 163-4900 ms/MP on an M2 Pro and
+flipped low-power ("slow GPU detected" in the Claude browser). (3) The
+auto-STILL toast names the measured render cost instead of blaming the
+GPU: flat mode with 4 × 74 MP masters legitimately reads ~68 ms/MP on an
+M2 Pro. If Safari ever loops again: quit Safari (not just the tab) — the
+GPU process is what needs restarting — and read risocam_diag_prev.
 
 ## Crisp modes animate at full resolution (2026-09-04)
 

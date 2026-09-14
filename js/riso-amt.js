@@ -208,21 +208,27 @@ const STENCILS = {
 // CORE PRE-PASS
 // -----------------------------------------------------------------------------
 
-// MZ9 MEASURED transfer (2026-09-04): grey → ink coverage counted from a real
-// MZ970 print-to-file master of a full-page photo (Test images/
-// captured_master_6880x9755.png against its original, 16.7M samples per
-// bin set). This is what the drum actually burns: black stops at ~0.71 (the
-// driver's Table A/B/C threshold dither saturates just above 0.70 — flat
-// fields measured 0.70 → 0.696, 0.75 → 0.971, 0.80 → 1.0), the lights keep a
-// ~12-15% haze, and there is NO solid fill. Capped at 0.70 so the tables
-// never saturate. The balloon-capture curve (max 0.456) is kept as
-// TONE_CURVE_BALLOON; with its ×1.7 coverageScale it overshot black to 0.78
-// → solid, which read as "noise" next to the real master.
+// MZ9 MEASURED transfer (2026-09-04, re-measured 2026-09-07): grey → ink
+// coverage of the real MZ970 driver, from two independent print-to-file jobs
+// that agree within 0.02 RMS over grey 24..248 — the calibration charts
+// (Test images/test_08_calibration: gradient band per column + 9-step wedge
+// per patch) and the full-page eye capture (captured_master_6880x9755.png vs
+// its original, aligned by correlation search at page offset (65,80), >=300k
+// samples per grey level). Black is SOLID (black chart 99.9%, wedge step 8
+// 100%), the lights carry almost nothing (grey 232 → 2%, 248 → 0), 50% grey
+// → 16% ink, and the last 10% of darkness rockets 0.55 → 1.0. The first
+// version of this curve (shipped 2026-09-04) was read at offset (70,100):
+// 20 px of misregistration blurred the per-grey averages into a 12-15% haze
+// plateau across grey 184-248 and a 0.70 cap at black — that is what made
+// gradients look "flat, cut off". Plain serpentine FS (DEFAULTS.driverFaithful
+// = false) reproduces this curve exactly; the Table A/B/C port saturates
+// above ~0.70 and only matters with driverFaithful = true.
+// The balloon-capture curve (max 0.456) is kept as TONE_CURVE_BALLOON.
 // Index convention as TONE_CURVE: 0 = full ink intent … 255 = paper.
 const TONE_CURVE_BALLOON = TONE_CURVE;
 const TONE_CURVE_MZ9 = new Float32Array(256);
 (function fillMz9() {
-  const K = [[0,0.70],[8,0.70],[24,0.548],[40,0.470],[56,0.405],[72,0.350],[88,0.303],[104,0.269],[120,0.238],[136,0.215],[152,0.187],[168,0.165],[184,0.156],[200,0.152],[216,0.147],[232,0.140],[248,0.123],[255,0.0]];
+  const K = [[0,1.0],[2,0.92],[4,0.86],[8,0.78],[16,0.645],[24,0.551],[32,0.485],[40,0.429],[56,0.338],[72,0.275],[88,0.233],[104,0.204],[120,0.175],[136,0.148],[152,0.127],[168,0.099],[184,0.077],[200,0.056],[216,0.039],[232,0.021],[240,0.011],[248,0.0],[255,0.0]];
   for (let i = 0; i < 256; i++) {
     let a = K[0], b = K[K.length - 1];
     for (let k = 0; k < K.length - 1; k++) { if (i >= K[k][0] && i <= K[k + 1][0]) { a = K[k]; b = K[k + 1]; break; } }

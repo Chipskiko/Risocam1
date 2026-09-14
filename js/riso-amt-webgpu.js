@@ -267,9 +267,10 @@ async function _init() {
       device.createComputePipelineAsync({ layout: 'auto', compute: { module: pmod, entryPoint: 'hsum' } }),
       device.createComputePipelineAsync({ layout: 'auto', compute: { module: pmod, entryPoint: 'vlift' } }),
     ]);
-    // Tone curve (256 × f32) — same LUT the CPU density build uses.
+    // Tone curve (256 × f32) — the SAME LUT the CPU density build uses
+    // (DEFAULTS.toneCurve = TONE_CURVE_MZ9; TONE_CURVE is the old balloon curve).
     {
-      const tcArr = Float32Array.from(root.RisoAmt.TONE_CURVE);
+      const tcArr = Float32Array.from(root.RisoAmt.DEFAULTS.toneCurve);
       _toneBuf = device.createBuffer({ size: tcArr.byteLength, usage: GPUBufferUsage.STORAGE, mappedAtCreation: true });
       new Float32Array(_toneBuf.getMappedRange()).set(tcArr);
       _toneBuf.unmap();

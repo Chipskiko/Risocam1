@@ -13,7 +13,13 @@ const RISO_CAL = {
   // is real RISO charcoal not real RISO black. The Spectrolite reference
   // goes to true black at 100%, producing proper K-channel in CMYK and
   // dark mono prints.
-  'Black': { hex:'#1a1a1a', gamma:0.50, grainMul:1.40, fluo:false, lut:[[0.898,0.898,0.898],[0.702,0.702,0.702],[0.498,0.498,0.498],[0.302,0.302,0.302],[0.030,0.030,0.030]] },
+  // Retune 2026-09-07 ("full black should be jet black"): dens 100 = the
+  // plate's default density when a profile has no explicit dens list (the
+  // generic 88 left a solid at 88% coverage → the LUT's 0.14 swatch → RGB 65);
+  // opacityMul 1.15 lifts the ink-film exponent so a solid reaches the 100%
+  // swatch at the default Opacity 88 (0.88 × 1.15 → 1.0). Carbon black is the
+  // most opaque of the standard inks.
+  'Black': { hex:'#1a1a1a', gamma:0.50, grainMul:1.40, fluo:false, dens:100, opacityMul:1.15, lut:[[0.898,0.898,0.898],[0.702,0.702,0.702],[0.498,0.498,0.498],[0.302,0.302,0.302],[0.030,0.030,0.030]] },
   'Blue': { hex:'#215cbc', gamma:0.549, grainMul:1.40, fluo:false, lut:[[0.664,0.760,0.876],[0.588,0.707,0.855],[0.324,0.523,0.792],[0.213,0.445,0.772],[0.130,0.361,0.738]] },
   'Bright Olive': { hex:'#afa029', gamma:0.776, grainMul:0.62, fluo:false, lut:[[0.915,0.900,0.783],[0.883,0.860,0.695],[0.774,0.731,0.398],[0.720,0.671,0.217],[0.686,0.628,0.161]] },
   'Copper': { hex:'#9b5b3a', gamma:0.614, grainMul:0.98, fluo:false, lut:[[0.851,0.779,0.746],[0.820,0.711,0.667],[0.715,0.512,0.412],[0.669,0.432,0.310],[0.606,0.356,0.227]] },
